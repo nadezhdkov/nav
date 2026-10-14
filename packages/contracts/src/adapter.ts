@@ -46,10 +46,22 @@ export type SandboxHandle = {
   baseCommit: string;
 };
 
-/** Tool permissions granted by the Policy Engine, in the adapter's own rule syntax. */
+/**
+ * What the Policy Engine allows a task to do, in neutral terms. Each adapter translates it to its
+ * agent's own mechanism (permission rules, policy files, OS sandbox) and states how strictly it
+ * can enforce it in `AdapterCapabilities.enforcement`.
+ */
 export type ToolGrant = {
-  allow: string[];
-  deny: string[];
+  /** Read and edit files inside the sandbox. */
+  editFiles: boolean;
+  /** Shell commands the agent may run: exact commands, or prefixes ending in ` *`. */
+  allowCommands: string[];
+  /** Command prefixes that are always denied, even if an allow pattern matches. */
+  denyCommands: string[];
+  /** Paths outside the sandbox that must stay unreadable (`~` = home directory). */
+  denyPaths: string[];
+  /** Outbound network access (web fetch/search, package downloads). */
+  network: boolean;
 };
 
 export type TaskContext = {
@@ -81,6 +93,13 @@ export type AdapterCapabilities = {
   streaming: boolean;
   ownTools: boolean;
   resumable: boolean;
+  /**
+   * How the grant's command allowlist is enforced:
+   * - `exact`: every command is checked against the allowlist (rules or VECTR's own tools).
+   * - `sandbox`: commands are not filtered one by one; an OS sandbox confines writes to the
+   *   worktree and blocks network instead.
+   */
+  enforcement: "exact" | "sandbox";
 };
 
 export type HealthStatus = { ok: boolean; detail: string };
@@ -91,4 +110,6 @@ export interface AgentAdapter {
   healthcheck(): Promise<HealthStatus>;
   run(ctx: TaskContext, io: AdapterIO): Promise<TaskResult>;
   cancel(taskId: string): Promise<void>;
+  /** Stops every running task without marking it cancelled (daemon shutdown). */
+  stopAll(): Promise<void>;
 }

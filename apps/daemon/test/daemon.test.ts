@@ -15,7 +15,7 @@ afterEach(async () => {
 
 async function startDaemon(home: string, scenario: FakeScenario, fake = fakeClaude(scenario)) {
   const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency: 2, max_attempts: 3 } });
-  const daemon = new Daemon({ home, config, claudeCode: fake.options });
+  const daemon = new Daemon({ home, config, adapters: { "claude-code": fake.options } });
   await daemon.start();
   daemons.push(daemon);
   const token = readFileSync(join(home, "token"), "utf8").trim();

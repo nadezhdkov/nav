@@ -1429,6 +1429,8 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 - Redução mensurável de tokens de entrada por Task (meta inicial: ≥ 30%) sem queda na taxa de aceitação de PRs.
 - Specs de um projeto real com ≥ 70% das afirmações 🟢.
 
+> **Antecipado (ADR 0004):** os adaptadores `gemini-cli`, `codex` e `native` (Ollama/OpenRouter) já existem desde o fim da Fase 0, com a concessão de ferramentas em formato neutro (`ToolGrant`) traduzida por cada adaptador.
+
 ### Fase 4 — Robustez e expansão (contínuo)
 
 - Relay E2E opcional, WebAuthn, hash encadeado de auditoria.

@@ -1,14 +1,21 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createInterface } from "node:readline";
+import {
+  CliProcesses,
+  cliOutcome,
+  DEFAULT_SCRUB_ENV,
+  healthcheck,
+  isMissingSession,
+  parsePattern,
+  scrubbedEnv,
+} from "@vectr/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
   AgentAdapter,
-  ErrorKind,
   HealthStatus,
   TaskContext,
   TaskResult,
+  ToolGrant,
 } from "@vectr/contracts";
 import { parseLine, type ClaudeResult } from "./stream.ts";
 
@@ -30,39 +37,49 @@ export type ClaudeCodeOptions = {
   killGraceMs?: number;
 };
 
-const DEFAULT_SCRUB = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "VECTR_GITHUB_TOKEN"];
+const READ_TOOLS = ["Read", "Glob", "Grep", "LS", "TodoWrite"];
+const EDIT_TOOLS = ["Edit", "Write", "MultiEdit", "NotebookEdit"];
 
-type Running = { child: ChildProcess; cancelled: boolean };
+/** Translates the neutral grant into Claude Code permission rules. */
+export function claudeRules(grant: ToolGrant): { allow: string[]; deny: string[] } {
+  const allow = [...READ_TOOLS, ...(grant.editFiles ? EDIT_TOOLS : []), ...grant.allowCommands.map(bashRule)];
+  const deny = [
+    ...grant.denyCommands.map((prefix) => `Bash(${prefix}:*)`),
+    ...grant.denyPaths.flatMap((path) => [`Read(${path}/**)`, `Edit(${path}/**)`]),
+    ...(grant.network ? [] : ["WebFetch", "WebSearch"]),
+    ...(grant.editFiles ? [] : EDIT_TOOLS),
+  ];
+  return { allow, deny };
+}
+
+/** `npm test` → `Bash(npm test)`, `npm run *` → `Bash(npm run:*)`. */
+export function bashRule(pattern: string): string {
+  const p = parsePattern(pattern);
+  return p.wildcard ? `Bash(${p.prefix}:*)` : `Bash(${p.prefix})`;
+}
 
 export class ClaudeCodeAdapter implements AgentAdapter {
   readonly id = "claude-code";
   private readonly options: Required<ClaudeCodeOptions>;
-  private readonly running = new Map<string, Running>();
+  private readonly processes: CliProcesses;
 
   constructor(options: ClaudeCodeOptions = {}) {
     this.options = {
       command: options.command ?? "claude",
       commandArgs: options.commandArgs ?? [],
       permissionMode: options.permissionMode ?? "acceptEdits",
-      scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB,
+      scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
     };
+    this.processes = new CliProcesses(this.options.killGraceMs);
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: true, ownTools: true, resumable: true };
+    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact" };
   }
 
-  async healthcheck(): Promise<HealthStatus> {
-    return new Promise((resolve) => {
-      const child = spawn(this.options.command, [...this.options.commandArgs, "--version"], {
-        stdio: ["ignore", "pipe", "pipe"],
-      });
-      let out = "";
-      child.stdout?.on("data", (d) => (out += d));
-      child.on("error", (err) => resolve({ ok: false, detail: err.message }));
-      child.on("close", (code) => resolve({ ok: code === 0, detail: out.trim() || `exit ${code}` }));
-    });
+  healthcheck(): Promise<HealthStatus> {
+    return healthcheck(this.options.command, [...this.options.commandArgs, "--version"]);
   }
 
   async run(ctx: TaskContext, io: AdapterIO): Promise<TaskResult> {
@@ -76,167 +93,65 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     return this.attempt(ctx, io, { sessionId });
   }
 
-  async cancel(taskId: string): Promise<void> {
-    const entry = this.running.get(taskId);
-    if (!entry) return;
-    entry.cancelled = true;
-    await this.kill(entry.child);
+  cancel(taskId: string): Promise<void> {
+    return this.processes.cancel(taskId);
   }
 
-  /** Stops every running subprocess without marking it cancelled (daemon shutdown). */
-  async stopAll(): Promise<void> {
-    await Promise.all([...this.running.values()].map((entry) => this.kill(entry.child)));
+  stopAll(): Promise<void> {
+    return this.processes.stopAll();
   }
 
   private buildArgs(ctx: TaskContext, session: { resume?: string; sessionId?: string }): string[] {
+    const rules = claudeRules(ctx.tools);
     const args = [...this.options.commandArgs, "-p", "--output-format", "stream-json", "--verbose"];
     if (session.resume) args.push("--resume", session.resume);
     else if (session.sessionId) args.push("--session-id", session.sessionId);
     args.push("--permission-mode", this.options.permissionMode);
     if (ctx.model) args.push("--model", ctx.model);
     if (ctx.budget.maxCost > 0) args.push("--max-budget-usd", ctx.budget.maxCost.toFixed(2));
-    if (ctx.tools.allow.length) args.push("--allowedTools", ...ctx.tools.allow);
-    if (ctx.tools.deny.length) args.push("--disallowedTools", ...ctx.tools.deny);
+    if (rules.allow.length) args.push("--allowedTools", ...rules.allow);
+    if (rules.deny.length) args.push("--disallowedTools", ...rules.deny);
     return args;
   }
 
-  private attempt(
-    ctx: TaskContext,
-    io: AdapterIO,
-    session: { resume?: string; sessionId?: string },
-  ): Promise<TaskResult> {
-    const prompt = session.resume
-      ? "You were interrupted. Continue the same task from where you stopped, then finish with a short summary."
-      : ctx.instructions;
-    const env = { ...process.env };
-    for (const name of this.options.scrubEnv) delete env[name];
-
-    const started = Date.now();
-    const child = spawn(this.options.command, this.buildArgs(ctx, session), {
-      cwd: ctx.sandbox.path,
-      env,
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    const entry: Running = { child, cancelled: false };
-    this.running.set(ctx.taskId, entry);
-
+  private async attempt(ctx: TaskContext, io: AdapterIO, session: { resume?: string; sessionId?: string }) {
     let result: ClaudeResult | undefined;
-    let stderr = "";
     let lastText = "";
-    let spawnError: Error | undefined;
-
-    child.stdin?.end(prompt);
-    child.stderr?.on("data", (d: Buffer) => {
-      stderr = (stderr + d.toString()).slice(-8_000);
-    });
-    const lines = createInterface({ input: child.stdout! });
-    lines.on("line", (line) => {
-      io.emit({ kind: "log", line });
-      for (const item of parseLine(line)) {
-        if (item.kind === "text") {
-          lastText = item.text;
-          io.emit({ kind: "progress", message: item.text.slice(0, 500) });
-        } else if (item.kind === "tool") {
-          io.emit({ kind: "progress", message: item.summary, tool: item.name });
-        } else if (item.kind === "result") {
-          result = item.result;
-          for (const denial of item.result.denials) io.emit({ kind: "denied", ...denial });
+    const exit = await this.processes.run({
+      taskId: ctx.taskId,
+      command: this.options.command,
+      args: this.buildArgs(ctx, session),
+      cwd: ctx.sandbox.path,
+      env: scrubbedEnv(this.options.scrubEnv),
+      stdin: session.resume ? RESUME_PROMPT : ctx.instructions,
+      timeoutMs: ctx.budget.timeoutMs,
+      onLine: (line) => {
+        io.emit({ kind: "log", line });
+        for (const item of parseLine(line)) {
+          if (item.kind === "text") {
+            lastText = item.text;
+            io.emit({ kind: "progress", message: item.text.slice(0, 500) });
+          } else if (item.kind === "tool") {
+            io.emit({ kind: "progress", message: item.summary, tool: item.name });
+          } else if (item.kind === "result") {
+            result = item.result;
+            for (const denial of item.result.denials) io.emit({ kind: "denied", ...denial });
+          }
         }
-      }
+      },
     });
-
-    const timer =
-      ctx.budget.timeoutMs > 0
-        ? setTimeout(() => {
-            stderr += `\nvectr: timeout after ${ctx.budget.timeoutMs} ms`;
-            void this.kill(child);
-          }, ctx.budget.timeoutMs)
-        : undefined;
-
-    return new Promise((resolve) => {
-      child.on("error", (err) => (spawnError = err));
-      child.on("close", (code, signal) => {
-        if (timer) clearTimeout(timer);
-        this.running.delete(ctx.taskId);
-        lines.close();
-        if (stderr.trim()) io.emit({ kind: "log", line: `[stderr] ${stderr.trim()}` });
-        resolve(
-          toTaskResult({
-            result,
-            code,
-            signal,
-            stderr,
-            lastText,
-            cancelled: entry.cancelled,
-            spawnError,
-            elapsedMs: Date.now() - started,
-          }),
-        );
-      });
-    });
-  }
-
-  private kill(child: ChildProcess): Promise<void> {
-    if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
-    return new Promise((resolve) => {
-      const force = setTimeout(() => child.kill("SIGKILL"), this.options.killGraceMs);
-      child.once("close", () => {
-        clearTimeout(force);
-        resolve();
-      });
-      child.kill("SIGTERM");
-    });
-  }
-}
-
-type Outcome = {
-  result?: ClaudeResult;
-  code: number | null;
-  signal: NodeJS.Signals | null;
-  stderr: string;
-  lastText: string;
-  cancelled: boolean;
-  spawnError?: Error;
-  elapsedMs: number;
-};
-
-function toTaskResult(o: Outcome): TaskResult {
-  const usage = o.result?.usage ?? [];
-  if (o.cancelled) {
-    return failed("cancelled", "cancelled by user", o.lastText, usage);
-  }
-  if (o.spawnError) {
-    return failed("fatal", `could not start Claude Code: ${o.spawnError.message}`, "", usage);
-  }
-  if (o.result?.ok) {
-    return {
-      status: "succeeded",
-      summary: o.result.text || o.lastText,
-      artifacts: [],
-      claims: [],
-      usage,
+    if (exit.stderr.trim()) io.emit({ kind: "log", line: `[stderr] ${exit.stderr.trim()}` });
+    const final = result && {
+      ok: result.ok,
+      summary: result.text,
+      usage: result.usage,
+      ...(result.ok ? {} : { error: `${result.subtype}: ${result.text}` }),
     };
+    // Claude Code exits non-zero on some successful runs with warnings; trust its result line.
+    if (result?.ok && !exit.cancelled && !exit.timedOut) return cliOutcome("claude", { ...exit, code: 0 }, final, lastText);
+    return cliOutcome("claude", exit, final, lastText);
   }
-  const detail = o.result ? `${o.result.subtype}: ${o.result.text}` : o.stderr.trim();
-  const message = detail || `claude exited with ${o.signal ?? `code ${o.code}`}`;
-  return failed(classify(o.result?.subtype ?? "", message), message, o.result?.text || o.lastText, usage);
 }
 
-function failed(kind: ErrorKind, message: string, summary: string, usage: TaskResult["usage"]): TaskResult {
-  return { status: "failed", summary, artifacts: [], claims: [], usage, error: { kind, message } };
-}
-
-function classify(subtype: string, message: string): ErrorKind {
-  const text = `${subtype} ${message}`.toLowerCase();
-  if (text.includes("budget")) return "budget_exceeded";
-  if (text.includes("rate limit") || text.includes("rate_limit") || text.includes("429") || text.includes("overloaded")) {
-    return "rate_limited";
-  }
-  if (text.includes("timeout") || text.includes("econnreset") || text.includes("network")) return "transient";
-  return "fatal";
-}
-
-function isMissingSession(result: TaskResult): boolean {
-  const message = result.error?.message.toLowerCase() ?? "";
-  return result.status === "failed" && /no conversation found|session.*not found/.test(message);
-}
+export const RESUME_PROMPT =
+  "You were interrupted. Continue the same task from where you stopped, then finish with a short summary.";

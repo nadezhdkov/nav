@@ -8,7 +8,17 @@ Instructions for AI agents working in this repository. Product source of truth: 
 
 ## Current state
 
-**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `vectrd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants, the `claude-code` adapter running in a worktree with resume after restart, and the CLI. Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
+**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `vectrd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants and the CLI. Five agent adapters run tasks in a worktree, chosen per run with `--adapter` (ADR 0004):
+
+| Adapter | Runs | Login / key | Resume |
+|---|---|---|---|
+| `claude-code` (default) | `claude -p` | the `claude` CLI | yes |
+| `gemini-cli` | `gemini --prompt` | `GEMINI_API_KEY` (AI Studio); Google-account login no longer works | yes |
+| `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
+| `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
+| `native` | VECTR's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
+
+Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
 
 Go/no-go still open: 10 real tasks on your own repositories, 2 of them resumed after restarting the daemon. Only smoke runs have been done so far.
 
@@ -18,15 +28,19 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 |---|---|
 | `make install` | `pnpm install --frozen-lockfile` |
 | `make typecheck` | `tsc` over every package, no emit |
-| `make test` | Vitest; adapter tests use a fake `claude` CLI, no network or cost |
+| `make test` | Vitest; adapter tests use fake CLIs and a fake model server, no network or cost |
 | `make verify` | typecheck + test, the check to run before committing |
 | `make daemon` | run `vectrd` in the foreground |
 | `make cli ARGS="…"` | run the `vectr` CLI, e.g. `ARGS="run list"` |
-| `make doctor` | print node, pnpm, git and claude versions |
+| `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, ollama) |
 
-CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--budget] [--allow <cmd>]... [--model] [--follow] <prompt>`, `vectr run list|show <id>`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
+CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/claude-code`, `docs/adr`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
+
+Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
+
+Accounts: one account per provider. Never add rotation across several accounts of the same service to add up quotas (spec §1.4, ADR 0004).
 
 ## Stack (spec §12)
 

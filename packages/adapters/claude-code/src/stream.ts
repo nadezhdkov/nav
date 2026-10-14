@@ -1,3 +1,4 @@
+import { toolSummary } from "@vectr/adapter-kit";
 import type { UsageRecord } from "@vectr/contracts";
 
 /**
@@ -72,11 +73,6 @@ function assistantItems(data: Json): StreamItem[] {
   return items;
 }
 
-function toolSummary(name: string, input: unknown): string {
-  if (!isObject(input)) return name;
-  const target = str(input.file_path) || str(input.path) || str(input.pattern) || str(input.command);
-  return target ? `${name} ${target.slice(0, 200)}` : name;
-}
 
 function toResult(data: Json): ClaudeResult {
   const usage: UsageRecord[] = [];

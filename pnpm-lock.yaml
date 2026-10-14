@@ -190,9 +190,24 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.4
         version: 11.3.4
+      '@vectr/adapter-antigravity':
+        specifier: workspace:*
+        version: link:../../packages/adapters/antigravity
       '@vectr/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code
+      '@vectr/adapter-codex':
+        specifier: workspace:*
+        version: link:../../packages/adapters/codex
+      '@vectr/adapter-gemini-cli':
+        specifier: workspace:*
+        version: link:../../packages/adapters/gemini-cli
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../../packages/adapters/kit
+      '@vectr/adapter-native':
+        specifier: workspace:*
+        version: link:../../packages/adapters/native
       '@vectr/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
@@ -212,8 +227,53 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/adapters/antigravity:
+    dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
   packages/adapters/claude-code:
     dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/codex:
+    dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/gemini-cli:
+    dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/kit:
+    dependencies:
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/native:
+    dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
       '@vectr/contracts':
         specifier: workspace:*
         version: link:../../contracts

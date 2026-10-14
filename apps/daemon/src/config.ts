@@ -2,7 +2,27 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
+import { AdapterId } from "@vectr/contracts";
 import { z } from "zod";
+
+/** An OpenAI-compatible endpoint for the native adapter. Keys are read from an environment variable, never stored here. */
+const Provider = z.object({
+  base_url: z.string().url(),
+  api_key_env: z.string().optional(),
+  headers: z.record(z.string(), z.string()).optional(),
+  extra_body: z.record(z.string(), z.unknown()).optional(),
+});
+export type ProviderConfig = z.infer<typeof Provider>;
+
+const defaultProviders: Record<string, ProviderConfig> = {
+  ollama: { base_url: "http://127.0.0.1:11434/v1" },
+  openrouter: {
+    base_url: "https://openrouter.ai/api/v1",
+    api_key_env: "OPENROUTER_API_KEY",
+    headers: { "X-Title": "VECTR" },
+    extra_body: { usage: { include: true } },
+  },
+};
 
 /** Global configuration, `~/.vectr/config.yaml` (spec §14.1). Only Phase 0 keys are read. */
 export const Config = z.object({
@@ -22,13 +42,34 @@ export const Config = z.object({
     .prefault({}),
   autonomy_level: z.number().int().min(0).max(4).default(2),
   allow_commands: z.array(z.string()).default([]),
+  /** Adapter used when a run does not choose one. */
+  default_adapter: AdapterId.default("claude-code"),
   adapters: z
     .object({
       "claude-code": z
         .object({
+          enabled: z.boolean().default(true),
           command: z.string().default("claude"),
           permission_mode: z.string().default("acceptEdits"),
           model: z.string().optional(),
+        })
+        .prefault({}),
+      "gemini-cli": z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("gemini"), model: z.string().optional() })
+        .prefault({}),
+      antigravity: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("agy"), model: z.string().optional() })
+        .prefault({}),
+      codex: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("codex"), model: z.string().optional() })
+        .prefault({}),
+      native: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** `<provider>/<model>`, e.g. `ollama/qwen2.5:7b` or `openrouter/qwen/qwen3-coder:free`. */
+          model: z.string().optional(),
+          max_turns: z.number().int().positive().default(40),
+          providers: z.record(z.string(), Provider).default(defaultProviders),
         })
         .prefault({}),
     })

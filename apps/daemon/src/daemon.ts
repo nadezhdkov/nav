@@ -1,9 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { AntigravityAdapter, type AntigravityOptions } from "@vectr/adapter-antigravity";
 import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@vectr/adapter-claude-code";
+import { CodexAdapter, type CodexOptions } from "@vectr/adapter-codex";
+import { GeminiCliAdapter, type GeminiCliOptions } from "@vectr/adapter-gemini-cli";
+import { NativeAdapter, type NativeOptions, type Provider } from "@vectr/adapter-native";
 import { AgentRuntime } from "@vectr/agent-runtime";
-import type { AgentAdapter } from "@vectr/contracts";
+import { registerSecret, type AdapterId, type AgentAdapter } from "@vectr/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { loadConfig, type Config } from "./config.ts";
@@ -15,8 +19,14 @@ import { Scheduler } from "./scheduler/scheduler.ts";
 export type DaemonOptions = {
   home: string;
   config?: Config;
-  /** Overrides for the Claude Code adapter (tests point it at a fake CLI). */
-  claudeCode?: ClaudeCodeOptions;
+  /** Per-adapter overrides (tests point them at fake CLIs or a fake model server). */
+  adapters?: {
+    "claude-code"?: ClaudeCodeOptions;
+    "gemini-cli"?: GeminiCliOptions;
+    antigravity?: AntigravityOptions;
+    codex?: CodexOptions;
+    native?: Partial<NativeOptions>;
+  };
   port?: number;
 };
 
@@ -29,7 +39,7 @@ export class Daemon {
   readonly store: EventStore;
   readonly orchestrator: Orchestrator;
   readonly scheduler: Scheduler;
-  private readonly adapter: ClaudeCodeAdapter;
+  readonly adapters: Map<string, AgentAdapter>;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
   private port?: number;
@@ -41,13 +51,8 @@ export class Daemon {
     if (options.port !== undefined) this.config.daemon.port = options.port;
 
     this.store = new EventStore(join(this.home, "vectr.db"));
-    const claude = this.config.adapters["claude-code"];
-    this.adapter = new ClaudeCodeAdapter({
-      command: claude.command,
-      permissionMode: claude.permission_mode,
-      ...options.claudeCode,
-    });
-    const adapters = new Map<string, AgentAdapter>([[this.adapter.id, this.adapter]]);
+    this.adapters = buildAdapters(this.config, options.adapters ?? {}, this.home);
+    const adapters = this.adapters;
     const runtime = new AgentRuntime({
       home: this.home,
       adapters,
@@ -62,9 +67,11 @@ export class Daemon {
       runtime,
       policy,
       config: this.config,
-      cancel: (taskId) => this.adapter.cancel(taskId),
+      cancel: async (taskId) => {
+        await Promise.all([...adapters.values()].map((a) => a.cancel(taskId)));
+      },
     });
-    this.orchestrator = new Orchestrator(this.store, this.config, () => this.scheduler.pump());
+    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump());
   }
 
   get url(): string {
@@ -93,10 +100,59 @@ export class Daemon {
    */
   async stop(): Promise<void> {
     await this.server?.close();
-    await this.scheduler.stop(() => this.adapter.stopAll());
+    await this.scheduler.stop(async () => {
+      await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
+    });
     this.store.close();
     rmSync(join(this.home, "vectrd.json"), { force: true });
   }
+}
+
+/** Enabled adapters, keyed by id. Provider API keys are read from the environment and registered for redaction. */
+export function buildAdapters(
+  config: Config,
+  overrides: NonNullable<DaemonOptions["adapters"]>,
+  home: string,
+): Map<string, AgentAdapter> {
+  const a = config.adapters;
+  const all: [AdapterId, boolean, () => AgentAdapter][] = [
+    [
+      "claude-code",
+      a["claude-code"].enabled,
+      () => new ClaudeCodeAdapter({ command: a["claude-code"].command, permissionMode: a["claude-code"].permission_mode, ...overrides["claude-code"] }),
+    ],
+    ["gemini-cli", a["gemini-cli"].enabled, () => new GeminiCliAdapter({ command: a["gemini-cli"].command, ...overrides["gemini-cli"] })],
+    [
+      "antigravity",
+      a.antigravity.enabled,
+      () => new AntigravityAdapter({ command: a.antigravity.command, homeRoot: join(home, "agents", "antigravity"), ...overrides.antigravity }),
+    ],
+    ["codex", a.codex.enabled, () => new CodexAdapter({ command: a.codex.command, ...overrides.codex })],
+    [
+      "native",
+      a.native.enabled,
+      () => {
+        const providers: Record<string, Provider> = {};
+        for (const [name, p] of Object.entries(a.native.providers)) {
+          const apiKey = p.api_key_env ? process.env[p.api_key_env] : undefined;
+          if (apiKey) registerSecret(apiKey);
+          providers[name] = {
+            baseUrl: p.base_url,
+            ...(apiKey ? { apiKey } : {}),
+            ...(p.headers ? { headers: p.headers } : {}),
+            ...(p.extra_body ? { extraBody: p.extra_body } : {}),
+          };
+        }
+        return new NativeAdapter({
+          providers,
+          maxTurns: a.native.max_turns,
+          ...(a.native.model ? { defaultModel: a.native.model } : {}),
+          ...overrides.native,
+        });
+      },
+    ],
+  ];
+  return new Map(all.filter(([, enabled]) => enabled).map(([id, , make]) => [id, make()]));
 }
 
 export function ensureToken(home: string): string {

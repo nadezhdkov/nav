@@ -29,6 +29,10 @@ doctor: ## Check the toolchain VECTR needs
 	@pnpm --version
 	@git --version
 	@claude --version || echo "claude CLI not found: the claude-code adapter will not work"
+	@gemini --version || echo "gemini CLI not found: the gemini-cli adapter will not work"
+	@agy --version || echo "agy CLI not found: the antigravity adapter will not work"
+	@codex --version || echo "codex CLI not found: the codex adapter will not work"
+	@ollama --version || echo "ollama not found: native runs need another provider"
 
 clean: ## Remove installed dependencies and caches
 	rm -rf node_modules apps/*/node_modules packages/*/node_modules packages/adapters/*/node_modules

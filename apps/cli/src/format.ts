@@ -20,7 +20,7 @@ export function formatRunDetail(run: RunDetail): string {
     "tasks:",
   ];
   for (const t of run.tasks) {
-    lines.push(`  ${t.id}  ${t.node_id}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
+    lines.push(`  ${t.id}  ${t.node_id}  ${t.adapter}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
     if (t.branch) lines.push(`    branch   ${t.branch}`);
     if (t.sandbox_path) lines.push(`    worktree ${t.sandbox_path}`);
     if (t.error) lines.push(`    error    ${truncate(t.error, 300)}`);

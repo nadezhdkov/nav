@@ -4,9 +4,15 @@ import { RunStatus, TaskStatus } from "./status.ts";
 
 /** Core API contracts, spec §9.1. */
 
+/** Agent adapters VECTR can run (spec §6.3.2). */
+export const AdapterId = z.enum(["claude-code", "gemini-cli", "antigravity", "codex", "native"]);
+export type AdapterId = z.infer<typeof AdapterId>;
+
 export const CreateRunRequest = z.object({
   repo_path: z.string().min(1),
   prompt: z.string().min(1),
+  /** Defaults to the daemon's `default_adapter`. */
+  adapter: AdapterId.optional(),
   budget: z.number().positive().optional(),
   allow_commands: z.array(z.string()).optional(),
   model: z.string().optional(),
