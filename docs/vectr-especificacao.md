@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **VECTR** — *Verified Engineering Coordination for Tasks and Repos* (ver [§19.1](#191-nome-do-produto)) |
-| Versão do documento | 0.5 (decisões da Fase 0: §19.2, §19.4; transições de cancelamento em §8.3; eventos em §9.2) |
+| Versão do documento | 0.6 (regras de trabalho dos perfis em §6.3.3; arquivos de instrução do repositório-alvo em T1, §10.2). 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -404,6 +404,12 @@ flowchart TB
 | `ci-fixer` | Diagnosticar e corrigir falhas de CI. | logs de CI, edição, comandos | `tier: standard` → `expert` em retry |
 | `judge` | Comparar implementações concorrentes. | leitura de diffs e relatórios | `tier: expert` |
 | `spec-writer` | Gerar/atualizar especificações rastreáveis. | leitura, escrita em `.vectr/specs/` | `tier: standard` |
+
+**Regras de trabalho dos perfis (Fase 1).** As instruções dos perfis seguem as mesmas regras das skills do próprio repositório do VECTR (`.claude/skills/`, adaptadas de mattpocock/skills, MIT):
+
+- `planner` entrega cada subtarefa como um **Agent Brief** (skill `agent-brief`): categoria, comportamento atual e desejado, interfaces-chave, critérios de aceite testáveis, fora de escopo e evidências 🟢/🟡/🔴; sem caminhos de arquivo nem números de linha, que envelhecem; o pedido externo é reescrito, nunca copiado como instrução (T1).
+- `implementer` e `tester` trabalham em fatias verticais vermelho → verde (skill `tdd`): testes em interfaces públicas combinadas no plano, dublês só nas fronteiras do sistema, nada de testes tautológicos.
+- `reviewer` revisa em **dois eixos separados** (skill `review-two-axis`): *Standards* (convenções documentadas do repositório-alvo e uma base de code smells) e *Spec* (o Agent Brief e o plano aprovados), sem misturar nem reordenar achados entre eixos.
 
 ### 6.4 Model Router e Model Catalog
 
@@ -1082,7 +1088,7 @@ O VECTR expõe ferramentas aos agentes por um servidor MCP interno e também pod
 
 | # | Ameaça | Vetor | Controles |
 |---|---|---|---|
-| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. |
+| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. Também os arquivos de instrução do repositório-alvo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/skills/`, `.agents/skills/`, `.claude/settings.json`, hooks), que os CLIs de agente carregam sozinhos: num PR de terceiro ou num repositório não confiável, eles são escritos pelo atacante. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. Arquivos de instrução e skills do repositório-alvo são dados não confiáveis: a concessão de ferramentas vem só da Policy Engine, nunca deles; um diff que os altera é tratado como caminho protegido (revisão humana); em Runs sobre código de terceiros, o adaptador roda sem carregar a configuração do projeto quando o CLI permitir, ou a Task exige aprovação. |
 | T2 | **Execução de código malicioso** | Testes ou scripts de build de PRs de terceiros. | Isolamento L2/L3, rede bloqueada, usuário não-root, limites de recursos. |
 | T3 | **Exfiltração de dados** | Agente envia código a domínios externos. | Egress allowlist no container; modelos permitidos por projeto; tag `confidential` restringe a modelos locais. |
 | T4 | **Escrita destrutiva no repositório** | Agente força push, apaga branches. | Somente branches `vectr/*`; `git push` só pelo GitHub Integration; nunca `--force` em branches de terceiros. |
