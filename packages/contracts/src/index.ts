@@ -3,4 +3,5 @@ export * from "./status.ts";
 export * from "./events.ts";
 export * from "./adapter.ts";
 export * from "./api.ts";
+export * from "./work.ts";
 export * from "./redact.ts";

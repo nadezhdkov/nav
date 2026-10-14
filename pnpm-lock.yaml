@@ -214,9 +214,15 @@ importers:
       '@vectr/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@vectr/github':
+        specifier: workspace:*
+        version: link:../../packages/github
       '@vectr/runner':
         specifier: workspace:*
         version: link:../../packages/runner
+      '@vectr/verification':
+        specifier: workspace:*
+        version: link:../../packages/verification
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
@@ -299,11 +305,26 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/github:
+    dependencies:
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/runner:
     dependencies:
       '@vectr/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/verification:
+    dependencies:
+      '@vectr/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@vectr/runner':
+        specifier: workspace:*
+        version: link:../runner
 
 packages:
 

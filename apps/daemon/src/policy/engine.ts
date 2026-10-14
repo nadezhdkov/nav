@@ -55,6 +55,26 @@ export const defaultRules: PolicyRule[] = [
     reason: "merge requires approval unless auto-merge is enabled (spec §11.1)",
   },
   {
+    match: (r) => r.action === "github.pr.create" && r.context.autonomyLevel >= 3,
+    effect: "allow",
+    reason: "autonomy level 3+ opens draft PRs on vectr/* branches",
+  },
+  {
+    match: (r) => r.action === "github.pr.create",
+    effect: "require_approval",
+    reason: "opening a PR requires approval below autonomy level 3",
+  },
+  {
+    match: (r) => r.action === "verification.run" && r.context.autonomyLevel >= 2,
+    effect: "allow",
+    reason: "autonomy level 2+ runs local verification",
+  },
+  {
+    match: (r) => r.action === "verification.run",
+    effect: "require_approval",
+    reason: "running verification commands requires approval below autonomy level 2",
+  },
+  {
     match: (r) => r.action === "task.start" && r.context.autonomyLevel < 1,
     effect: "require_approval",
     reason: "autonomy level 0 (observe) requires approval for any agent execution",

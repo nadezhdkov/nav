@@ -21,6 +21,12 @@ describe("PolicyEngine", () => {
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 0 }).effect).toBe("require_approval");
   });
 
+  it("opens PRs at level 3+ and asks below; verifies at level 2+ (spec §11)", () => {
+    const at = (level: number, action: string) => policy.decide(agent, action, "t", { autonomyLevel: level }).effect;
+    expect([0, 1, 2, 3, 4].map((l) => at(l, "github.pr.create"))).toEqual(["require_approval", "require_approval", "require_approval", "allow", "allow"]);
+    expect([0, 1, 2, 3].map((l) => at(l, "verification.run"))).toEqual(["require_approval", "require_approval", "allow", "allow"]);
+  });
+
   it("checks commands against the allowlist and denies unknown actions", () => {
     const ctx = { autonomyLevel: 2, allowCommands: ["npm run *", "git status"] };
     expect(policy.decide(agent, "cmd.exec", "x", { ...ctx, command: "npm run lint" }).effect).toBe("allow");

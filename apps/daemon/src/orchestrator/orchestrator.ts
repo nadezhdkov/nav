@@ -4,8 +4,10 @@ import {
   isTerminalTask,
   newId,
   type Actor,
+  type ApprovalView,
   type CreateRunRequest,
   type TaskError,
+  type WorkItem,
   type NewEvent,
   type RunStatus,
   type RunView,
@@ -14,6 +16,9 @@ import {
 import { resolveHead, resolveRepoRoot } from "@vectr/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
+import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
+import { loadProjectConfig } from "../project.ts";
+import { issuePrompt } from "./issue.ts";
 import { implementer } from "./profiles.ts";
 
 export class OrchestratorError extends Error {
@@ -28,20 +33,23 @@ export class OrchestratorError extends Error {
 const system = (component: string): Actor => ({ kind: "system", component });
 
 /**
- * Orchestrator (spec §6.1.1). Phase 0 has no Flow engine yet: every run is a one-node TaskGraph
- * (`implement`) executed by the default adapter. Status changes are always written as events.
+ * Orchestrator (spec §6.1.1). There is no Flow engine yet: a run is a fixed chain of nodes,
+ * `implement` (agent) → `verify` (action) → `open_pr` (github, issue runs only), mirroring the
+ * `fix-issue` Flow of spec §9.4. Status changes are always written as events.
  */
 export class Orchestrator {
   private readonly store: EventStore;
   private readonly config: Config;
   private readonly adapters: string[];
   private readonly onReady: () => void;
+  private readonly github: GitHubIntegration | undefined;
 
-  constructor(store: EventStore, config: Config, adapters: string[], onReady: () => void) {
+  constructor(store: EventStore, config: Config, adapters: string[], onReady: () => void, github?: GitHubIntegration) {
     this.store = store;
     this.config = config;
     this.adapters = adapters;
     this.onReady = onReady;
+    this.github = github;
   }
 
   async startRun(req: CreateRunRequest, actor: Actor): Promise<RunView> {
@@ -62,8 +70,38 @@ export class Orchestrator {
       throw new OrchestratorError("invalid_repo", `${req.repo_path} is not a git repository with at least one commit`);
     }
 
+    let project;
+    try {
+      project = await loadProjectConfig(repoPath, baseCommit);
+    } catch (err) {
+      throw new OrchestratorError("invalid_project", (err as Error).message);
+    }
+    let workItem: WorkItem | undefined;
+    if (req.issue) {
+      if (!this.github) throw new OrchestratorError("github_unavailable", "the GitHub Integration is not configured");
+      try {
+        workItem = await this.github.readIssue(repoPath, req.issue);
+      } catch (err) {
+        if (err instanceof GitHubIntegrationError) throw new OrchestratorError(err.code, err.message);
+        throw new OrchestratorError("github_error", (err as Error).message);
+      }
+    }
+    const prompt = workItem ? issuePrompt(workItem, req.prompt) : req.prompt;
+    if (!prompt) throw new OrchestratorError("invalid_request", "a run needs a prompt or an issue");
+
     const runId = newId("run");
     const taskId = newId("task");
+    const nodes: { id: string; type: string; profile: string; adapter: string }[] = [
+      { id: "verify", type: "action", profile: "verifier", adapter: "runner" },
+      ...(workItem ? [{ id: "open_pr", type: "github", profile: "github", adapter: "github" }] : []),
+    ];
+    const followers: NewEvent[] = nodes.map((node) => ({
+      type: "task.created",
+      run_id: runId,
+      task_id: newId("task"),
+      actor: system("orchestrator"),
+      payload: { node_id: node.id, type: node.type, profile: node.profile, adapter: node.adapter, max_attempts: this.config.scheduler.max_attempts },
+    }));
     this.store.append([
       {
         type: "run.created",
@@ -73,15 +111,19 @@ export class Orchestrator {
         payload: {
           repo_path: repoPath,
           base_commit: baseCommit,
-          prompt: req.prompt,
+          prompt,
           budget: req.budget ?? this.config.budgets.default_run,
           adapter,
           profile: implementer.id,
-          allow_commands: [...this.config.allow_commands, ...(req.allow_commands ?? [])],
-          setup_commands: req.setup_commands ?? [],
+          allow_commands: [...this.config.allow_commands, ...project.allowlist, ...(req.allow_commands ?? [])],
+          setup_commands: [...project.setup, ...(req.setup_commands ?? [])],
           ...(model ? { model } : {}),
+          ...(workItem ? { work_item: { source: workItem.source, repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
+          verify: project.verify,
+          protected_paths: project.protected_paths,
         },
       },
+      ...(workItem ? [{ type: "workitem.received", run_id: runId, task_id: null, actor: system("github"), payload: workItem } as NewEvent] : []),
       {
         type: "task.created",
         run_id: runId,
@@ -95,6 +137,7 @@ export class Orchestrator {
           max_attempts: this.config.scheduler.max_attempts,
         },
       },
+      ...followers,
       taskStatus(runId, taskId, "pending", "ready", 0, "dependencies satisfied"),
     ]);
     this.onReady();
@@ -117,6 +160,38 @@ export class Orchestrator {
     events.push(runStatus(runId, run.status, "cancelled", "cancelled by user", actor));
     this.store.append(events);
     return this.store.getRun(runId)!;
+  }
+
+  /**
+   * A human decides a pending approval (spec §6.10.3). Approving puts the waiting task back in the
+   * queue, where the Scheduler sees the approval and dispatches it; rejecting cancels the task and
+   * the run.
+   */
+  decideApproval(id: string, decision: "approve" | "reject", reason: string | undefined, actor: Actor): ApprovalView {
+    const approval = this.store.getApproval(id);
+    if (!approval) throw new OrchestratorError("not_found", `approval ${id} not found`);
+    if (approval.status !== "pending") throw new OrchestratorError("conflict", `approval ${id} is already ${approval.status}`);
+    const task = this.store.getTask(approval.task_id)!;
+    const run = this.store.getRun(approval.run_id)!;
+    const decided: NewEvent = {
+      type: "approval.decided",
+      run_id: run.id,
+      task_id: task.id,
+      actor,
+      payload: { approval_id: id, decision: decision === "approve" ? "approved" : "rejected", ...(reason ? { reason } : {}) },
+    };
+    if (decision === "approve") {
+      this.store.append([decided, taskStatus(run.id, task.id, "waiting_approval", "ready", task.attempt, "approved", undefined)]);
+      this.onReady();
+    } else {
+      const why = `${approval.action} rejected${reason ? `: ${reason}` : ""}`;
+      this.store.append([
+        decided,
+        taskStatus(run.id, task.id, "waiting_approval", "cancelled", task.attempt, why),
+        runStatus(run.id, run.status, "cancelled", why, actor),
+      ]);
+    }
+    return this.store.getApproval(id)!;
   }
 
   /**

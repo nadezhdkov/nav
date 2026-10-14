@@ -10,11 +10,14 @@ import { AgentRuntime } from "@vectr/agent-runtime";
 import { registerSecret, type AdapterId, type AgentAdapter } from "@vectr/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
+import { GitHubIntegration } from "./github/integration.ts";
+import { buildActions } from "./orchestrator/actions.ts";
 import { loadConfig, type Config } from "./config.ts";
 import { EventStore } from "./events/store.ts";
 import { Orchestrator } from "./orchestrator/orchestrator.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
+import { Vault } from "./vault/vault.ts";
 
 export type DaemonOptions = {
   home: string;
@@ -28,6 +31,8 @@ export type DaemonOptions = {
     native?: Partial<NativeOptions>;
   };
   port?: number;
+  /** Defaults to the OS keychain plus `VECTR_SECRET_*` (ADR 0007). */
+  vault?: Vault;
 };
 
 type LogListener = (runId: string, taskId: string, line: string) => void;
@@ -40,6 +45,7 @@ export class Daemon {
   readonly orchestrator: Orchestrator;
   readonly scheduler: Scheduler;
   readonly adapters: Map<string, AgentAdapter>;
+  readonly vault: Vault;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
   private port?: number;
@@ -62,6 +68,8 @@ export class Daemon {
       },
     });
     const policy = new PolicyEngine();
+    this.vault = options.vault ?? new Vault();
+    const github = new GitHubIntegration(this.config, this.vault, policy);
     this.scheduler = new Scheduler({
       store: this.store,
       runtime,
@@ -70,8 +78,9 @@ export class Daemon {
       cancel: async (taskId) => {
         await Promise.all([...adapters.values()].map((a) => a.cancel(taskId)));
       },
+      actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
     });
-    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump());
+    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github);
   }
 
   get url(): string {
