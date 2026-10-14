@@ -1,4 +1,4 @@
-import { failed, retryAtFromText, succeeded, withRetryAt } from "@vectr/adapter-kit";
+import { failed, retryAtFromText, succeeded, withRetryAt } from "@navarch/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -7,13 +7,13 @@ import type {
   TaskContext,
   TaskResult,
   UsageRecord,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { chat, ModelError, type ChatMessage, type Provider } from "./client.ts";
 import { SandboxTools, toolSpecs } from "./tools.ts";
 
 /**
- * The native agent (spec §6.3.2): VECTR's own tool loop for any OpenAI-compatible model,
- * local (Ollama) or remote (OpenRouter, including free models). VECTR executes every tool
+ * The native agent (spec §6.3.2): Navarch's own tool loop for any OpenAI-compatible model,
+ * local (Ollama) or remote (OpenRouter, including free models). Navarch executes every tool
  * call, so the grant is enforced exactly. Decision: ADR 0004.
  */
 

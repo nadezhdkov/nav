@@ -67,19 +67,21 @@ describe("cliOutcome", () => {
 });
 
 describe("scrubbedEnv", () => {
-  it("never passes VECTR_SECRET_* or the listed tokens to agents and commands", () => {
-    process.env.VECTR_SECRET_GITHUB_TOKEN = "github_pat_must_not_leak_123";
-    process.env.VECTR_SECRET_ANTHROPIC_API_KEY = "sk-must-not-leak";
+  it("never passes NAVARCH_SECRET_*, the legacy VECTR_SECRET_* or the listed tokens to agents and commands", () => {
+    process.env.NAVARCH_SECRET_GITHUB_TOKEN = "github_pat_must_not_leak_123";
+    process.env.NAVARCH_SECRET_ANTHROPIC_API_KEY = "sk-must-not-leak";
     process.env.GH_TOKEN = "gho_must_not_leak";
+    process.env.VECTR_SECRET_GITHUB_TOKEN = "github_pat_legacy_must_not_leak";
     try {
       const env = scrubbedEnv();
-      expect(Object.keys(env).filter((k) => k.startsWith("VECTR_SECRET_") || k === "GH_TOKEN")).toEqual([]);
-      expect(scrubbedEnv([], { VECTR_SECRET_X: "y" }).VECTR_SECRET_X).toBeUndefined();
+      expect(Object.keys(env).filter((k) => /^(NAVARCH|VECTR)_SECRET_/.test(k) || k === "GH_TOKEN")).toEqual([]);
+      expect(scrubbedEnv([], { NAVARCH_SECRET_X: "y" }).NAVARCH_SECRET_X).toBeUndefined();
       expect(env.PATH).toBe(process.env.PATH);
     } finally {
-      delete process.env.VECTR_SECRET_GITHUB_TOKEN;
-      delete process.env.VECTR_SECRET_ANTHROPIC_API_KEY;
+      delete process.env.NAVARCH_SECRET_GITHUB_TOKEN;
+      delete process.env.NAVARCH_SECRET_ANTHROPIC_API_KEY;
       delete process.env.GH_TOKEN;
+      delete process.env.VECTR_SECRET_GITHUB_TOKEN;
     }
   });
 });

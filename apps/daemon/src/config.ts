@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { AdapterId } from "@vectr/contracts";
+import { AdapterId } from "@navarch/contracts";
 import { z } from "zod";
 
 /** An OpenAI-compatible endpoint for the native adapter. Keys are read from an environment variable, never stored here. */
@@ -19,12 +19,12 @@ const defaultProviders: Record<string, ProviderConfig> = {
   openrouter: {
     base_url: "https://openrouter.ai/api/v1",
     api_key_env: "OPENROUTER_API_KEY",
-    headers: { "X-Title": "VECTR" },
+    headers: { "X-Title": "Navarch" },
     extra_body: { usage: { include: true } },
   },
 };
 
-/** Global configuration, `~/.vectr/config.yaml` (spec §14.1). Only Phase 0 keys are read. */
+/** Global configuration, `~/.navarch/config.yaml` (spec §14.1). Only Phase 0 keys are read. */
 export const Config = z.object({
   daemon: z
     .object({
@@ -42,7 +42,7 @@ export const Config = z.object({
       rate_limit_backoff_minutes: z.array(z.number().positive()).nonempty().default([1, 5, 15, 60]),
       /** Rate-limit waits per task before the run is paused; they do not count as attempts. */
       rate_limit_max_waits: z.number().int().nonnegative().default(8),
-      /** Longest automatic wait for a quota reset; a later reset pauses the run (`vectr run resume`). */
+      /** Longest automatic wait for a quota reset; a later reset pauses the run (`navarch run resume`). */
       rate_limit_max_wait_hours: z.number().positive().default(12),
     })
     .prefault({}),
@@ -93,8 +93,24 @@ export const Config = z.object({
 });
 export type Config = z.infer<typeof Config>;
 
-export function vectrHome(): string {
-  return process.env.VECTR_HOME ?? join(homedir(), ".vectr");
+/**
+ * The daemon's home. A home from before the rename (ADR 0008), `VECTR_HOME` or an existing
+ * `~/.vectr`, keeps working in place: its worktrees are registered in the operators' repositories
+ * under their absolute paths, so moving the directory would break them.
+ */
+export function navarchHome(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  if (env.NAVARCH_HOME) return env.NAVARCH_HOME;
+  if (env.VECTR_HOME) return env.VECTR_HOME;
+  const current = join(home, ".navarch");
+  const legacy = join(home, ".vectr");
+  return !existsSync(current) && existsSync(legacy) ? legacy : current;
+}
+
+/** File names inside a home; a home created before the rename keeps its old names. */
+export function homeFiles(home: string): { db: string; daemonInfo: string; daemonLog: string } {
+  const legacy = existsSync(join(home, "vectr.db")) && !existsSync(join(home, "navarch.db"));
+  const prefix = legacy ? "vectr" : "navarch";
+  return { db: join(home, `${prefix}.db`), daemonInfo: join(home, `${prefix}d.json`), daemonLog: join(home, `${prefix}d.log`) };
 }
 
 export function loadConfig(home: string): Config {

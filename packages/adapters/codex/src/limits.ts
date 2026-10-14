@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { epochToIso } from "@vectr/adapter-kit";
+import { epochToIso } from "@navarch/adapter-kit";
 
 /**
  * `codex exec --json` does not report plan limits, but Codex writes them to the session file

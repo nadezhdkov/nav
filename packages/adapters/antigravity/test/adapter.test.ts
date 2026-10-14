@@ -10,7 +10,7 @@ const script = fileURLToPath(new URL("./fixtures/fake-agy.mjs", import.meta.url)
 
 function adapter(scenario: string) {
   const fake = fakeCli(script, scenario);
-  const homeRoot = mkdtempSync(join(tmpdir(), "vectr-agy-test-"));
+  const homeRoot = mkdtempSync(join(tmpdir(), "navarch-agy-test-"));
   return { fake, homeRoot, adapter: new AntigravityAdapter({ ...fake.options, homeRoot }) };
 }
 

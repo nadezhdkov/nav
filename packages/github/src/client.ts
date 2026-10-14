@@ -1,4 +1,4 @@
-import type { WorkItem } from "@vectr/contracts";
+import type { WorkItem } from "@navarch/contracts";
 
 /** Returns the GitHub token when a request needs it (ADR 0007: the Vault, or a GitHub App later). */
 export type TokenProvider = () => Promise<string>;
@@ -86,7 +86,7 @@ export class GitHubClient {
         accept: "application/vnd.github+json",
         authorization: `Bearer ${await this.token()}`,
         "x-github-api-version": "2022-11-28",
-        "user-agent": "vectr",
+        "user-agent": "navarch",
         ...(body ? { "content-type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { homeFiles } from "@navarch/daemon/config";
 
 export class CliError extends Error {
   readonly exitCode: number;
@@ -15,7 +16,7 @@ export const EXIT = { ok: 0, error: 1, usage: 2, daemonDown: 3, runFailed: 4 } a
 export type DaemonInfo = { pid: number; url: string };
 
 export function daemonInfo(home: string): DaemonInfo | undefined {
-  const file = join(home, "vectrd.json");
+  const file = homeFiles(home).daemonInfo;
   if (!existsSync(file)) return undefined;
   try {
     return JSON.parse(readFileSync(file, "utf8")) as DaemonInfo;
@@ -31,7 +32,7 @@ export class ApiClient {
 
   constructor(home: string) {
     const info = daemonInfo(home);
-    if (!info) throw new CliError("vectrd is not running (start it with `vectr daemon start`)", EXIT.daemonDown);
+    if (!info) throw new CliError("navarchd is not running (start it with `navarch daemon start`)", EXIT.daemonDown);
     const tokenFile = join(home, "token");
     if (!existsSync(tokenFile)) throw new CliError(`missing ${tokenFile}`, EXIT.daemonDown);
     this.url = info.url;
@@ -45,13 +46,13 @@ export class ApiClient {
         method,
         headers: {
           authorization: `Bearer ${this.token}`,
-          "x-vectr-client": "cli",
+          "x-navarch-client": "cli",
           ...(body !== undefined ? { "content-type": "application/json" } : {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
       });
     } catch {
-      throw new CliError(`cannot reach vectrd at ${this.url}`, EXIT.daemonDown);
+      throw new CliError(`cannot reach navarchd at ${this.url}`, EXIT.daemonDown);
     }
     const text = await res.text();
     if (!res.ok) {

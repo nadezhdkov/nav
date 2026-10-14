@@ -12,8 +12,8 @@ import {
   type RunStatus,
   type RunView,
   type TaskStatus,
-} from "@vectr/contracts";
-import { resolveHead, resolveRepoRoot } from "@vectr/runner";
+} from "@navarch/contracts";
+import { resolveHead, resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";

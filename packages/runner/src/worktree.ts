@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
-import type { SandboxHandle } from "@vectr/contracts";
+import type { SandboxHandle } from "@navarch/contracts";
 import { git } from "./git.ts";
 
 /** L1 isolation: one git worktree per task (spec §6.5.1, §6.5.2). */
@@ -12,12 +12,12 @@ export type WorktreeSpec = {
   runId: string;
   taskSlug: string;
   baseCommit: string;
-  /** VECTR home, normally `~/.vectr`. */
+  /** Navarch home, normally `~/.navarch`. */
   home: string;
 };
 
 export function branchName(runId: string, taskSlug: string): string {
-  return `vectr/${runId}/${taskSlug}`;
+  return `navarch/${runId}/${taskSlug}`;
 }
 
 export function worktreePath(home: string, repoPath: string, runId: string, taskSlug: string): string {
@@ -93,7 +93,7 @@ export async function remoteUrl(repoPath: string, name = "origin"): Promise<stri
 }
 
 /**
- * Commits whatever the agent left uncommitted in the sandbox, as VECTR, and returns HEAD.
+ * Commits whatever the agent left uncommitted in the sandbox, as Navarch, and returns HEAD.
  * Repository hooks are skipped (`--no-verify`): they are repository code and would run as the operator.
  */
 export async function commitAll(sandbox: SandboxHandle, message: string): Promise<string> {
@@ -103,7 +103,7 @@ export async function commitAll(sandbox: SandboxHandle, message: string): Promis
     () => true,
   );
   if (dirty) {
-    const who = { GIT_AUTHOR_NAME: "VECTR", GIT_AUTHOR_EMAIL: "vectr@localhost", GIT_COMMITTER_NAME: "VECTR", GIT_COMMITTER_EMAIL: "vectr@localhost" };
+    const who = { GIT_AUTHOR_NAME: "Navarch", GIT_AUTHOR_EMAIL: "navarch@localhost", GIT_COMMITTER_NAME: "Navarch", GIT_COMMITTER_EMAIL: "navarch@localhost" };
     await git(sandbox.path, ["commit", "--no-verify", "-q", "-m", message], who);
   }
   return (await git(sandbox.path, ["rev-parse", "HEAD"])).trim();

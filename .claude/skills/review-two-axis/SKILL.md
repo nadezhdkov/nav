@@ -21,7 +21,7 @@ Use the fixed point the user gave (SHA, branch, tag, `main`, `HEAD~5`); ask if t
 In this order:
 1. The Agent Brief or prompt the work started from, if the user has it.
 2. Spec sections and ADRs named in the commit messages or in the branch handoff (`.claude/handoff/<branch>.md`).
-3. The matching section of `docs/vectr-especificacao.md` (written in Portuguese; search with Grep, it is about 1500 lines) and any ADR in `docs/adr/` added or changed by the diff.
+3. The matching section of `docs/navarch-especificacao.md` (written in Portuguese; search with Grep, it is about 1500 lines) and any ADR in `docs/adr/` added or changed by the diff.
 4. Otherwise ask the user. If there is no spec, skip the Spec axis and say so.
 
 ## 3. Find the standards sources

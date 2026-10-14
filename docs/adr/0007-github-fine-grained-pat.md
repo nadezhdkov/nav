@@ -7,7 +7,7 @@
 
 ## Context
 
-Phase 1 reads issues and opens draft PRs. Spec §6.7.1 recommends a GitHub App and allows a fine-grained personal access token "for a simple start". The Phase 1 go/no-go requires that no run ever writes outside `vectr/*`, checked by audit, so the credential's reach matters as much as the code's.
+Phase 1 reads issues and opens draft PRs. Spec §6.7.1 recommends a GitHub App and allows a fine-grained personal access token "for a simple start". The Phase 1 go/no-go requires that no run ever writes outside `navarch/*`, checked by audit, so the credential's reach matters as much as the code's.
 
 The options were:
 
@@ -17,16 +17,16 @@ The options were:
 
 ## Decision
 
-- **Phase 1 uses a fine-grained PAT**, created by the user for the repositories VECTR works on, with: Metadata (read), Contents (read and write), Issues (read), Pull requests (read and write). Contents write is the only way to push `vectr/*` branches; the Policy Engine and the GitHub Integration are what keep writes on `vectr/*` (`git.push` rule, no force, branch name checked before every push).
+- **Phase 1 uses a fine-grained PAT**, created by the user for the repositories Navarch works on, with: Metadata (read), Contents (read and write), Issues (read), Pull requests (read and write). Contents write is the only way to push `navarch/*` branches; the Policy Engine and the GitHub Integration are what keep writes on `navarch/*` (`git.push` rule, no force, branch name checked before every push).
 - **The token lives in the Vault as `secret://github/token`**, never in config files, events or logs:
-  - Backend: the OS keychain through libsecret's `secret-tool` (Linux), attribute `service=vectr`, `name=github/token`. `vectr secret set github/token` reads the value from stdin.
-  - For tests and headless setups, `VECTR_SECRET_GITHUB_TOKEN` in the daemon's environment takes precedence. It is documented as the less safe option.
+  - Backend: the OS keychain through libsecret's `secret-tool` (Linux), attribute `service=navarch`, `name=github/token`. `navarch secret set github/token` reads the value from stdin.
+  - For tests and headless setups, `NAVARCH_SECRET_GITHUB_TOKEN` in the daemon's environment takes precedence. It is documented as the less safe option.
   - The value is registered for redaction as soon as it is read, and only the GitHub Integration receives it. Agents never do: their environment is scrubbed and their grant denies `~/.config/gh`.
 - **Pushes** pass the token for a single `git push` through `GIT_CONFIG_*` environment variables (`http.extraheader`), so it is never written to the repository's git config, the URL or the command line.
-- **A GitHub App replaces the PAT later** (user decision, 2026-10-14), when VECTR needs webhooks or works on repositories the user does not own. The GitHub Integration takes a token provider, so that change does not touch its callers.
+- **A GitHub App replaces the PAT later** (user decision, 2026-10-14), when Navarch needs webhooks or works on repositories the user does not own. The GitHub Integration takes a token provider, so that change does not touch its callers.
 
 ## Consequences
 
-- One manual step: the user creates the PAT and stores it with `vectr secret set github/token`.
+- One manual step: the user creates the PAT and stores it with `navarch secret set github/token`.
 - PATs expire (the user picks the date); an expired token fails the GitHub step with a clear message, not the whole run.
-- macOS and Windows keychains are not implemented yet; `VECTR_SECRET_*` works there meanwhile.
+- macOS and Windows keychains are not implemented yet; `NAVARCH_SECRET_*` works there meanwhile.

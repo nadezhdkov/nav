@@ -32,7 +32,7 @@ export function parseIssueRef(text: string): { repo: string; number: number } | 
   return { repo: m[1]!, number: Number(m[2]) };
 }
 
-/** A verify command from `.vectr/project.yaml` (spec §14.2). Checks are required unless marked otherwise. */
+/** A verify command from `.navarch/project.yaml` (spec §14.2). Checks are required unless marked otherwise. */
 export const VerifyCommand = z.object({
   name: z.string().min(1),
   run: z.string().min(1),

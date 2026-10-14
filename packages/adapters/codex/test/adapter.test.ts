@@ -8,7 +8,7 @@ import { CodexAdapter } from "../src/index.ts";
 
 const script = fileURLToPath(new URL("./fixtures/fake-codex.mjs", import.meta.url));
 /** Keeps tests away from the real ~/.codex/sessions. */
-const noSessions = mkdtempSync(join(tmpdir(), "vectr-codex-sessions-"));
+const noSessions = mkdtempSync(join(tmpdir(), "navarch-codex-sessions-"));
 
 describe("CodexAdapter (contract, fake CLI)", () => {
   it("runs codex exec in a workspace-write sandbox without network or approvals", async () => {
@@ -56,7 +56,7 @@ describe("CodexAdapter (contract, fake CLI)", () => {
 
   it("reads plan limits from the session file and waits for the exhausted window", async () => {
     // Line shape from a real codex-cli 0.162 session file.
-    const sessionsDir = mkdtempSync(join(tmpdir(), "vectr-codex-sessions-"));
+    const sessionsDir = mkdtempSync(join(tmpdir(), "navarch-codex-sessions-"));
     mkdirSync(join(sessionsDir, "2026", "10", "14"), { recursive: true });
     const limits = {
       limit_id: "codex",

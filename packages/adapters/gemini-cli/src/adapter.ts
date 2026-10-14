@@ -10,7 +10,7 @@ import {
   isMissingSession,
   parsePattern,
   scrubbedEnv,
-} from "@vectr/adapter-kit";
+} from "@navarch/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -21,7 +21,7 @@ import type {
   TaskResult,
   ToolGrant,
   UsageRecord,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { parseGeminiLine } from "./stream.ts";
 
 /**
@@ -93,7 +93,7 @@ export class GeminiCliAdapter implements AgentAdapter {
       commandArgs: options.commandArgs ?? [],
       scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
-      homeRoot: options.homeRoot ?? join(tmpdir(), "vectr-gemini"),
+      homeRoot: options.homeRoot ?? join(tmpdir(), "navarch-gemini"),
       userHome: options.userHome ?? homedir(),
     };
     this.processes = new CliProcesses(this.options.killGraceMs);
@@ -110,7 +110,7 @@ export class GeminiCliAdapter implements AgentAdapter {
   async run(ctx: TaskContext, io: AdapterIO): Promise<TaskResult> {
     const userEnv = join(this.options.userHome, ".gemini", ".env");
     if (!process.env.GEMINI_API_KEY && !existsSync(userEnv)) {
-      return missingKey(`gemini-cli needs an AI Studio key: set GEMINI_API_KEY for vectrd or put it in ${userEnv}. Google-account login is no longer accepted.`);
+      return missingKey(`gemini-cli needs an AI Studio key: set GEMINI_API_KEY for navarchd or put it in ${userEnv}. Google-account login is no longer accepted.`);
     }
     const home = this.taskHome(ctx);
     const geminiDir = join(home, ".gemini");
@@ -118,7 +118,7 @@ export class GeminiCliAdapter implements AgentAdapter {
     writeFileSync(join(geminiDir, "settings.json"), JSON.stringify(API_KEY_SETTINGS, null, 2), { mode: 0o600 });
     const linkedEnv = join(geminiDir, ".env");
     if (existsSync(userEnv) && !existsSync(linkedEnv)) symlinkSync(userEnv, linkedEnv);
-    const policyFile = join(home, "vectr-policy.toml");
+    const policyFile = join(home, "navarch-policy.toml");
     writeFileSync(policyFile, geminiPolicy(ctx.tools), { mode: 0o600 });
 
     let result: TaskResult | undefined;

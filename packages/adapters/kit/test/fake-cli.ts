@@ -1,11 +1,11 @@
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AdapterEvent, TaskContext } from "@vectr/contracts";
+import type { AdapterEvent, TaskContext } from "@navarch/contracts";
 
 /** Runs a fake CLI script through node; `calls()` returns what each invocation received. */
 export function fakeCli(script: string, scenario: string) {
-  const stateDir = mkdtempSync(join(tmpdir(), "vectr-fake-"));
+  const stateDir = mkdtempSync(join(tmpdir(), "navarch-fake-"));
   return {
     stateDir,
     options: { command: process.execPath, commandArgs: [script, scenario, stateDir], killGraceMs: 500 },
@@ -20,14 +20,14 @@ export function fakeCli(script: string, scenario: string) {
 }
 
 export function taskContext(overrides: Partial<TaskContext> = {}): TaskContext {
-  const dir = mkdtempSync(join(tmpdir(), "vectr-sbx-"));
+  const dir = mkdtempSync(join(tmpdir(), "navarch-sbx-"));
   return {
     taskId: "task_1",
     runId: "run_1",
     attempt: 1,
     profile: { id: "implementer", role: "", instructions: "" },
     instructions: "do the task",
-    sandbox: { id: "sbx_1", kind: "worktree", path: dir, branch: "vectr/run_1/implement", baseCommit: "abc" },
+    sandbox: { id: "sbx_1", kind: "worktree", path: dir, branch: "navarch/run_1/implement", baseCommit: "abc" },
     tools: { editFiles: true, allowCommands: ["npm test", "npm run *"], denyCommands: ["git push"], denyPaths: ["~/.ssh"], network: false },
     budget: { maxCost: 1, maxTurns: 0, timeoutMs: 10_000 },
     ...overrides,

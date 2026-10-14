@@ -6,7 +6,7 @@ import {
   isMissingSession,
   scrubbedEnv,
   withRetryAt,
-} from "@vectr/adapter-kit";
+} from "@navarch/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -15,7 +15,7 @@ import type {
   TaskContext,
   TaskResult,
   UsageRecord,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { codexSessionsDir, readCodexLimits } from "./limits.ts";
 import { parseCodexLine } from "./stream.ts";
 

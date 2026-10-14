@@ -10,7 +10,7 @@ export type FakeScenario = "edit" | "slow" | "fail" | "ratelimit-once" | "limit-
 
 /** Adapter options that run the fake CLI for a scenario; `stateDir` records each call. */
 export function fakeClaude(scenario: FakeScenario): { options: ClaudeCodeOptions; stateDir: string; calls: () => FakeCall[] } {
-  const stateDir = mkdtempSync(join(tmpdir(), "vectr-fake-"));
+  const stateDir = mkdtempSync(join(tmpdir(), "navarch-fake-"));
   return {
     stateDir,
     options: { command: process.execPath, commandArgs: [fakeClaudePath, scenario, stateDir], killGraceMs: 500 },

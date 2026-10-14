@@ -1,4 +1,4 @@
-name: Set up VECTR
+name: Set up Navarch
 description: Install pnpm (version from package.json `packageManager`), Node with the pnpm store cache, and the workspace dependencies.
 
 inputs:

@@ -6,10 +6,10 @@
 
 ## Setup
 
-- Daemon from `main` at 6262390, its own `VECTR_HOME`, `scheduler.concurrency: 3`, `budgets.default_run: 5`.
+- Daemon from `main` at 6262390, its own `NAVARCH_HOME`, `scheduler.concurrency: 3`, `budgets.default_run: 5`.
 - One Agent Brief per task (skill `agent-brief`) as the run prompt, with a per-repository `--allow` list for test and lint commands.
 - Repositories: [claude-toolkit](https://github.com/nadezhdkov/claude-toolkit) (Python, ~360 tests), [game-asset-finder](https://github.com/nadezhdkov/game-asset-finder) (Python, single-file MCP server), and a fork of [REA](https://github.com/morluto/rea) (TypeScript, ~1800 source files, its own strict AGENTS.md).
-- Restart test: `vectr daemon stop` while three tasks were running, `vectr daemon start` 15 s later.
+- Restart test: `navarch daemon stop` while three tasks were running, `navarch daemon start` 15 s later.
 
 ## Results
 
@@ -42,6 +42,6 @@ The three claude-toolkit changes were finished and proposed upstream (nadezhdkov
 | F4 | the worktree is not prepared | no `node_modules`; codex's sandbox could not write the uv cache and had no network |
 | F5 | `succeeded` means the agent stopped, not that the work is verified | two "succeeded" runs had failing lint or no checks run (closed by Phase 1 Verification) |
 | F6 | after a restart, interrupted tasks are dispatched after never-started ones | resumed work waits behind new work |
-| F7 | `vectr run list` prints multi-line prompts inside the table | unreadable list |
+| F7 | `navarch run list` prints multi-line prompts inside the table | unreadable list |
 
 F1–F4, F6 and F7 are fixed before Phase 1; F5 belongs to Phase 1 Verification.

@@ -1,5 +1,5 @@
 {
-  "name": "@vectr/adapter-kit",
+  "name": "@navarch/adapter-kit",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,6 +7,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vectr/contracts": "workspace:*"
+    "@navarch/contracts": "workspace:*"
   }
 }

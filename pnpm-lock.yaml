@@ -178,10 +178,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@vectr/daemon':
+      '@navarch/daemon':
         specifier: workspace:*
         version: link:../daemon
 
@@ -190,37 +190,37 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.4
         version: 11.3.4
-      '@vectr/adapter-antigravity':
+      '@navarch/adapter-antigravity':
         specifier: workspace:*
         version: link:../../packages/adapters/antigravity
-      '@vectr/adapter-claude-code':
+      '@navarch/adapter-claude-code':
         specifier: workspace:*
         version: link:../../packages/adapters/claude-code
-      '@vectr/adapter-codex':
+      '@navarch/adapter-codex':
         specifier: workspace:*
         version: link:../../packages/adapters/codex
-      '@vectr/adapter-gemini-cli':
+      '@navarch/adapter-gemini-cli':
         specifier: workspace:*
         version: link:../../packages/adapters/gemini-cli
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapters/kit
-      '@vectr/adapter-native':
+      '@navarch/adapter-native':
         specifier: workspace:*
         version: link:../../packages/adapters/native
-      '@vectr/agent-runtime':
+      '@navarch/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
-      '@vectr/github':
+      '@navarch/github':
         specifier: workspace:*
         version: link:../../packages/github
-      '@vectr/runner':
+      '@navarch/runner':
         specifier: workspace:*
         version: link:../../packages/runner
-      '@vectr/verification':
+      '@navarch/verification':
         specifier: workspace:*
         version: link:../../packages/verification
       fastify:
@@ -235,64 +235,64 @@ importers:
 
   packages/adapters/antigravity:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/adapters/claude-code:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/adapters/codex:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/adapters/gemini-cli:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/adapters/kit:
     dependencies:
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/adapters/native:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts
 
   packages/agent-runtime:
     dependencies:
-      '@vectr/adapter-kit':
+      '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../adapters/kit
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@vectr/runner':
+      '@navarch/runner':
         specifier: workspace:*
         version: link:../runner
 
@@ -307,22 +307,22 @@ importers:
 
   packages/github:
     dependencies:
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/runner:
     dependencies:
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
 
   packages/verification:
     dependencies:
-      '@vectr/contracts':
+      '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
-      '@vectr/runner':
+      '@navarch/runner':
         specifier: workspace:*
         version: link:../runner
 

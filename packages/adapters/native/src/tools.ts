@@ -2,11 +2,11 @@ import { execFile } from "node:child_process";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { commandAllowed, scrubbedEnv } from "@vectr/adapter-kit";
-import type { ToolGrant } from "@vectr/contracts";
+import { commandAllowed, scrubbedEnv } from "@navarch/adapter-kit";
+import type { ToolGrant } from "@navarch/contracts";
 
 /**
- * Tools the native agent can call. VECTR executes every call itself, so each one is checked
+ * Tools the native agent can call. Navarch executes every call itself, so each one is checked
  * here: paths must resolve inside the sandbox (symlinks included), `.git` is read-only, and
  * commands must match the grant's allowlist with no shell syntax.
  */

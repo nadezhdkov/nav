@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Test-driven development in VECTR, one red → green slice at a time, with tests at agreed seams and fakes only at system boundaries. Use when building a feature or fixing a bug test-first, or when the user mentions red-green, TDD or integration tests.
+description: Test-driven development in Navarch, one red → green slice at a time, with tests at agreed seams and fakes only at system boundaries. Use when building a feature or fixing a bug test-first, or when the user mentions red-green, TDD or integration tests.
 ---
 
 # Test-driven development
@@ -9,7 +9,7 @@ Adapted from Matt Pocock's `tdd` skill (MIT, see [../THIRD_PARTY.md](../THIRD_PA
 
 TDD is the red → green loop. This skill is what makes the loop produce tests worth keeping: what a good test is, where tests go, the anti-patterns and the rules of the loop. Apply every section on every cycle.
 
-Before starting, read the spec section for the module (`docs/vectr-especificacao.md`, by section number) and the ADRs in `docs/adr/` that touch it, so test names use the domain terms of spec §4 (Run, Task, TaskGraph, Agent Adapter, Policy…).
+Before starting, read the spec section for the module (`docs/navarch-especificacao.md`, by section number) and the ADRs in `docs/adr/` that touch it, so test names use the domain terms of spec §4 (Run, Task, TaskGraph, Agent Adapter, Policy…).
 
 ## What a good test is
 
@@ -19,11 +19,11 @@ See [tests.md](tests.md) for examples and [mocking.md](mocking.md) for when to f
 
 ## Seams: where tests go
 
-A **seam** is the public boundary you test at. In VECTR the usual seams are:
+A **seam** is the public boundary you test at. In Navarch the usual seams are:
 
 | Seam | Test through |
 |---|---|
-| Core API | HTTP calls to `/api/v1/...` on a daemon started on a temporary `VECTR_HOME` (as `apps/daemon/test/daemon.test.ts` does) |
+| Core API | HTTP calls to `/api/v1/...` on a daemon started on a temporary `NAVARCH_HOME` (as `apps/daemon/test/daemon.test.ts` does) |
 | Event store and projections | appending events and reading the projected views |
 | Agent adapter | the `AgentAdapter` contract from `packages/contracts`, with a fake CLI (`packages/adapters/*/test/fixtures/fake-*.mjs`) or the fake model server (`packages/adapters/native/test/fake-server.ts`) |
 | Policy Engine | `decide(actor, action, resource, context)` |

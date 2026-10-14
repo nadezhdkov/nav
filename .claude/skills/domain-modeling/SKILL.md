@@ -1,6 +1,6 @@
 ---
 name: domain-modeling
-description: Build and sharpen VECTR's domain model while designing: challenge terms against the spec glossary (§4), stress-test concepts with concrete scenarios, check them against the code, and record resolved terms and real trade-offs (ADRs) as they land. Use when discussing VECTR terminology, editing the glossary, or deciding whether something deserves an ADR.
+description: Build and sharpen Navarch's domain model while designing: challenge terms against the spec glossary (§4), stress-test concepts with concrete scenarios, check them against the code, and record resolved terms and real trade-offs (ADRs) as they land. Use when discussing Navarch terminology, editing the glossary, or deciding whether something deserves an ADR.
 ---
 
 # Domain modeling
@@ -11,7 +11,7 @@ This is the active discipline: challenging terms, inventing edge cases, and writ
 
 ## Where the model lives
 
-- **Glossary:** spec §4 "Glossário e conceitos centrais" in `docs/vectr-especificacao.md`. It is the only glossary; do not create a separate `GLOSSARY.md`. The spec is still in Portuguese (AGENTS.md › Language), so add rows in the table's language, with the English term in bold as the other rows do.
+- **Glossary:** spec §4 "Glossário e conceitos centrais" in `docs/navarch-especificacao.md`. It is the only glossary; do not create a separate `GLOSSARY.md`. The spec is still in Portuguese (AGENTS.md › Language), so add rows in the table's language, with the English term in bold as the other rows do.
 - **Decisions:** `docs/adr/NNNN-slug.md`, in English, in the format of ADR 0001 (Status, Date, Context, Decision, Consequences; add a `Spec:` line naming the sections it touches). Number = highest existing + 1. An ADR that changes the architecture lands together with the matching spec update.
 - **Contracts:** the Zod schemas in `packages/contracts` are the code side of the model. Names there must match the glossary.
 
@@ -28,7 +28,7 @@ This is the active discipline: challenging terms, inventing edge cases, and writ
 **Update the glossary inline.** When a term is resolved, edit §4 right away, not in a batch. Rules:
 - Be opinionated: when several words name one concept, pick one and mention the ones to avoid in the definition.
 - One or two sentences; say what it is, not what it does.
-- Only terms specific to VECTR; general programming concepts (timeout, retry, cache) do not belong.
+- Only terms specific to Navarch; general programming concepts (timeout, retry, cache) do not belong.
 
 ## ADRs, sparingly
 

@@ -1,5 +1,5 @@
-import { commandAllowed } from "@vectr/adapter-kit";
-import type { Actor, ToolGrant } from "@vectr/contracts";
+import { commandAllowed } from "@navarch/adapter-kit";
+import type { Actor, ToolGrant } from "@navarch/contracts";
 
 /**
  * Policy & Approval Engine (spec §6.10). Every side effect is decided here; Phase 0 implements
@@ -44,11 +44,11 @@ function escapeRegExp(s: string): string {
 /** Default rules, first match wins. Mirrors the examples in spec §6.10.2 and the levels in §11. */
 export const defaultRules: PolicyRule[] = [
   {
-    match: (r) => r.action === "git.push" && glob("vectr/*", r.context.branch),
+    match: (r) => r.action === "git.push" && glob("navarch/*", r.context.branch),
     effect: "allow",
-    reason: "push to vectr/* branches is allowed",
+    reason: "push to navarch/* branches is allowed",
   },
-  { match: (r) => r.action === "git.push", effect: "deny", reason: "push outside vectr/* is never allowed" },
+  { match: (r) => r.action === "git.push", effect: "deny", reason: "push outside navarch/* is never allowed" },
   {
     match: (r) => r.action === "github.pr.merge",
     effect: "require_approval",
@@ -57,7 +57,7 @@ export const defaultRules: PolicyRule[] = [
   {
     match: (r) => r.action === "github.pr.create" && r.context.autonomyLevel >= 3,
     effect: "allow",
-    reason: "autonomy level 3+ opens draft PRs on vectr/* branches",
+    reason: "autonomy level 3+ opens draft PRs on navarch/* branches",
   },
   {
     match: (r) => r.action === "github.pr.create",
@@ -120,7 +120,7 @@ export class PolicyEngine {
       editFiles: true,
       allowCommands: [...SAFE_GIT, ...allowCommands],
       denyCommands: ALWAYS_DENIED_COMMANDS,
-      denyPaths: ["~/.ssh", "~/.vectr", "~/.aws", "~/.config/gh", "~/.gnupg"],
+      denyPaths: ["~/.ssh", "~/.navarch", "~/.aws", "~/.config/gh", "~/.gnupg"],
       network: false,
     };
   }

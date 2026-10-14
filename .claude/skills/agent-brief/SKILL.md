@@ -1,13 +1,13 @@
 ---
 name: agent-brief
-description: Write an Agent Brief, the durable contract an unattended agent works from (category, current and desired behavior, key interfaces, acceptance criteria, out of scope). Use when handing work to another agent, writing the prompt for a `vectr run`, turning an issue into ready-for-agent work, or reviewing whether a task description is specific enough.
+description: Write an Agent Brief, the durable contract an unattended agent works from (category, current and desired behavior, key interfaces, acceptance criteria, out of scope). Use when handing work to another agent, writing the prompt for a `navarch run`, turning an issue into ready-for-agent work, or reviewing whether a task description is specific enough.
 ---
 
 # Agent Brief
 
-Adapted from the Agent Brief format in Matt Pocock's `triage` skill (MIT, see [../THIRD_PARTY.md](../THIRD_PARTY.md)). The label state machine of that skill is not adopted: VECTR has no GitHub integration yet (Phase 1).
+Adapted from the Agent Brief format in Matt Pocock's `triage` skill (MIT, see [../THIRD_PARTY.md](../THIRD_PARTY.md)). The label state machine of that skill is not adopted: Navarch has no GitHub integration yet (Phase 1).
 
-An Agent Brief is the authoritative specification an unattended agent works from. The original issue and discussion are context; the brief is the contract. In VECTR it is the prompt of a `vectr run`, and in Phase 1 it is what the `planner` profile hands to the `implementer` (spec §6.3.3).
+An Agent Brief is the authoritative specification an unattended agent works from. The original issue and discussion are context; the brief is the contract. In Navarch it is the prompt of a `navarch run`, and in Phase 1 it is what the `planner` profile hands to the `implementer` (spec §6.3.3).
 
 ## Principles
 
@@ -19,7 +19,7 @@ An Agent Brief is the authoritative specification an unattended agent works from
 - Good: "A run whose quota reset is more than 12 hours away moves to `paused` with the reset time in the reason."
 - Bad: "Add an if in the scheduler loop."
 
-**Testable acceptance criteria.** Each criterion is independently verifiable, ideally by a command (`make verify`, a `vectr` CLI call, an API response).
+**Testable acceptance criteria.** Each criterion is independently verifiable, ideally by a command (`make verify`, a `navarch` CLI call, an API response).
 
 **Explicit scope.** Say what is out of scope, so the agent does not gold-plate or touch adjacent features.
 

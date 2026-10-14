@@ -1,6 +1,6 @@
-import { parseIssueRef, type Actor, type WorkItem } from "@vectr/contracts";
-import { GitHubClient, pushBranch, repoFromRemote } from "@vectr/github";
-import { remoteUrl } from "@vectr/runner";
+import { parseIssueRef, type Actor, type WorkItem } from "@navarch/contracts";
+import { GitHubClient, pushBranch, repoFromRemote } from "@navarch/github";
+import { remoteUrl } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 import type { Vault } from "../vault/vault.ts";

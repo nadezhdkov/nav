@@ -1,5 +1,5 @@
-import type { AgentRuntime, TaskOutcome } from "@vectr/agent-runtime";
-import { canTransitionRun, isTerminalRun, newId, type Actor, type NewEvent, type RunStatus } from "@vectr/contracts";
+import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
+import { canTransitionRun, isTerminalRun, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
@@ -130,7 +130,7 @@ export class Scheduler {
     await Promise.allSettled([...this.active.values()]);
   }
 
-  /** Resolves once no task is running (used by tests and `vectr daemon stop`). */
+  /** Resolves once no task is running (used by tests and `navarch daemon stop`). */
   async idle(): Promise<void> {
     while (this.active.size) await Promise.allSettled([...this.active.values()]);
   }
@@ -300,7 +300,7 @@ export class Scheduler {
   /**
    * A rate-limited task goes back to `ready` with `not_before` set to the provider's reset time
    * (or the next backoff step when it did not say). A reset beyond the automatic limit, or too
-   * many waits, pauses the run instead; `vectr run resume` continues it.
+   * many waits, pauses the run instead; `navarch run resume` continues it.
    */
   private waitForQuota(task: TaskRecord, attempt: number, runState: RunStatus, retryAt: string | undefined): NewEvent[] {
     const cfg = this.config.scheduler;
@@ -314,7 +314,7 @@ export class Scheduler {
     const tooFar = until - now > cfg.rate_limit_max_wait_hours * 3_600_000;
     if (task.rate_limit_waits >= cfg.rate_limit_max_waits || tooFar) {
       const why = tooFar ? `${task.adapter} quota resets at ${untilIso}` : `${task.adapter} still rate limited after ${task.rate_limit_waits} waits`;
-      return [runStatus(task.run_id, runState, "paused", `${why}; continue with \`vectr run resume ${task.run_id}\``)];
+      return [runStatus(task.run_id, runState, "paused", `${why}; continue with \`navarch run resume ${task.run_id}\``)];
     }
     const reason = `waiting for ${task.adapter} quota until ${untilIso}`;
     return [taskStatus(task.run_id, task.id, "failed", "ready", attempt, reason, undefined, untilIso)];

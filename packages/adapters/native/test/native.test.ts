@@ -79,7 +79,7 @@ describe("SandboxTools confinement", () => {
 
   it("refuses paths outside the worktree, symlink escapes and .git writes", async () => {
     const repo = makeRepo();
-    const outside = join(tmpdir(), `vectr-outside-${Date.now()}`);
+    const outside = join(tmpdir(), `navarch-outside-${Date.now()}`);
     mkdirSync(outside);
     writeFileSync(join(outside, "secret.txt"), "secret");
     symlinkSync(outside, join(repo, "link"));

@@ -5,8 +5,8 @@ import {
   isTerminalRun,
   type RunStatus,
   type TaskStatus,
-  type VectrEvent,
-} from "@vectr/contracts";
+  type NavarchEvent,
+} from "@navarch/contracts";
 
 export class ProjectionError extends Error {}
 
@@ -14,11 +14,11 @@ export class ProjectionError extends Error {}
  * Applies one event to the projection tables. Runs inside the same transaction as the event
  * insert, so an invalid transition rejects the event instead of corrupting state.
  */
-export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
+export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
   const ts = event.ts;
   switch (event.type) {
     case "run.created": {
-      const p = (event as VectrEvent<"run.created">).payload;
+      const p = (event as NavarchEvent<"run.created">).payload;
       db.prepare(
         `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, created_at, updated_at)
          VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -42,7 +42,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "run.status_changed": {
-      const p = (event as VectrEvent<"run.status_changed">).payload;
+      const p = (event as NavarchEvent<"run.status_changed">).payload;
       const row = db.prepare("SELECT status FROM runs WHERE id = ?").get(event.run_id) as
         | { status: RunStatus }
         | undefined;
@@ -59,7 +59,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "task.created": {
-      const p = (event as VectrEvent<"task.created">).payload;
+      const p = (event as NavarchEvent<"task.created">).payload;
       const run = db.prepare("SELECT profile FROM runs WHERE id = ?").get(event.run_id);
       if (!run) throw new ProjectionError(`unknown run ${event.run_id}`);
       db.prepare(
@@ -69,7 +69,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "task.status_changed": {
-      const p = (event as VectrEvent<"task.status_changed">).payload;
+      const p = (event as NavarchEvent<"task.status_changed">).payload;
       const row = db.prepare("SELECT status FROM tasks WHERE id = ?").get(event.task_id) as
         | { status: TaskStatus }
         | undefined;
@@ -93,12 +93,12 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "task.resume_token": {
-      const p = (event as VectrEvent<"task.resume_token">).payload;
+      const p = (event as NavarchEvent<"task.resume_token">).payload;
       db.prepare("UPDATE tasks SET resume_token = ?, updated_at = ? WHERE id = ?").run(p.token, ts, event.task_id);
       return;
     }
     case "sandbox.created": {
-      const p = (event as VectrEvent<"sandbox.created">).payload;
+      const p = (event as NavarchEvent<"sandbox.created">).payload;
       db.prepare("UPDATE tasks SET sandbox_id = ?, sandbox_path = ?, branch = ?, updated_at = ? WHERE id = ?").run(
         p.sandbox_id,
         p.path,
@@ -109,12 +109,12 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "task.completed": {
-      const p = (event as VectrEvent<"task.completed">).payload;
+      const p = (event as NavarchEvent<"task.completed">).payload;
       db.prepare("UPDATE tasks SET summary = ?, updated_at = ? WHERE id = ?").run(p.summary, ts, event.task_id);
       return;
     }
     case "model.call.completed": {
-      const p = (event as VectrEvent<"model.call.completed">).payload;
+      const p = (event as NavarchEvent<"model.call.completed">).payload;
       db.prepare("UPDATE tasks SET cost = cost + ? WHERE id = ?").run(p.cost, event.task_id);
       db.prepare("UPDATE runs SET cost_total = cost_total + ?, updated_at = ? WHERE id = ?").run(
         p.cost,
@@ -124,14 +124,14 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "artifact.created": {
-      const p = (event as VectrEvent<"artifact.created">).payload;
+      const p = (event as NavarchEvent<"artifact.created">).payload;
       db.prepare(
         "INSERT INTO artifacts (id, run_id, task_id, kind, uri, sha256, summary, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       ).run(p.artifact_id, event.run_id, event.task_id, p.kind, p.uri, p.sha256, p.summary, ts);
       return;
     }
     case "approval.requested": {
-      const p = (event as VectrEvent<"approval.requested">).payload;
+      const p = (event as NavarchEvent<"approval.requested">).payload;
       db.prepare(
         `INSERT INTO approvals (id, run_id, task_id, action, resource, reason, summary, status, created_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
@@ -139,7 +139,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "approval.decided": {
-      const p = (event as VectrEvent<"approval.decided">).payload;
+      const p = (event as NavarchEvent<"approval.decided">).payload;
       const row = db.prepare("SELECT status FROM approvals WHERE id = ?").get(p.approval_id) as { status: string } | undefined;
       if (!row) throw new ProjectionError(`unknown approval ${p.approval_id}`);
       if (row.status !== "pending") throw new ProjectionError(`approval ${p.approval_id} is already ${row.status}`);
@@ -152,7 +152,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       return;
     }
     case "github.pr.opened": {
-      const p = (event as VectrEvent<"github.pr.opened">).payload;
+      const p = (event as NavarchEvent<"github.pr.opened">).payload;
       db.prepare("UPDATE runs SET pr_url = ?, updated_at = ? WHERE id = ?").run(p.url, ts, event.run_id);
       return;
     }

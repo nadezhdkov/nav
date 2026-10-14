@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+import type { RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude, type FakeScenario } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -42,7 +42,7 @@ async function waitFor<T>(fn: () => Promise<T>, done: (v: T) => boolean, timeout
   }
 }
 
-describe("vectrd", () => {
+describe("navarchd", () => {
   it("tells the agent exactly which commands it may run", async () => {
     const { api, fake } = await startDaemon(tempHome(), "edit");
     const created = await api<RunView>("POST", "/api/v1/runs", {
@@ -72,7 +72,7 @@ describe("vectrd", () => {
       () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
       (r) => r.body.status === "done",
     );
-    const events = (await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
     const setup = events.find((e) => e.type === "sandbox.setup");
     expect(setup?.payload).toMatchObject({ command: "test -f README.md && echo ready", exit_code: 0 });
     const order = events.map((e) => e.type);
@@ -159,7 +159,7 @@ describe("vectrd", () => {
     );
 
     const [task] = run.body.tasks;
-    expect(task).toMatchObject({ status: "succeeded", attempt: 1, branch: `vectr/${created.body.id}/implement` });
+    expect(task).toMatchObject({ status: "succeeded", attempt: 1, branch: `navarch/${created.body.id}/implement` });
     expect(task?.sandbox_path?.startsWith(join(home, "worktrees"))).toBe(true);
     expect(run.body.cost_total).toBeCloseTo(0.01);
     expect(existsSync(join(repo, "hello.txt"))).toBe(false);
@@ -169,7 +169,7 @@ describe("vectrd", () => {
     const content = await api<string>("GET", `/api/v1/artifacts/${diff?.id}`);
     expect(content.body).toContain("+hello from fake claude");
 
-    const events = await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
+    const events = await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
     const types = events.body.map((e) => e.type);
     expect(types).toEqual(expect.arrayContaining(["run.created", "sandbox.created", "task.progress", "task.completed", "artifact.created"]));
     expect(types.at(-1)).toBe("run.status_changed");
@@ -210,7 +210,7 @@ describe("vectrd", () => {
     expect(existsSync(join(calls[0]!.cwd, "partial.txt"))).toBe(true);
     expect(existsSync(join(calls[0]!.cwd, "resumed.txt"))).toBe(true);
 
-    const events = await second.api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
+    const events = await second.api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
     const transitions = (taskId: string | undefined) =>
       events.body
         .filter((e) => e.type === "task.status_changed" && e.task_id === taskId)
@@ -323,7 +323,7 @@ describe("vectrd", () => {
     const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "x" });
     await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`), (r) => r.body.status === "done");
     const logs = await api<string>("GET", `/api/v1/runs/${created.body.id}/logs`);
-    const events = await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
+    const events = await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
     expect(logs.body).not.toContain("ghp_");
     expect(JSON.stringify(events.body)).not.toContain("ghp_");
     expect(logs.body).toContain("[REDACTED]");

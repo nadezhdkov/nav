@@ -8,13 +8,13 @@ import {
   type RunDetail,
   type RunView,
   type TaskView,
-  type VectrEvent,
+  type NavarchEvent,
   type VerifyCommand,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { applyEvent } from "./projections.ts";
 import { dropProjections, eventsTable, projectionTables } from "./schema.ts";
 
-export type EventListener = (event: VectrEvent) => void;
+export type EventListener = (event: NavarchEvent) => void;
 
 /**
  * Event store (spec §6.1.3): events are validated, written and projected in one transaction,
@@ -46,8 +46,8 @@ export class EventStore {
   }
 
   /** Appends events atomically; throws (and writes nothing) if any is invalid. */
-  append(events: NewEvent[]): VectrEvent[] {
-    const stored: VectrEvent[] = [];
+  append(events: NewEvent[]): NavarchEvent[] {
+    const stored: NavarchEvent[] = [];
     const insert = this.db.prepare(
       "INSERT INTO events (id, ts, type, run_id, task_id, actor, payload, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
     );
@@ -68,7 +68,7 @@ export class EventStore {
           actor: e.actor,
           payload,
           schema_version: 1,
-        } as VectrEvent;
+        } as NavarchEvent;
         applyEvent(this.db, event);
         stored.push(event);
       }
@@ -89,7 +89,7 @@ export class EventStore {
     return stored;
   }
 
-  events(filter: { runId?: string; afterSeq?: number; limit?: number } = {}): VectrEvent[] {
+  events(filter: { runId?: string; afterSeq?: number; limit?: number } = {}): NavarchEvent[] {
     const rows = filter.runId
       ? this.db
           .prepare("SELECT * FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?")
@@ -217,7 +217,7 @@ type RunRow = Row & {
 };
 type TaskRow = Row;
 
-function rowToEvent(row: Row): VectrEvent {
+function rowToEvent(row: Row): NavarchEvent {
   return {
     id: String(row.id),
     seq: Number(row.seq),
@@ -228,7 +228,7 @@ function rowToEvent(row: Row): VectrEvent {
     actor: JSON.parse(String(row.actor)),
     payload: JSON.parse(String(row.payload)),
     schema_version: 1,
-  } as VectrEvent;
+  } as NavarchEvent;
 }
 
 function toApprovalView(row: Row): ApprovalView {

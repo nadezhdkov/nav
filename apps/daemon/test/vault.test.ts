@@ -1,13 +1,13 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { redact } from "@vectr/contracts";
+import { redact } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
 import { Vault, VaultError } from "../src/vault/vault.ts";
 
 /** A `secret-tool` stand-in that keeps secrets in a JSON file. */
 function fakeSecretTool(): { command: string; store: string } {
-  const dir = mkdtempSync(join(tmpdir(), "vectr-keyring-"));
+  const dir = mkdtempSync(join(tmpdir(), "navarch-keyring-"));
   const store = join(dir, "store.json");
   const command = join(dir, "secret-tool");
   writeFileSync(
@@ -40,17 +40,25 @@ describe("Vault", () => {
     const vault = new Vault({ command, env: {} });
     expect(await vault.has("github/token")).toBe(false);
     await vault.set("github/token", "github_pat_stored_value_123");
-    expect(readFileSync(store, "utf8")).toContain("service vectr name github/token");
+    expect(readFileSync(store, "utf8")).toContain("service navarch name github/token");
     expect(await vault.get("secret://github/token")).toBe("github_pat_stored_value_123");
     expect(await vault.has("github/token")).toBe(true);
   });
 
-  it("lets VECTR_SECRET_* override the keychain, and redacts every value it hands out", async () => {
+  it("lets NAVARCH_SECRET_* override the keychain, and redacts every value it hands out", async () => {
     const { command, store } = fakeSecretTool();
-    const vault = new Vault({ command, env: { VECTR_SECRET_GITHUB_TOKEN: "env-token-value-42" } });
+    const vault = new Vault({ command, env: { NAVARCH_SECRET_GITHUB_TOKEN: "env-token-value-42" } });
     expect(await vault.get("github/token")).toBe("env-token-value-42");
     expect(existsSync(store)).toBe(false);
     expect(redact("auth env-token-value-42 done")).toBe("auth [REDACTED] done");
+  });
+
+  it("still reads secrets stored before the rename, under service vectr or VECTR_SECRET_*", async () => {
+    const { command, store } = fakeSecretTool();
+    writeFileSync(store, JSON.stringify({ "service vectr name github/token": "github_pat_legacy_keychain_1" }));
+    expect(await new Vault({ command, env: {} }).get("github/token")).toBe("github_pat_legacy_keychain_1");
+    const fromEnv = new Vault({ command, env: { VECTR_SECRET_OPENROUTER_KEY: "legacy-env-value-7" } });
+    expect(await fromEnv.get("openrouter/key")).toBe("legacy-env-value-7");
   });
 
   it("explains how to set a missing secret and refuses bad names", async () => {
@@ -58,7 +66,7 @@ describe("Vault", () => {
     const vault = new Vault({ command, env: {} });
     const err = await vault.get("github/token").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(VaultError);
-    expect((err as Error).message).toContain("vectr secret set github/token");
+    expect((err as Error).message).toContain("navarch secret set github/token");
     for (const bad of ["../x", "a b", "", "GITHUB/token", "x/"]) {
       await expect(vault.get(bad), bad).rejects.toThrow("invalid secret name");
     }

@@ -1,4 +1,4 @@
-import type { VerificationReport, WorkItem } from "@vectr/contracts";
+import type { VerificationReport, WorkItem } from "@navarch/contracts";
 
 /**
  * Turns a GitHub issue into the task text. The issue is third-party content (T1): it goes inside
@@ -65,13 +65,13 @@ export function prBody(input: PrBodyInput): string {
       out.push(`| ${c.name} | \`${c.command}\` | ${result} |`);
     }
   } else {
-    out.push("_No verify commands are configured (`.vectr/project.yaml`)._");
+    out.push("_No verify commands are configured (`.navarch/project.yaml`)._");
   }
   out.push("");
   const red = report?.warnings ?? ["unverified: no verification report"];
   if (red.length) out.push("## 🔴 Needs human attention", "", ...red.map((w) => `- ${w}`), "");
   const models = input.models.length ? input.models.join(", ") : "unknown";
   out.push("## Run", "", `- Run: \`${input.runId}\``, `- Cost: $${input.cost.toFixed(2)} · Models: ${models}`, "");
-  out.push("_Opened as a draft by VECTR. Review before marking it ready._");
+  out.push("_Opened as a draft by Navarch. Review before marking it ready._");
   return out.join("\n");
 }

@@ -1,4 +1,4 @@
-import type { ApprovalView, RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+import type { ApprovalView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -36,7 +36,7 @@ export function formatRunDetail(run: RunDetail): string {
   return lines.join("\n");
 }
 
-export function formatEvent(e: VectrEvent): string {
+export function formatEvent(e: NavarchEvent): string {
   const p = e.payload as Record<string, unknown>;
   let detail: string;
   switch (e.type) {
@@ -102,7 +102,7 @@ export function formatApprovals(approvals: ApprovalView[]): string {
   const lines: string[] = [];
   for (const a of approvals) {
     lines.push(`${a.id}  ${a.action}  run ${a.run_id}  (${a.status})`, `  ${oneLine(a.summary)}`, `  why: ${a.reason}`);
-    if (a.status === "pending") lines.push(`  decide: vectr approve ${a.id} | vectr reject ${a.id} [--reason <text>]`);
+    if (a.status === "pending") lines.push(`  decide: navarch approve ${a.id} | navarch reject ${a.id} [--reason <text>]`);
     lines.push("");
   }
   return lines.join("\n").trimEnd();

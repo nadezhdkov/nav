@@ -5,7 +5,7 @@ import { changedFiles, createWorktree, removeWorktree, resolveHead, worktreeDiff
 import { makeRepo, tempHome } from "./helpers.ts";
 
 describe("worktrees", () => {
-  it("creates vectr/<run>/<task> under <home>/worktrees, reuses it, and diffs against the base", async () => {
+  it("creates navarch/<run>/<task> under <home>/worktrees, reuses it, and diffs against the base", async () => {
     const repo = makeRepo();
     const home = tempHome();
     const base = await resolveHead(repo);
@@ -13,7 +13,7 @@ describe("worktrees", () => {
 
     const first = await createWorktree(spec);
     expect(first.reused).toBe(false);
-    expect(first.branch).toBe("vectr/run_1/implement");
+    expect(first.branch).toBe("navarch/run_1/implement");
     expect(first.path.startsWith(join(home, "worktrees"))).toBe(true);
     expect(existsSync(join(first.path, "README.md"))).toBe(true);
 
