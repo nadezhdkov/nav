@@ -22,9 +22,16 @@ Agents run with VECTR's configuration, not the operator's: Claude Code without u
 
 When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `vectr run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events.
 
-Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
+Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md).
 
-Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md). Phase 1 is next.
+**Phase 1** is in progress, one slice per branch ([`docs/specs/`](docs/specs/)). Slice 1 ([issue → verified draft PR](docs/specs/phase-1-01-issue-to-draft-pr.md)) is done:
+
+- A run is a fixed chain of tasks: `implement` (agent) → `verify` (the project's own commands) → `open_pr` (issue runs only). Slice 2's Flow engine replaces the chain.
+- `.vectr/project.yaml` (`setup`, `verify`, `allowlist`, `protected_paths`) is read at the run's base commit, never from the worktree. Verify checks are required unless marked `required: false`.
+- The GitHub Integration (`packages/github`) is the only GitHub client. It reads issues and opens draft PRs with a fine-grained PAT kept in the OS keychain as `secret://github/token` (ADR 0007), and pushes only `vectr/*` branches, never forced.
+- Below autonomy level 3, opening a PR waits for a human (`vectr approvals`, `vectr approve|reject`, API `/api/v1/approvals`).
+
+Not yet: triage, plan, reviewer, fix loop, Flow engine, Model Router, Web UI, PWA (slices 2–5).
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
@@ -44,9 +51,9 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 
 CI (`.github/workflows/`, details in `.github/README.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is private, so CodeQL and dependency review (GitHub Advanced Security) are not used.
 
-CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr run resume <id> [--follow]`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
+CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt>`, `vectr run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `vectr approvals [--all]`, `vectr approve|reject <id> [--reason]`, `vectr secret set|status <name>`, `vectr run list|show <id>`, `vectr run resume <id> [--follow]`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

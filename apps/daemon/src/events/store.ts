@@ -2,11 +2,14 @@ import { DatabaseSync } from "node:sqlite";
 import {
   newId,
   parsePayload,
+  type ApprovalStatus,
+  type ApprovalView,
   type NewEvent,
   type RunDetail,
   type RunView,
   type TaskView,
   type VectrEvent,
+  type VerifyCommand,
 } from "@vectr/contracts";
 import { applyEvent } from "./projections.ts";
 import { dropProjections, eventsTable, projectionTables } from "./schema.ts";
@@ -29,7 +32,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "setup_commands")) this.rebuildProjections();
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths")) this.rebuildProjections();
   }
 
   close(): void {
@@ -134,6 +137,8 @@ export class EventStore {
       allow_commands: JSON.parse(row.allow_commands),
       setup_commands: JSON.parse(row.setup_commands),
       model: row.model,
+      verify: JSON.parse(row.verify),
+      protected_paths: JSON.parse(row.protected_paths),
     };
   }
 
@@ -161,6 +166,26 @@ export class EventStore {
     );
   }
 
+  /** Approvals, newest first. A pending approval whose task no longer waits (run cancelled) shows as `cancelled`. */
+  listApprovals(status?: ApprovalStatus): ApprovalView[] {
+    const rows = this.db
+      .prepare(
+        `SELECT a.*, CASE WHEN a.status = 'pending' AND t.status <> 'waiting_approval' THEN 'cancelled' ELSE a.status END AS shown
+         FROM approvals a JOIN tasks t ON t.id = a.task_id ORDER BY a.created_at DESC, a.id DESC`,
+      )
+      .all() as Row[];
+    return rows.map(toApprovalView).filter((a) => !status || a.status === status);
+  }
+
+  getApproval(id: string): ApprovalView | undefined {
+    return this.listApprovals().find((a) => a.id === id);
+  }
+
+  /** True when a human approved this task's pending side effect. */
+  taskApproved(taskId: string): boolean {
+    return Boolean(this.db.prepare("SELECT 1 FROM approvals WHERE task_id = ? AND status = 'approved'").get(taskId));
+  }
+
   getArtifact(id: string): { id: string; run_id: string; kind: string; uri: string; summary: string } | undefined {
     const row = this.db.prepare("SELECT id, run_id, kind, uri, summary FROM artifacts WHERE id = ?").get(id) as
       | { id: string; run_id: string; kind: string; uri: string; summary: string }
@@ -169,11 +194,27 @@ export class EventStore {
   }
 }
 
-export type RunRecord = RunView & { adapter: string; profile: string; allow_commands: string[]; setup_commands: string[]; model: string | null };
+export type RunRecord = RunView & {
+  adapter: string;
+  profile: string;
+  allow_commands: string[];
+  setup_commands: string[];
+  model: string | null;
+  verify: VerifyCommand[];
+  protected_paths: string[];
+};
 export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null; rate_limit_waits: number };
 
 type Row = Record<string, unknown>;
-type RunRow = Row & { adapter: string; profile: string; allow_commands: string; setup_commands: string; model: string | null };
+type RunRow = Row & {
+  adapter: string;
+  profile: string;
+  allow_commands: string;
+  setup_commands: string;
+  model: string | null;
+  verify: string;
+  protected_paths: string;
+};
 type TaskRow = Row;
 
 function rowToEvent(row: Row): VectrEvent {
@@ -190,6 +231,22 @@ function rowToEvent(row: Row): VectrEvent {
   } as VectrEvent;
 }
 
+function toApprovalView(row: Row): ApprovalView {
+  return {
+    id: String(row.id),
+    run_id: String(row.run_id),
+    task_id: String(row.task_id),
+    action: String(row.action),
+    resource: String(row.resource),
+    reason: String(row.reason),
+    summary: String(row.summary),
+    status: row.shown as ApprovalStatus,
+    decision_reason: (row.decision_reason as string | null) ?? null,
+    created_at: String(row.created_at),
+    decided_at: (row.decided_at as string | null) ?? null,
+  };
+}
+
 function toRunView(row: Row): RunView {
   return {
     id: String(row.id),
@@ -202,6 +259,8 @@ function toRunView(row: Row): RunView {
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     ended_at: (row.ended_at as string | null) ?? null,
+    work_item: row.work_item ? (JSON.parse(String(row.work_item)) as RunView["work_item"]) : null,
+    pr_url: (row.pr_url as string | null) ?? null,
   };
 }
 

@@ -211,10 +211,20 @@ describe("vectrd", () => {
     expect(existsSync(join(calls[0]!.cwd, "resumed.txt"))).toBe(true);
 
     const events = await second.api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
-    const transitions = events.body
-      .filter((e) => e.type === "task.status_changed")
-      .map((e) => `${(e.payload as { from: string }).from}->${(e.payload as { to: string }).to}`);
-    expect(transitions).toEqual(["pending->ready", "ready->running", "running->interrupted", "interrupted->ready", "ready->running", "running->succeeded"]);
+    const transitions = (taskId: string | undefined) =>
+      events.body
+        .filter((e) => e.type === "task.status_changed" && e.task_id === taskId)
+        .map((e) => `${(e.payload as { from: string }).from}->${(e.payload as { to: string }).to}`);
+    expect(transitions(run.body.tasks[0]?.id)).toEqual([
+      "pending->ready",
+      "ready->running",
+      "running->interrupted",
+      "interrupted->ready",
+      "ready->running",
+      "running->succeeded",
+    ]);
+    // Verification runs once the implement task is done.
+    expect(transitions(run.body.tasks[1]?.id)).toEqual(["pending->ready", "ready->running", "running->succeeded"]);
   });
 
   it("after a restart, dispatches interrupted tasks before tasks that never started", async () => {

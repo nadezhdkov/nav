@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { canTransitionRun, canTransitionTask, newId, parsePayload, redact, registerSecret } from "../src/index.ts";
+import {
+  canTransitionRun,
+  canTransitionTask,
+  CreateRunRequest,
+  newId,
+  parseIssueRef,
+  parsePayload,
+  redact,
+  registerSecret,
+} from "../src/index.ts";
 
 describe("task state machine (spec §8.3)", () => {
   it("allows the documented path and retries", () => {
@@ -53,5 +62,31 @@ describe("redact", () => {
     expect(out).not.toContain("ghp_");
     expect(out).not.toContain("super-secret-value");
     expect(out).not.toContain("sk-ant-");
+  });
+});
+
+describe("work items", () => {
+  it("parses owner/repo#N issue references", () => {
+    expect(parseIssueRef("nadezhdkov/game-asset-finder#12")).toEqual({ repo: "nadezhdkov/game-asset-finder", number: 12 });
+    expect(parseIssueRef(" a.b/c_d-e#1 ")).toEqual({ repo: "a.b/c_d-e", number: 1 });
+    for (const bad of ["repo#1", "o/r#0", "o/r#", "o/r/x#1", "o/r#1; rm -rf /", "https://github.com/o/r/issues/1", "../x#1", "o/..#1", "./r#1"]) {
+      expect(parseIssueRef(bad), bad).toBeUndefined();
+    }
+  });
+
+  it("needs a prompt or an issue to create a run", () => {
+    expect(CreateRunRequest.safeParse({ repo_path: "/r" }).success).toBe(false);
+    expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "o/r#3" }).success).toBe(true);
+    expect(CreateRunRequest.safeParse({ repo_path: "/r", prompt: "x" }).success).toBe(true);
+    expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "o/r#3 && echo" }).success).toBe(false);
+    expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "../r#3" }).success).toBe(false);
+  });
+
+  it("validates the new event payloads", () => {
+    const report = { checks: [], passed: true, blocking_failures: [], warnings: ["unverified"], artifact_id: "art_1" };
+    expect(parsePayload("verification.completed", report)).toEqual(report);
+    expect(() =>
+      parsePayload("github.pr.opened", { repo: "o/r", number: 0, url: "https://github.com/o/r/pull/0", branch: "vectr/x", draft: true }),
+    ).toThrow();
   });
 });

@@ -3,7 +3,15 @@ import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import websocket from "@fastify/websocket";
-import { CreateRunRequest, StreamClientMessage, type StreamServerMessage, type VectrEvent } from "@vectr/contracts";
+import {
+  ApprovalStatus,
+  CreateRunRequest,
+  DecideApprovalRequest,
+  StreamClientMessage,
+  type StreamServerMessage,
+  type VectrEvent,
+} from "@vectr/contracts";
+import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
@@ -24,7 +32,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof OrchestratorError) {
-      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : 400;
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "github_error" ? 502 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
@@ -44,7 +52,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/runs", async (req, reply) => {
     const parsed = CreateRunRequest.safeParse(req.body);
-    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const run = await daemon.orchestrator.startRun(parsed.data, { kind: "user", via: viaOf(req.headers) });
     return reply.code(201).send(run);
   });
@@ -64,6 +72,43 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/runs/:id/resume", async (req) => {
     const id = (req.params as { id: string }).id;
     return daemon.orchestrator.resumeRun(id, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  app.get("/api/v1/approvals", async (req, reply) => {
+    const status = (req.query as { status?: string }).status;
+    if (status === undefined) return daemon.store.listApprovals();
+    const parsed = ApprovalStatus.safeParse(status);
+    if (!parsed.success) return badRequest(reply, `unknown status ${status}`);
+    return daemon.store.listApprovals(parsed.data);
+  });
+
+  app.post("/api/v1/approvals/:id", async (req, reply) => {
+    const parsed = DecideApprovalRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const id = (req.params as { id: string }).id;
+    return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  // Secrets are write-only through the API (ADR 0007): values are never returned.
+  app.get("/api/v1/secrets/:name", async (req, reply) => {
+    const name = decodeURIComponent((req.params as { name: string }).name);
+    try {
+      return { name, set: await daemon.vault.has(name) };
+    } catch (err) {
+      return badRequest(reply, (err as Error).message);
+    }
+  });
+
+  app.put("/api/v1/secrets/:name", async (req, reply) => {
+    const name = decodeURIComponent((req.params as { name: string }).name);
+    const value = (req.body as { value?: unknown } | undefined)?.value;
+    if (typeof value !== "string") return badRequest(reply, "expected { value: string }");
+    try {
+      await daemon.vault.set(name, value.trim());
+    } catch (err) {
+      return badRequest(reply, (err as Error).message);
+    }
+    return { name, set: true };
   });
 
   app.get("/api/v1/runs/:id/events", async (req, reply) => {

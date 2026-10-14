@@ -20,8 +20,8 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
     case "run.created": {
       const p = (event as VectrEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, created_at, updated_at)
-         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, created_at, updated_at)
+         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.repo_path,
@@ -33,6 +33,9 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
         JSON.stringify(p.allow_commands),
         JSON.stringify(p.setup_commands ?? []),
         p.model ?? null,
+        p.work_item ? JSON.stringify(p.work_item) : null,
+        JSON.stringify(p.verify ?? []),
+        JSON.stringify(p.protected_paths ?? []),
         ts,
         ts,
       );
@@ -127,8 +130,37 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       ).run(p.artifact_id, event.run_id, event.task_id, p.kind, p.uri, p.sha256, p.summary, ts);
       return;
     }
+    case "approval.requested": {
+      const p = (event as VectrEvent<"approval.requested">).payload;
+      db.prepare(
+        `INSERT INTO approvals (id, run_id, task_id, action, resource, reason, summary, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      ).run(p.approval_id, event.run_id, event.task_id, p.action, p.resource, p.reason, p.summary, ts);
+      return;
+    }
+    case "approval.decided": {
+      const p = (event as VectrEvent<"approval.decided">).payload;
+      const row = db.prepare("SELECT status FROM approvals WHERE id = ?").get(p.approval_id) as { status: string } | undefined;
+      if (!row) throw new ProjectionError(`unknown approval ${p.approval_id}`);
+      if (row.status !== "pending") throw new ProjectionError(`approval ${p.approval_id} is already ${row.status}`);
+      db.prepare("UPDATE approvals SET status = ?, decision_reason = ?, decided_at = ? WHERE id = ?").run(
+        p.decision,
+        p.reason ?? null,
+        ts,
+        p.approval_id,
+      );
+      return;
+    }
+    case "github.pr.opened": {
+      const p = (event as VectrEvent<"github.pr.opened">).payload;
+      db.prepare("UPDATE runs SET pr_url = ?, updated_at = ? WHERE id = ?").run(p.url, ts, event.run_id);
+      return;
+    }
     case "task.progress":
     case "run.message":
+    case "workitem.received":
+    case "verification.completed":
+    case "github.push":
     case "policy.denied":
     case "quota.observed":
       return;

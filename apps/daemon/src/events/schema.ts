@@ -34,6 +34,10 @@ CREATE TABLE IF NOT EXISTS runs (
   allow_commands TEXT NOT NULL,
   setup_commands TEXT NOT NULL DEFAULT '[]',
   model TEXT,
+  work_item TEXT,
+  pr_url TEXT,
+  verify TEXT NOT NULL DEFAULT '[]',
+  protected_paths TEXT NOT NULL DEFAULT '[]',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   ended_at TEXT
@@ -61,6 +65,20 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS tasks_run ON tasks(run_id);
 CREATE INDEX IF NOT EXISTS tasks_status ON tasks(status);
+CREATE TABLE IF NOT EXISTS approvals (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  resource TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  status TEXT NOT NULL,
+  decision_reason TEXT,
+  created_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS approvals_task ON approvals(task_id);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -77,4 +95,5 @@ export const dropProjections = `
 DROP TABLE IF EXISTS runs;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS artifacts;
+DROP TABLE IF EXISTS approvals;
 `;
