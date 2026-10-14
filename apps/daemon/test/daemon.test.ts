@@ -14,7 +14,8 @@ afterEach(async () => {
 });
 
 async function startDaemon(home: string, scenario: FakeScenario, fake = fakeClaude(scenario)) {
-  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency: 2, max_attempts: 3 } });
+  // Rate-limit waits without a reset hint last 60 ms here instead of minutes.
+  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency: 2, max_attempts: 3, rate_limit_backoff_minutes: [0.001] } });
   const daemon = new Daemon({ home, config, adapters: { "claude-code": fake.options } });
   await daemon.start();
   daemons.push(daemon);
@@ -140,12 +141,50 @@ describe("vectrd", () => {
     const a = await limited.api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "x" });
     const runA = await waitFor(() => limited.api<RunDetail>("GET", `/api/v1/runs/${a.body.id}`), (r) => r.body.status === "done");
     expect(runA.body.tasks[0]?.attempt).toBe(2);
+    const waited = limited.daemon.store.events({ runId: a.body.id }).find((e) => e.type === "task.status_changed" && "not_before" in e.payload);
+    expect(waited?.payload).toMatchObject({ from: "failed", to: "ready", reason: expect.stringContaining("waiting for claude-code quota") });
 
     const failing = await startDaemon(tempHome(), "fail");
     const b = await failing.api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "x" });
     const runB = await waitFor(() => failing.api<RunDetail>("GET", `/api/v1/runs/${b.body.id}`), (r) => r.body.status === "failed");
     expect(runB.body.tasks[0]).toMatchObject({ status: "failed", attempt: 1 });
     expect(runB.body.tasks[0]?.error).toContain("fatal");
+  });
+
+  it("waits for the reset time the agent reported, without spending attempts", async () => {
+    const repo = makeRepo();
+    const { daemon, api } = await startDaemon(tempHome(), "limit-once");
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "x" });
+    const run = await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`), (r) => r.body.status === "done");
+    expect(run.body.tasks[0]).toMatchObject({ status: "succeeded", attempt: 2, not_before: null });
+
+    const events = daemon.store.events({ runId: created.body.id });
+    const wait = events.find((e) => e.type === "task.status_changed" && "not_before" in e.payload);
+    const failure = events.find((e) => e.type === "task.status_changed" && (e.payload as { to: string }).to === "failed");
+    // The fake's five-hour window resets 1 s after the failure; the scheduler adds a 5 s margin.
+    const resetAt = Date.parse((failure!.payload as { error: { retry_at: string } }).error.retry_at);
+    expect(Date.parse((wait!.payload as { not_before: string }).not_before)).toBe(resetAt + 5_000);
+    expect(events.filter((e) => e.type === "quota.observed").map((e) => e.payload)).toContainEqual(
+      expect.objectContaining({ adapter: "claude-code", window: "five_hour", utilization: 1, exhausted: true }),
+    );
+  }, 20_000);
+
+  it("pauses a run whose quota resets too far away, and resumes it on request", async () => {
+    const repo = makeRepo();
+    const { api, fake } = await startDaemon(tempHome(), "limit-weekly");
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "x" });
+    const paused = await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`), (r) => r.body.status === "paused");
+    expect(paused.body.tasks[0]).toMatchObject({ status: "failed", attempt: 1 });
+
+    expect((await api("POST", `/api/v1/runs/${created.body.id}/resume`)).body).toMatchObject({ status: "executing" });
+    // The weekly fake is still limited, so the run pauses again after one more attempt.
+    const again = await waitFor(
+      () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
+      (r) => r.body.status === "paused" && r.body.tasks[0]?.attempt === 2,
+    );
+    expect(again.body.tasks[0]?.status).toBe("failed");
+    expect(fake.calls()).toHaveLength(2);
+    expect((await api("POST", `/api/v1/runs/${run404()}/resume`)).status).toBe(404);
   });
 
   it("redacts secrets from logs and events", async () => {
@@ -167,3 +206,7 @@ describe("vectrd", () => {
     expect(res.body.error).toBe("invalid_repo");
   });
 });
+
+function run404(): string {
+  return "run_00000000000000000000000000";
+}

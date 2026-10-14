@@ -41,6 +41,25 @@ describe("stream-json parser", () => {
     );
     expect(res).toMatchObject({ kind: "result", result: { ok: true, costUsd: 0.5, usage: [{ model: "m", cost: 0.5 }] } });
   });
+
+  it("reads subscription limits from rate_limit_event (captured from claude 2.x)", () => {
+    const line =
+      '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1792400400,"rateLimitType":"seven_day","utilization":0.92,"overageStatus":"rejected","isUsingOverage":false,"surpassedThreshold":0.75,"unifiedWindows":{"five_hour":{"utilization":0.5,"resetsAt":1792005600},"seven_day":{"utilization":0.92,"resetsAt":1792400400}},"overageEnabled":false}}';
+    expect(parseLine(line)).toEqual([
+      {
+        kind: "quota",
+        limit: {
+          status: "allowed_warning",
+          type: "seven_day",
+          resetsAt: "2026-10-19T09:00:00.000Z",
+          windows: [
+            { window: "five_hour", utilization: 0.5, resetsAt: "2026-10-14T19:20:00.000Z" },
+            { window: "seven_day", utilization: 0.92, resetsAt: "2026-10-19T09:00:00.000Z" },
+          ],
+        },
+      },
+    ]);
+  });
 });
 
 describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
@@ -87,6 +106,13 @@ describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
 
     const limited = await new ClaudeCodeAdapter(fakeClaude("ratelimit-once").options).run(context(), collect().io);
     expect(limited).toMatchObject({ status: "failed", error: { kind: "rate_limited" } });
+
+    const { events, io } = collect();
+    const weekly = await new ClaudeCodeAdapter(fakeClaude("limit-weekly").options).run(context(), io);
+    expect(weekly).toMatchObject({ status: "failed", error: { kind: "rate_limited" } });
+    expect(Date.parse(weekly.error!.retry_at!)).toBeGreaterThan(Date.now() + 29 * 86_400_000);
+    expect(events).toContainEqual(expect.objectContaining({ kind: "quota", window: "seven_day", utilization: 1, exhausted: true }));
+    expect(events).toContainEqual(expect.objectContaining({ kind: "quota", window: "five_hour", exhausted: false }));
 
     const missing = await new ClaudeCodeAdapter({ command: "/nonexistent/claude" }).run(context(), collect().io);
     expect(missing).toMatchObject({ status: "failed", error: { kind: "fatal" } });

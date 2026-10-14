@@ -42,6 +42,8 @@ vectr run --adapter native --model openrouter/<model>:free "…"   # needs OPENR
 
 Small local models are free but make more mistakes. Always read the diff (`vectr run show <id>`).
 
+If an agent runs out of quota mid-task, VECTR waits for the reset time the agent reports and then continues the same conversation. If the reset is more than 12 hours away (for example a weekly limit), the run is paused instead; `vectr run show <id>` shows when, and `vectr run resume <id>` continues it. The limits are in `scheduler.rate_limit_*` in `~/.vectr/config.yaml`.
+
 By default the agent may read and edit files and run a few read-only git commands. To let it run other commands, pass each one with `--allow`, for example `--allow "npm test" --allow "npm run *"`.
 
 Runtime state lives in `~/.vectr`. Set `VECTR_HOME` to use another directory. Optional settings go in `~/.vectr/config.yaml`; see `apps/daemon/src/config.ts`.

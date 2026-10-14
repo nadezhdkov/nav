@@ -7,6 +7,7 @@ import {
   isMissingSession,
   parsePattern,
   scrubbedEnv,
+  withRetryAt,
 } from "@vectr/adapter-kit";
 import type {
   AdapterCapabilities,
@@ -17,7 +18,7 @@ import type {
   TaskResult,
   ToolGrant,
 } from "@vectr/contracts";
-import { parseLine, type ClaudeResult } from "./stream.ts";
+import { parseLine, type ClaudeLimit, type ClaudeResult } from "./stream.ts";
 
 /**
  * Runs Claude Code as a headless subprocess (`claude -p --output-format stream-json`)
@@ -116,6 +117,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
 
   private async attempt(ctx: TaskContext, io: AdapterIO, session: { resume?: string; sessionId?: string }) {
     let result: ClaudeResult | undefined;
+    let limit: ClaudeLimit | undefined;
     let lastText = "";
     const exit = await this.processes.run({
       taskId: ctx.taskId,
@@ -136,6 +138,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
           } else if (item.kind === "result") {
             result = item.result;
             for (const denial of item.result.denials) io.emit({ kind: "denied", ...denial });
+          } else if (item.kind === "quota") {
+            limit = item.limit;
+            for (const w of item.limit.windows) {
+              const exhausted = item.limit.status === "rejected" && w.window === item.limit.type;
+              io.emit({ kind: "quota", window: w.window, utilization: w.utilization, ...(w.resetsAt ? { resetsAt: w.resetsAt } : {}), exhausted });
+            }
           }
         }
       },
@@ -149,9 +157,18 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     };
     // Claude Code exits non-zero on some successful runs with warnings; trust its result line.
     if (result?.ok && !exit.cancelled && !exit.timedOut) return cliOutcome("claude", { ...exit, code: 0 }, final, lastText);
-    return cliOutcome("claude", exit, final, lastText);
+    const outcome = cliOutcome("claude", exit, final, lastText);
+    return limit?.status === "rejected" ? rejectedByLimit(outcome, limit) : outcome;
   }
 }
 
 export const RESUME_PROMPT =
   "You were interrupted. Continue the same task from where you stopped, then finish with a short summary.";
+
+/** A run refused by the subscription limit waits for that window to reset. */
+function rejectedByLimit(outcome: TaskResult, limit: ClaudeLimit): TaskResult {
+  if (outcome.status !== "failed" || outcome.error?.kind === "cancelled") return outcome;
+  const resetsAt = limit.windows.find((w) => w.window === limit.type)?.resetsAt ?? limit.resetsAt;
+  const error = { kind: "rate_limited" as const, message: outcome.error?.message ?? `claude usage limit reached (${limit.type})` };
+  return withRetryAt({ ...outcome, error }, resetsAt);
+}

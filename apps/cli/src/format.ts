@@ -24,6 +24,7 @@ export function formatRunDetail(run: RunDetail): string {
     if (t.branch) lines.push(`    branch   ${t.branch}`);
     if (t.sandbox_path) lines.push(`    worktree ${t.sandbox_path}`);
     if (t.error) lines.push(`    error    ${truncate(t.error, 300)}`);
+    if (t.not_before && t.status === "ready") lines.push(`    waiting  until ${t.not_before} (quota reset)`);
     if (t.summary) lines.push(`    summary  ${truncate(t.summary.replace(/\s+/g, " "), 300)}`);
   }
   if (run.artifacts.length) {
@@ -58,6 +59,9 @@ export function formatEvent(e: VectrEvent): string {
       break;
     case "policy.denied":
       detail = `${p.action}: ${p.reason}`;
+      break;
+    case "quota.observed":
+      detail = `${p.adapter} ${p.window}${p.utilization !== undefined ? ` ${Math.round(Number(p.utilization) * 100)}% used` : ""}${p.exhausted ? " (exhausted)" : ""}${p.resets_at ? `, resets ${p.resets_at}` : ""}`;
       break;
     default:
       detail = "";

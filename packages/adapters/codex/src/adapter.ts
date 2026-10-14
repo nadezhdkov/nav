@@ -5,6 +5,7 @@ import {
   healthcheck,
   isMissingSession,
   scrubbedEnv,
+  withRetryAt,
 } from "@vectr/adapter-kit";
 import type {
   AdapterCapabilities,
@@ -15,6 +16,7 @@ import type {
   TaskResult,
   UsageRecord,
 } from "@vectr/contracts";
+import { codexSessionsDir, readCodexLimits } from "./limits.ts";
 import { parseCodexLine } from "./stream.ts";
 
 /**
@@ -29,6 +31,8 @@ export type CodexOptions = {
   commandArgs?: string[];
   scrubEnv?: string[];
   killGraceMs?: number;
+  /** Where Codex keeps session files, read for plan limits (default `$CODEX_HOME/sessions`). */
+  sessionsDir?: string;
 };
 
 export class CodexAdapter implements AgentAdapter {
@@ -42,6 +46,7 @@ export class CodexAdapter implements AgentAdapter {
       commandArgs: options.commandArgs ?? [],
       scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
+      sessionsDir: options.sessionsDir ?? codexSessionsDir(),
     };
     this.processes = new CliProcesses(this.options.killGraceMs);
   }
@@ -92,6 +97,7 @@ export class CodexAdapter implements AgentAdapter {
     let sawTurnEnd = false;
     const usage: UsageRecord = { model: ctx.model ?? "codex", tokens_in: 0, tokens_out: 0, cached_tokens: 0, cost: 0 };
 
+    let threadId = resume ?? "";
     const exit = await this.processes.run({
       taskId: ctx.taskId,
       command: this.options.command,
@@ -106,6 +112,7 @@ export class CodexAdapter implements AgentAdapter {
         if (!item) return;
         switch (item.kind) {
           case "thread":
+            if (item.threadId) threadId = item.threadId;
             if (!resume && item.threadId) io.emit({ kind: "resume_token", token: item.threadId });
             break;
           case "text":
@@ -139,7 +146,15 @@ export class CodexAdapter implements AgentAdapter {
     const final = sawTurnEnd || failure
       ? { ok: sawTurnEnd && !failure, summary: lastText, usage: usageList, ...(failure ? { error: failure } : {}) }
       : undefined;
-    return cliOutcome("codex", exit, final, lastText);
+    const outcome = cliOutcome("codex", exit, final, lastText);
+
+    const limits = readCodexLimits(this.options.sessionsDir, threadId);
+    for (const l of limits) {
+      io.emit({ kind: "quota", window: l.window, utilization: l.utilization, ...(l.resetsAt ? { resetsAt: l.resetsAt } : {}), exhausted: l.exhausted });
+    }
+    if (outcome.error?.kind !== "rate_limited" || outcome.error.retry_at) return outcome;
+    const resets = limits.filter((l) => l.exhausted && l.resetsAt).map((l) => l.resetsAt!);
+    return withRetryAt(outcome, resets.sort().at(-1));
   }
 }
 

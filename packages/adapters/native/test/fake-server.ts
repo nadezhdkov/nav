@@ -6,7 +6,7 @@ import type { AddressInfo } from "node:net";
 export type Scripted =
   | { tool_calls: { name: string; args: Record<string, unknown> }[]; content?: string; cost?: number }
   | { content: string; cost?: number }
-  | { status: number; body: unknown };
+  | { status: number; body: unknown; headers?: Record<string, string> };
 
 export type FakeServer = {
   baseUrl: string;
@@ -24,7 +24,7 @@ export async function fakeModelServer(script: Scripted[]): Promise<FakeServer> {
       requests.push(JSON.parse(body));
       const step = script[Math.min(turn++, script.length - 1)]!;
       if ("status" in step) {
-        res.writeHead(step.status, { "content-type": "application/json" }).end(JSON.stringify(step.body));
+        res.writeHead(step.status, { "content-type": "application/json", ...step.headers }).end(JSON.stringify(step.body));
         return;
       }
       const toolCalls =

@@ -25,7 +25,12 @@ export const ErrorKind = z.enum([
 ]);
 export type ErrorKind = z.infer<typeof ErrorKind>;
 
-export const TaskError = z.object({ kind: ErrorKind, message: z.string() });
+export const TaskError = z.object({
+  kind: ErrorKind,
+  message: z.string(),
+  /** For `rate_limited`: when the provider said the quota resets (ISO 8601), if it said so. */
+  retry_at: z.string().optional(),
+});
 export type TaskError = z.infer<typeof TaskError>;
 
 export const UsageRecord = z.object({
@@ -37,6 +42,18 @@ export const UsageRecord = z.object({
   latency_ms: z.number().int().nonnegative().optional(),
 });
 export type UsageRecord = z.infer<typeof UsageRecord>;
+
+export const QuotaObservation = z.object({
+  adapter: z.string(),
+  /** Provider's name for the limit window, e.g. `five_hour`, `seven_day`, `primary`. */
+  window: z.string(),
+  /** Share of the window used, 0..1. */
+  utilization: z.number().nonnegative().optional(),
+  resets_at: z.string().optional(),
+  /** True when this window is exhausted and requests are refused. */
+  exhausted: z.boolean().optional(),
+});
+export type QuotaObservation = z.infer<typeof QuotaObservation>;
 
 export const ArtifactKind = z.enum(["plan", "diff", "report", "spec", "log"]);
 export type ArtifactKind = z.infer<typeof ArtifactKind>;
@@ -67,6 +84,8 @@ export const EventPayloads = {
     attempt: z.number().int().nonnegative(),
     reason: z.string().optional(),
     error: TaskError.optional(),
+    /** On `failed → ready` after a rate limit: the task is not dispatched before this time (ISO 8601). */
+    not_before: z.string().optional(),
   }),
   "task.progress": z.object({
     message: z.string(),
@@ -98,6 +117,8 @@ export const EventPayloads = {
   }),
   "model.call.completed": UsageRecord,
   "run.message": z.object({ text: z.string() }),
+  /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
+  "quota.observed": QuotaObservation,
   "policy.denied": z.object({
     action: z.string(),
     resource: z.string(),

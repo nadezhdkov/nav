@@ -83,7 +83,8 @@ export type AdapterEvent =
   | { kind: "progress"; message: string; tool?: string }
   | { kind: "log"; line: string }
   | { kind: "resume_token"; token: string }
-  | { kind: "denied"; tool: string; input: string };
+  | { kind: "denied"; tool: string; input: string }
+  | { kind: "quota"; window: string; utilization?: number; resetsAt?: string; exhausted?: boolean };
 
 export type AdapterIO = {
   emit(event: AdapterEvent): void;

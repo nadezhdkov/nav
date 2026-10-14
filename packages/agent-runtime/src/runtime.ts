@@ -93,6 +93,14 @@ export class AgentRuntime {
                 resource: redact(event.input),
                 reason: "not in the tool grant",
               });
+            } else if (event.kind === "quota") {
+              this.publish(spec, actor, "quota.observed", {
+                adapter: adapter.id,
+                window: event.window,
+                ...(event.utilization !== undefined ? { utilization: event.utilization } : {}),
+                ...(event.resetsAt ? { resets_at: event.resetsAt } : {}),
+                ...(event.exhausted !== undefined ? { exhausted: event.exhausted } : {}),
+              });
             } else {
               this.publish(spec, actor, "task.resume_token", { adapter: adapter.id, token: event.token });
             }

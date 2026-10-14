@@ -72,7 +72,11 @@ export async function chat(
     const detail = errorDetail(text);
     const kind: ErrorKind =
       res.status === 429 ? "rate_limited" : res.status >= 500 ? "transient" : res.status === 402 ? "budget_exceeded" : "fatal";
-    throw new ModelError(kind, `HTTP ${res.status} from ${provider.baseUrl}: ${detail}`);
+    // `Retry-After` is seconds (or an HTTP date); keep it in the message for the retry hint.
+    const after = res.headers.get("retry-after");
+    const seconds = after && /^\d+$/.test(after.trim()) ? Number(after) : after ? Math.max(0, (Date.parse(after) - Date.now()) / 1_000) : NaN;
+    const hint = Number.isFinite(seconds) ? ` (retry after ${Math.ceil(seconds)}s)` : "";
+    throw new ModelError(kind, `HTTP ${res.status} from ${provider.baseUrl}: ${detail}${hint}`);
   }
 
   let data: Record<string, unknown>;

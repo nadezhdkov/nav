@@ -1,12 +1,14 @@
 import type { AgentRuntime, TaskOutcome } from "@vectr/agent-runtime";
-import { isTerminalRun, type Actor, type NewEvent } from "@vectr/contracts";
+import { isTerminalRun, type Actor, type NewEvent, type RunStatus } from "@vectr/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
 import { buildInstructions, implementer } from "../orchestrator/profiles.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
-const RETRYABLE = new Set(["transient", "rate_limited", "interrupted"]);
+const RETRYABLE = new Set(["transient", "interrupted"]);
+/** Margin after a provider's reset time, for clock skew. */
+const RESET_MARGIN_MS = 5_000;
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
 export type CancelHook = (taskId: string) => Promise<void>;
@@ -14,7 +16,8 @@ export type CancelHook = (taskId: string) => Promise<void>;
 /**
  * Scheduler (spec §6.1.2): picks `ready` tasks, asks the Policy Engine, dispatches them to the
  * Agent Runtime within the concurrency limit, and records the outcome. Phase 0: one global
- * limit, FIFO order, immediate retry for retryable errors.
+ * limit, FIFO order, immediate retry for transient errors. A rate-limited task waits for its
+ * quota to reset (`not_before`), or the run is paused when the reset is too far away (ADR 0005).
  */
 export class Scheduler {
   private readonly store: EventStore;
@@ -26,6 +29,8 @@ export class Scheduler {
   private readonly cancelRequested = new Set<string>();
   private stopping = false;
   private pumping = false;
+  private wakeTimer: NodeJS.Timeout | undefined;
+  private wakeAt = Infinity;
 
   constructor(deps: {
     store: EventStore;
@@ -49,15 +54,40 @@ export class Scheduler {
   pump(): void {
     if (this.stopping || this.pumping) return;
     this.pumping = true;
+    const now = Date.now();
+    let nextWake = Infinity;
     try {
       for (const task of this.store.tasksWithStatus("ready")) {
-        if (this.active.size >= this.config.scheduler.concurrency) break;
         if (this.active.has(task.id)) continue;
+        const notBefore = task.not_before ? Date.parse(task.not_before) : 0;
+        if (notBefore > now) {
+          nextWake = Math.min(nextWake, notBefore);
+          continue;
+        }
+        if (this.active.size >= this.config.scheduler.concurrency) break;
         this.dispatch(task);
       }
     } finally {
       this.pumping = false;
     }
+    this.wakeUpAt(nextWake);
+  }
+
+  /** Pumps again when the earliest waiting task becomes due. */
+  private wakeUpAt(at: number): void {
+    if (at === this.wakeAt) return;
+    clearTimeout(this.wakeTimer);
+    this.wakeTimer = undefined;
+    this.wakeAt = at;
+    if (!Number.isFinite(at)) return;
+    // setTimeout caps at ~24.8 days; a longer wait just re-arms on that wake-up.
+    const delay = Math.min(Math.max(at - Date.now(), 0), 2 ** 31 - 1);
+    this.wakeTimer = setTimeout(() => {
+      this.wakeTimer = undefined;
+      this.wakeAt = Infinity;
+      this.pump();
+    }, delay);
+    this.wakeTimer.unref();
   }
 
   requestCancel(taskId: string): void {
@@ -68,6 +98,7 @@ export class Scheduler {
   /** Stops dispatching and waits for running tasks to end without recording their results. */
   async stop(killAll: () => Promise<void>): Promise<void> {
     this.stopping = true;
+    clearTimeout(this.wakeTimer);
     await killAll();
     await Promise.allSettled([...this.active.values()]);
   }
@@ -186,7 +217,11 @@ export class Scheduler {
       const kind = outcome.error?.kind ?? "fatal";
       const error = outcome.error ?? { kind, message: outcome.summary || "task failed" };
       events.push(taskStatus(runId, task.id, "running", "failed", attempt, error.message, error));
-      if (RETRYABLE.has(kind) && attempt < task.max_attempts && !isTerminalRun(run.status)) {
+      // Waits for a quota reset are not counted as attempts.
+      const attempts = attempt - task.rate_limit_waits;
+      if (kind === "rate_limited" && !isTerminalRun(run.status)) {
+        events.push(...this.waitForQuota(task, attempt, run.status, error.retry_at));
+      } else if (RETRYABLE.has(kind) && attempts < task.max_attempts && !isTerminalRun(run.status)) {
         events.push(taskStatus(runId, task.id, "failed", "ready", attempt, `retry after ${kind}`));
       } else if (!isTerminalRun(run.status)) {
         const to = kind === "budget_exceeded" ? "budget_exceeded" : "failed";
@@ -194,5 +229,28 @@ export class Scheduler {
       }
     }
     this.store.append(events);
+  }
+
+  /**
+   * A rate-limited task goes back to `ready` with `not_before` set to the provider's reset time
+   * (or the next backoff step when it did not say). A reset beyond the automatic limit, or too
+   * many waits, pauses the run instead; `vectr run resume` continues it.
+   */
+  private waitForQuota(task: TaskRecord, attempt: number, runState: RunStatus, retryAt: string | undefined): NewEvent[] {
+    const cfg = this.config.scheduler;
+    const now = Date.now();
+    const backoff = cfg.rate_limit_backoff_minutes;
+    const reset = retryAt ? Date.parse(retryAt) : NaN;
+    const until = Number.isFinite(reset)
+      ? Math.max(reset + RESET_MARGIN_MS, now)
+      : now + backoff[Math.min(task.rate_limit_waits, backoff.length - 1)]! * 60_000;
+    const untilIso = new Date(until).toISOString();
+    const tooFar = until - now > cfg.rate_limit_max_wait_hours * 3_600_000;
+    if (task.rate_limit_waits >= cfg.rate_limit_max_waits || tooFar) {
+      const why = tooFar ? `${task.adapter} quota resets at ${untilIso}` : `${task.adapter} still rate limited after ${task.rate_limit_waits} waits`;
+      return [runStatus(task.run_id, runState, "paused", `${why}; continue with \`vectr run resume ${task.run_id}\``)];
+    }
+    const reason = `waiting for ${task.adapter} quota until ${untilIso}`;
+    return [taskStatus(task.run_id, task.id, "failed", "ready", attempt, reason, undefined, untilIso)];
   }
 }

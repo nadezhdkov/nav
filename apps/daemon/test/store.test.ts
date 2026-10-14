@@ -86,6 +86,18 @@ describe("EventStore", () => {
     expect({ run: store.getRun("run_1"), tasks: store.tasksOfRun("run_1") }).toEqual(before);
   });
 
+  it("rebuilds projections from the log when an older database lacks a new column", () => {
+    const path = join(tempHome(), "vectr.db");
+    const old = new EventStore(path);
+    seed(old);
+    old.db.exec("ALTER TABLE tasks DROP COLUMN not_before");
+    old.close();
+
+    const store = new EventStore(path);
+    expect(store.tasksOfRun("run_1")).toEqual([expect.objectContaining({ id: "task_1", status: "ready", not_before: null })]);
+    store.close();
+  });
+
   it("publishes to subscribers only after commit", () => {
     const store = new EventStore(join(tempHome(), "vectr.db"));
     const seen: number[] = [];

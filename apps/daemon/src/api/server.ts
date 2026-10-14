@@ -61,6 +61,11 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     );
   });
 
+  app.post("/api/v1/runs/:id/resume", async (req) => {
+    const id = (req.params as { id: string }).id;
+    return daemon.orchestrator.resumeRun(id, { kind: "user", via: viaOf(req.headers) });
+  });
+
   app.get("/api/v1/runs/:id/events", async (req, reply) => {
     const id = (req.params as { id: string }).id;
     if (!daemon.store.getRun(id)) return notFound(reply, "run");

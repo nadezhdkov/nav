@@ -73,10 +73,15 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
       if (row.status !== p.from || !canTransitionTask(p.from, p.to)) {
         throw new ProjectionError(`invalid task transition ${row.status} -> ${p.to} (event says from ${p.from})`);
       }
-      db.prepare("UPDATE tasks SET status = ?, attempt = ?, error = ?, updated_at = ? WHERE id = ?").run(
+      db.prepare(
+        `UPDATE tasks SET status = ?, attempt = ?, error = ?, not_before = ?,
+           rate_limit_waits = rate_limit_waits + ?, updated_at = ? WHERE id = ?`,
+      ).run(
         p.to,
         p.attempt,
         p.error ? `${p.error.kind}: ${p.error.message}` : null,
+        p.not_before ?? null,
+        p.not_before ? 1 : 0,
         ts,
         event.task_id,
       );
@@ -124,6 +129,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
     case "task.progress":
     case "run.message":
     case "policy.denied":
+    case "quota.observed":
       return;
   }
 }

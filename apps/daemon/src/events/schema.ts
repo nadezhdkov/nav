@@ -54,6 +54,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   cost REAL NOT NULL DEFAULT 0,
   summary TEXT,
   error TEXT,
+  not_before TEXT,
+  rate_limit_waits INTEGER NOT NULL DEFAULT 0,
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_run ON tasks(run_id);

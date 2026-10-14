@@ -12,6 +12,7 @@ export type StreamItem =
   | { kind: "text"; text: string }
   | { kind: "tool"; name: string; summary: string }
   | { kind: "result"; result: ClaudeResult }
+  | { kind: "quota"; limit: ClaudeLimit }
   | { kind: "other" };
 
 export type ClaudeResult = {
@@ -24,6 +25,16 @@ export type ClaudeResult = {
   usage: UsageRecord[];
   /** Tool calls Claude Code refused because the grant did not allow them. */
   denials: { tool: string; input: string }[];
+};
+
+/** Subscription limits from a `rate_limit_event` (5-hour and weekly windows). */
+export type ClaudeLimit = {
+  /** `allowed`, `allowed_warning` or `rejected`. */
+  status: string;
+  /** The window the status is about, e.g. `seven_day`. */
+  type: string;
+  resetsAt?: string;
+  windows: { window: string; utilization: number; resetsAt?: string }[];
 };
 
 type Json = Record<string, unknown>;
@@ -53,6 +64,8 @@ export function parseLine(line: string): StreamItem[] {
       return assistantItems(data);
     case "result":
       return [{ kind: "result", result: toResult(data) }];
+    case "rate_limit_event":
+      return isObject(data.rate_limit_info) ? [{ kind: "quota", limit: toLimit(data.rate_limit_info) }] : [{ kind: "other" }];
     default:
       return [{ kind: "other" }];
   }
@@ -73,6 +86,15 @@ function assistantItems(data: Json): StreamItem[] {
   return items;
 }
 
+
+const epochIso = (v: unknown): string | undefined => (typeof v === "number" && v > 0 ? new Date(v * 1_000).toISOString() : undefined);
+
+function toLimit(info: Json): ClaudeLimit {
+  const windows = Object.entries(isObject(info.unifiedWindows) ? info.unifiedWindows : {})
+    .filter((entry): entry is [string, Json] => isObject(entry[1]))
+    .map(([window, w]) => ({ window, utilization: num(w.utilization), resetsAt: epochIso(w.resetsAt) }));
+  return { status: str(info.status), type: str(info.rateLimitType), resetsAt: epochIso(info.resetsAt), windows };
+}
 
 function toResult(data: Json): ClaudeResult {
   const usage: UsageRecord[] = [];

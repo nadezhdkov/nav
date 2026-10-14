@@ -1,4 +1,4 @@
-import { failed, succeeded } from "@vectr/adapter-kit";
+import { failed, retryAtFromText, succeeded, withRetryAt } from "@vectr/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -119,7 +119,10 @@ export class NativeAdapter implements AgentAdapter {
       return failed("fatal", `stopped after ${maxTurns} model calls without finishing`, lastText, [...usage.values()]);
     } catch (err) {
       if (entry.cancelled) return failed("cancelled", "cancelled by user", lastText, [...usage.values()]);
-      if (err instanceof ModelError) return failed(err.kind, err.message, lastText, [...usage.values()]);
+      if (err instanceof ModelError) {
+        const result = failed(err.kind, err.message, lastText, [...usage.values()]);
+        return err.kind === "rate_limited" ? withRetryAt(result, retryAtFromText(err.message)) : result;
+      }
       return failed("fatal", err instanceof Error ? err.message : String(err), lastText, [...usage.values()]);
     } finally {
       this.controllers.delete(ctx.taskId);

@@ -26,6 +26,9 @@ export class EventStore {
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
     this.db.exec(eventsTable);
     this.db.exec(projectionTables);
+    // Projections are derived data: when a column was added, rebuild them from the log.
+    const columns = this.db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
+    if (!columns.some((c) => c.name === "not_before")) this.rebuildProjections();
   }
 
   close(): void {
@@ -159,7 +162,7 @@ export class EventStore {
 }
 
 export type RunRecord = RunView & { adapter: string; profile: string; allow_commands: string[]; model: string | null };
-export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null };
+export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null; rate_limit_waits: number };
 
 type Row = Record<string, unknown>;
 type RunRow = Row & { adapter: string; profile: string; allow_commands: string; model: string | null };
@@ -210,6 +213,7 @@ function toTaskView(row: Row): TaskView {
     cost: Number(row.cost),
     summary: (row.summary as string | null) ?? null,
     error: (row.error as string | null) ?? null,
+    not_before: (row.not_before as string | null) ?? null,
     updated_at: String(row.updated_at),
   };
 }
@@ -219,5 +223,6 @@ function toTaskRecord(row: Row): TaskRecord {
     ...toTaskView(row),
     sandbox_id: (row.sandbox_id as string | null) ?? null,
     resume_token: (row.resume_token as string | null) ?? null,
+    rate_limit_waits: Number(row.rate_limit_waits ?? 0),
   };
 }
