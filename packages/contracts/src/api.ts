@@ -23,6 +23,8 @@ export const CreateRunRequest = z
     /** Commands the Runner runs in the worktree before the agent's first attempt (e.g. `npm ci`). */
     setup_commands: z.array(z.string().min(1)).optional(),
     model: z.string().optional(),
+    /** A Flow by name; defaults to `fix-issue` for issue runs and `task` for prompt runs. */
+    flow: z.string().regex(/^[a-z][a-z0-9-]*$/).optional(),
   })
   .refine((r) => r.prompt || r.issue, { message: "a run needs a prompt or an issue" });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
@@ -45,6 +47,8 @@ export const TaskView = z.object({
   /** Set while a rate-limited task waits for its quota to reset. */
   not_before: z.string().nullable(),
   updated_at: z.string(),
+  /** Loop iteration, 1 for nodes outside loops. */
+  iteration: z.number().int(),
 });
 export type TaskView = z.infer<typeof TaskView>;
 
@@ -61,6 +65,9 @@ export const RunView = z.object({
   ended_at: z.string().nullable(),
   work_item: WorkItemRef.nullable(),
   pr_url: z.string().nullable(),
+  /** The Flow's name; null for runs created before Flows. */
+  flow: z.string().nullable(),
+  autonomy_level: z.number().int().nullable(),
 });
 export type RunView = z.infer<typeof RunView>;
 

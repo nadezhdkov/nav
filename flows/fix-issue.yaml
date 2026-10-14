@@ -1,0 +1,60 @@
+# Issue → verified draft PR (spec §7.1, §9.4). Loaded when the daemon starts; a run keeps the
+# copy it started with. Differences from the §9.4 example are listed in ADR 0011.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: fix-issue
+  description: Triage and plan an issue, implement it after the plan is approved, verify and fix, review, and open a draft PR.
+params:
+  max_fix_iterations: { type: int, default: 3 }
+
+nodes:
+  - id: start
+    type: trigger
+    on: [github.issue.labeled]
+    filter: { label: "navarch:go" }
+
+  - id: triage
+    type: agent
+    profile: triager
+
+  - id: plan
+    type: agent
+    profile: planner
+    inputs:
+      triage: ${{ nodes.triage.outputs.summary }}
+
+  - id: approve_plan
+    type: approval
+    when: ${{ project.autonomy_level < 3 }}
+    show: [nodes.plan.outputs.summary]
+
+  - id: implement_loop
+    type: loop
+    max_iterations: ${{ params.max_fix_iterations }}
+    until: ${{ nodes.verify.outputs.passed }}
+    body:
+      - id: implement
+        type: agent
+        profile: implementer
+        inputs:
+          plan: ${{ nodes.plan.outputs.summary }}
+          previous_failures: ${{ nodes.verify.outputs.blocking_failures }}
+      - id: verify
+        type: action
+        uses: verification.run
+
+  - id: review
+    type: agent
+    profile: reviewer
+    inputs:
+      plan: ${{ nodes.plan.outputs.summary }}
+      implementation: ${{ nodes.implement.outputs.summary }}
+
+  - id: open_pr
+    type: github
+    uses: pr.create
+    with: { draft: true }
+
+edges:
+  - start -> triage -> plan -> approve_plan -> implement_loop -> review -> open_pr

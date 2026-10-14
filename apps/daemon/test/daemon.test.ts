@@ -159,7 +159,7 @@ describe("navarchd", () => {
     );
 
     const [task] = run.body.tasks;
-    expect(task).toMatchObject({ status: "succeeded", attempt: 1, branch: `navarch/${created.body.id}/implement` });
+    expect(task).toMatchObject({ status: "succeeded", attempt: 1, branch: `navarch/${created.body.id}/task` });
     expect(task?.sandbox_path?.startsWith(join(home, "worktrees"))).toBe(true);
     expect(run.body.cost_total).toBeCloseTo(0.01);
     expect(existsSync(join(repo, "hello.txt"))).toBe(false);

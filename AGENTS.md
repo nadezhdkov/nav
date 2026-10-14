@@ -1,6 +1,6 @@
 # AGENTS.md — Navarch
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.10, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.11, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -24,14 +24,16 @@ When an agent runs out of quota, the task waits for the reset time the agent rep
 
 Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md).
 
-**Phase 1** is in progress, one slice per branch ([`docs/specs/`](docs/specs/)). Slice 1 ([issue → verified draft PR](docs/specs/phase-1-01-issue-to-draft-pr.md)) is done:
+**Phase 1** is in progress, one slice per branch ([`docs/specs/`](docs/specs/)). Done: slice 1 ([issue → verified draft PR](docs/specs/phase-1-01-issue-to-draft-pr.md)) and slice 2 ([Flow engine](docs/specs/phase-1-02-flow-engine.md), ADR 0011):
 
-- A run is a fixed chain of tasks: `implement` (agent) → `verify` (the project's own commands) → `open_pr` (issue runs only). Slice 2's Flow engine replaces the chain.
-- `.navarch/project.yaml` (`setup`, `verify`, `allowlist`, `protected_paths`) is read at the run's base commit, never from the worktree. Verify checks are required unless marked `required: false`.
+- A run executes a **Flow** from `flows/*.yaml` (`packages/flow-engine`): `fix-issue` for issue runs (triage → plan → plan approval below level 3 → implement ⇄ verify fix loop, up to 3 iterations → review → draft PR) and `task` for prompt runs (implement ⇄ verify). The run keeps a copy of its Flow; the Orchestrator creates each node's task when it becomes due.
+- Agent profiles (`apps/daemon/src/orchestrator/profiles.ts`): `triager`, `planner` and `reviewer` are read-only; `implementer` edits. All agents of a run share one worktree, `navarch/<run>/<flow>`.
+- Autonomy levels 0–3 come from `.navarch/project.yaml` `autonomy_level`, else the daemon's: 0 asks before any agent, 1 before editing, below 3 before the plan and the PR.
+- `.navarch/project.yaml` (`autonomy_level`, `setup`, `verify`, `allowlist`, `protected_paths`) is read at the run's base commit, never from the worktree. Verify checks are required unless marked `required: false`.
 - The GitHub Integration (`packages/github`) is the only GitHub client. It reads issues and opens draft PRs with a fine-grained PAT kept in the OS keychain as `secret://github/token` (ADR 0007), and pushes only `navarch/*` branches, never forced.
 - Below autonomy level 3, opening a PR waits for a human (`navarch approvals`, `navarch approve|reject`, API `/api/v1/approvals`).
 
-Not yet: triage, plan, reviewer, fix loop, Flow engine, Model Router, Web UI, PWA (slices 2–5).
+Not yet: Model Router (the reviewer uses the run's adapter, not a different provider), branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
@@ -51,9 +53,9 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 
 CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
 
-CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
+CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `flows/`, `docs/adr`, `docs/specs`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

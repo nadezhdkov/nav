@@ -14,6 +14,8 @@ export type PolicyContext = {
   branch?: string;
   command?: string;
   allowCommands?: string[];
+  /** For `task.start`: whether the agent's profile edits files. */
+  edits?: boolean;
 };
 
 export type PolicyRequest = {
@@ -75,14 +77,24 @@ export const defaultRules: PolicyRule[] = [
     reason: "running verification commands requires approval below autonomy level 2",
   },
   {
+    match: (r) => r.action === "flow.approval",
+    effect: "require_approval",
+    reason: "the flow asks a human at this step",
+  },
+  {
+    match: (r) => r.action === "task.start" && (r.context.budgetRemaining ?? 1) <= 0,
+    effect: "deny",
+    reason: "run budget exhausted",
+  },
+  {
     match: (r) => r.action === "task.start" && r.context.autonomyLevel < 1,
     effect: "require_approval",
     reason: "autonomy level 0 (observe) requires approval for any agent execution",
   },
   {
-    match: (r) => r.action === "task.start" && (r.context.budgetRemaining ?? 1) <= 0,
+    match: (r) => r.action === "task.start" && r.context.edits === true && r.context.autonomyLevel < 2,
     effect: "require_approval",
-    reason: "run budget exhausted",
+    reason: "autonomy level 1 (analyse) requires approval to edit files",
   },
   { match: (r) => r.action === "task.start", effect: "allow", reason: "agent task within budget" },
   {
@@ -115,10 +127,11 @@ export class PolicyEngine {
    * mechanism. Commands outside the allowlist are not granted: headless agents deny them
    * instead of prompting.
    */
-  taskGrant(allowCommands: string[]): ToolGrant {
+  taskGrant(allowCommands: string[], edits = true): ToolGrant {
     return {
-      editFiles: true,
-      allowCommands: [...SAFE_GIT, ...allowCommands],
+      editFiles: edits,
+      // Read-only profiles (triage, plan, review) get git's read commands and nothing that writes.
+      allowCommands: edits ? [...SAFE_GIT, ...allowCommands] : READ_GIT,
       denyCommands: ALWAYS_DENIED_COMMANDS,
       denyPaths: ["~/.ssh", "~/.navarch", "~/.aws", "~/.config/gh", "~/.gnupg"],
       network: false,
@@ -126,7 +139,8 @@ export class PolicyEngine {
   }
 }
 
-const SAFE_GIT = ["git status", "git diff *", "git log *", "git show *", "git add *", "git commit *"];
+const READ_GIT = ["git status", "git diff *", "git log *", "git show *"];
+const SAFE_GIT = [...READ_GIT, "git add *", "git commit *"];
 
 /** Command prefixes denied in every task (spec §6.5.3). */
 export const ALWAYS_DENIED_COMMANDS = [

@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -892,7 +892,7 @@ stateDiagram-v2
 ### 8.4 Máquina de estados da Run
 
 `created → planning → awaiting_approval → executing → verifying → reviewing → ready_for_pr → pr_opened → done`
-com saídas laterais `failed`, `cancelled`, `paused` e `budget_exceeded`.
+com saídas laterais `failed`, `cancelled`, `paused` e `budget_exceeded`. A única volta permitida é `verifying → executing`, feita pelo loop de correção (ADR 0011); um Flow pode pular estágios que não tem.
 
 ---
 
@@ -1056,6 +1056,8 @@ nodes:
 edges:
   - start -> triage -> plan -> approve_plan -> worktree -> implement_loop -> review -> open_pr
 ```
+
+> **Fase 1 (ADR 0011):** os Flows são lineares (uma cadeia em `edges`) com nós `trigger`, `agent`, `action`, `approval`, `loop` e `github`; os demais tipos chegam na Fase 2. Diferenças do exemplo acima no `flows/fix-issue.yaml`: não há nó `worktree` (o Agent Runtime cria uma worktree por Run, `navarch/<run>/<flow>`, compartilhada pelos agentes); a issue já é a tarefa de todos os agentes, então não há entrada `${{ trigger.work_item }}`; o `reviewer` usa o adaptador da Run até existir o Model Router. Expressões `${{ }}` aceitam caminhos (`nodes`, `params`, `project`), literais e uma comparação, sem `eval`.
 
 ### 9.5 Ferramentas expostas via MCP
 

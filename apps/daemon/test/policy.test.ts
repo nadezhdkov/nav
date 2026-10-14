@@ -18,7 +18,12 @@ describe("PolicyEngine", () => {
   it("gates task start on autonomy and budget", () => {
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 1 }).effect).toBe("allow");
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 0, budgetRemaining: 1 }).effect).toBe("require_approval");
-    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 0 }).effect).toBe("require_approval");
+    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 0 }).effect).toBe("deny");
+    // Level 1 (analyse): reading agents run, editing agents wait for a human.
+    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 1, edits: false }).effect).toBe("allow");
+    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 1, edits: true }).effect).toBe("require_approval");
+    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, edits: true }).effect).toBe("allow");
+    expect(policy.decide(agent, "flow.approval", "t", { autonomyLevel: 4 }).effect).toBe("require_approval");
   });
 
   it("opens PRs at level 3+ and asks below; verifies at level 2+ (spec §11)", () => {

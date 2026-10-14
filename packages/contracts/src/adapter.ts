@@ -29,6 +29,8 @@ export const TaskResult = z.object({
   claims: z.array(Claim),
   usage: z.array(UsageRecord),
   error: TaskError.optional(),
+  /** Structured results for later flow nodes; the Runtime adds `summary` for agents. */
+  outputs: z.record(z.string(), z.unknown()).optional(),
 });
 export type TaskResult = z.infer<typeof TaskResult>;
 

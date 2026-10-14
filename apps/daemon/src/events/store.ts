@@ -3,6 +3,7 @@ import {
   newId,
   parsePayload,
   type ApprovalStatus,
+  type FlowDefinition,
   type ApprovalView,
   type NewEvent,
   type RunDetail,
@@ -32,7 +33,9 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths")) this.rebuildProjections();
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level")) {
+      this.rebuildProjections();
+    }
   }
 
   close(): void {
@@ -139,7 +142,18 @@ export class EventStore {
       model: row.model,
       verify: JSON.parse(row.verify),
       protected_paths: JSON.parse(row.protected_paths),
+      flow_definition: row.flow ? (JSON.parse(row.flow) as RunFlow) : null,
     };
+  }
+
+  /** Nodes of a run whose `when` was false. */
+  skippedNodes(runId: string): string[] {
+    return (this.db.prepare("SELECT node_id FROM skipped_nodes WHERE run_id = ?").all(runId) as { node_id: string }[]).map((r) => r.node_id);
+  }
+
+  /** Every task of a run with its outputs, in creation order. */
+  taskRecordsOfRun(runId: string): TaskRecord[] {
+    return (this.db.prepare("SELECT * FROM tasks WHERE run_id = ? ORDER BY rowid").all(runId) as TaskRow[]).map(toTaskRecord);
   }
 
   getRunDetail(id: string): RunDetail | undefined {
@@ -194,6 +208,8 @@ export class EventStore {
   }
 }
 
+export type RunFlow = { definition: FlowDefinition; params: Record<string, number | string | boolean> };
+
 export type RunRecord = RunView & {
   adapter: string;
   profile: string;
@@ -202,8 +218,17 @@ export type RunRecord = RunView & {
   model: string | null;
   verify: VerifyCommand[];
   protected_paths: string[];
+  flow_definition: RunFlow | null;
 };
-export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null; rate_limit_waits: number };
+export type TaskRecord = TaskView & {
+  sandbox_id: string | null;
+  resume_token: string | null;
+  rate_limit_waits: number;
+  stage: RunView["status"] | null;
+  uses: string | null;
+  inputs: Record<string, string>;
+  outputs: Record<string, unknown> | null;
+};
 
 type Row = Record<string, unknown>;
 type RunRow = Row & {
@@ -214,6 +239,7 @@ type RunRow = Row & {
   model: string | null;
   verify: string;
   protected_paths: string;
+  flow: string | null;
 };
 type TaskRow = Row;
 
@@ -261,6 +287,8 @@ function toRunView(row: Row): RunView {
     ended_at: (row.ended_at as string | null) ?? null,
     work_item: row.work_item ? (JSON.parse(String(row.work_item)) as RunView["work_item"]) : null,
     pr_url: (row.pr_url as string | null) ?? null,
+    flow: row.flow ? (JSON.parse(String(row.flow)) as RunFlow).definition.metadata.name : null,
+    autonomy_level: row.autonomy_level === null || row.autonomy_level === undefined ? null : Number(row.autonomy_level),
   };
 }
 
@@ -282,6 +310,7 @@ function toTaskView(row: Row): TaskView {
     error: (row.error as string | null) ?? null,
     not_before: (row.not_before as string | null) ?? null,
     updated_at: String(row.updated_at),
+    iteration: Number(row.iteration ?? 1),
   };
 }
 
@@ -291,5 +320,9 @@ function toTaskRecord(row: Row): TaskRecord {
     sandbox_id: (row.sandbox_id as string | null) ?? null,
     resume_token: (row.resume_token as string | null) ?? null,
     rate_limit_waits: Number(row.rate_limit_waits ?? 0),
+    stage: (row.stage as RunView["status"] | null) ?? null,
+    uses: (row.uses as string | null) ?? null,
+    inputs: row.inputs ? (JSON.parse(String(row.inputs)) as Record<string, string>) : {},
+    outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
   };
 }

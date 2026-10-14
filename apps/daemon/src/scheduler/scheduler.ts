@@ -3,7 +3,7 @@ import { canTransitionRun, isTerminalRun, newId, type Actor, type NewEvent, type
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
-import { buildInstructions, implementer } from "../orchestrator/profiles.ts";
+import { buildInstructions, implementer, PROFILES } from "../orchestrator/profiles.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
 const RETRYABLE = new Set(["transient", "interrupted"]);
@@ -19,7 +19,7 @@ function dispatchOrder(tasks: TaskRecord[]): TaskRecord[] {
 
 export type CancelHook = (taskId: string) => Promise<void>;
 
-/** Runs a non-agent node of a run (verify, open_pr) in place of the Agent Runtime. */
+/** Runs a non-agent node of a run (verification, PR, approval) in place of the Agent Runtime. */
 export type ActionExecutor = {
   /** The side effect this node performs, decided by the Policy Engine before dispatch. */
   action: string;
@@ -28,9 +28,10 @@ export type ActionExecutor = {
   execute(ctx: { run: RunRecord; task: TaskRecord; attempt: number; signal: AbortSignal }): Promise<TaskOutcome>;
 };
 
-/** The run state while a node is in progress (spec §8.4), and the one it leaves when that node succeeds. */
-const NODE_RUN_STATUS: Record<string, RunStatus> = { implement: "executing", verify: "verifying", open_pr: "ready_for_pr" };
-const NODE_DONE_STATUS: Record<string, RunStatus> = { open_pr: "pr_opened" };
+/** Runs created before Flows carry no stage on their tasks. */
+const LEGACY_STAGE: Record<string, RunStatus> = { implement: "executing", verify: "verifying", open_pr: "ready_for_pr" };
+/** Executors of legacy tasks, which had no `uses`. */
+const LEGACY_USES: Record<string, string> = { verify: "verification.run", open_pr: "pr.create" };
 
 /**
  * Scheduler (spec §6.1.2): picks `ready` tasks, asks the Policy Engine, dispatches them to the
@@ -46,6 +47,7 @@ export class Scheduler {
   private readonly config: Config;
   private readonly cancelHook: CancelHook;
   private readonly actions: Map<string, ActionExecutor>;
+  private readonly onSucceeded: (runId: string) => void;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
   /** One per active task; aborting ends its setup or agent whatever stage it is in. */
@@ -62,8 +64,11 @@ export class Scheduler {
     config: Config;
     cancel: CancelHook;
     actions?: Map<string, ActionExecutor>;
+    /** Called after a task succeeded, to advance the run's TaskGraph (the Orchestrator). */
+    onSucceeded?: (runId: string) => void;
   }) {
     this.actions = deps.actions ?? new Map();
+    this.onSucceeded = deps.onSucceeded ?? (() => {});
     this.store = deps.store;
     this.runtime = deps.runtime;
     this.policy = deps.policy;
@@ -139,18 +144,24 @@ export class Scheduler {
     const run = this.store.getRunRecord(task.run_id);
     if (!run) return;
 
-    const executor = task.type === "agent" ? undefined : this.actions.get(task.node_id);
+    const uses = task.type === "approval" ? "approval" : (task.uses ?? LEGACY_USES[task.node_id]);
+    const executor = task.type === "agent" ? undefined : uses ? this.actions.get(uses) : undefined;
     if (task.type !== "agent" && !executor) {
       this.store.append([taskStatus(run.id, task.id, "ready", "blocked", task.attempt, `no executor for node ${task.node_id}`)]);
       return;
     }
+    const profile = task.type === "agent" ? (PROFILES.get(task.profile) ?? implementer) : undefined;
     const action = executor?.action ?? "task.start";
     const decision = this.policy.decide(scheduler, action, task.id, {
-      autonomyLevel: this.config.autonomy_level,
+      autonomyLevel: run.autonomy_level ?? this.config.autonomy_level,
       budgetRemaining: run.budget - run.cost_total,
+      ...(profile ? { edits: profile.edits } : {}),
     });
-    const nodeStatus = NODE_RUN_STATUS[task.node_id];
-    if (decision.effect === "require_approval" && executor && !this.store.taskApproved(task.id)) {
+    const nodeStatus = task.stage ?? LEGACY_STAGE[task.node_id];
+    const describe = executor
+      ? executor.describe(run, task)
+      : `Run the ${task.profile} agent (${task.adapter}) on this run's worktree${profile?.edits ? ", editing files" : ", read-only"}.`;
+    if (decision.effect === "require_approval" && !this.store.taskApproved(task.id)) {
       const events: NewEvent[] = [
         taskStatus(run.id, task.id, "ready", "waiting_approval", task.attempt, decision.reason),
         {
@@ -158,14 +169,16 @@ export class Scheduler {
           run_id: run.id,
           task_id: task.id,
           actor: scheduler,
-          payload: { approval_id: newId("apr"), action, resource: task.id, reason: decision.reason, summary: executor.describe(run, task) },
+          payload: { approval_id: newId("apr"), action, resource: task.id, reason: decision.reason, summary: describe },
         },
       ];
-      if (nodeStatus && canTransitionRun(run.status, nodeStatus)) events.push(runStatus(run.id, run.status, nodeStatus, "waiting for approval"));
+      // An approval node puts the run in awaiting_approval; a gated side effect keeps the stage it belongs to.
+      const waitStatus = task.type === "approval" ? "awaiting_approval" : nodeStatus;
+      if (waitStatus && canTransitionRun(run.status, waitStatus)) events.push(runStatus(run.id, run.status, waitStatus, "waiting for approval"));
       this.store.append(events);
       return;
     }
-    if (decision.effect === "deny" || (decision.effect === "require_approval" && !executor)) {
+    if (decision.effect === "deny") {
       this.store.append([
         {
           type: "policy.denied",
@@ -185,7 +198,10 @@ export class Scheduler {
     if (canTransitionRun(run.status, to) && run.status !== "paused") events.push(runStatus(run.id, run.status, to, `${task.node_id} dispatched`));
     this.store.append(events);
 
-    const tools = this.policy.taskGrant(run.allow_commands);
+    const tools = this.policy.taskGrant(run.allow_commands, profile?.edits ?? true);
+    const sandboxSlug = run.flow_definition?.definition.metadata.name;
+    const runSandboxId = sandboxSlug ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id)?.sandbox_id : undefined;
+    const sandboxId = task.sandbox_id ?? runSandboxId;
     const abort = new AbortController();
     this.aborts.set(task.id, abort);
     const execution = executor
@@ -198,18 +214,21 @@ export class Scheduler {
         repoPath: run.repo_path,
         baseCommit: run.base_commit,
         adapter: task.adapter,
-        profile: implementer,
-        instructions: buildInstructions(implementer, run.prompt, tools),
-        ...(run.model ? { model: run.model } : {}),
+        ...(sandboxSlug ? { sandboxSlug } : {}),
+        profile: profile!,
+        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs),
+        ...(run.model && task.adapter === run.adapter ? { model: run.model } : {}),
         tools,
-        setupCommands: run.setup_commands,
+        // Setup prepares the worktree for editing agents; read-only agents only read it.
+        setupCommands: profile!.edits ? run.setup_commands : [],
+        ...(profile!.id === "planner" ? { summaryArtifact: "plan" as const } : {}),
         budget: {
           maxCost: Math.max(run.budget - run.cost_total, 0),
           maxTurns: 0,
           timeoutMs: this.config.scheduler.task_timeout_minutes * 60_000,
         },
         ...(task.resume_token ? { resumeToken: task.resume_token } : {}),
-        ...(task.sandbox_id ? { sandboxId: task.sandbox_id } : {}),
+        ...(sandboxId ? { sandboxId } : {}),
         signal: abort.signal,
       });
     const work = execution
@@ -257,6 +276,7 @@ export class Scheduler {
           cost: outcome.cost,
           duration_ms: outcome.durationMs,
           ...(outcome.error ? { error: outcome.error } : {}),
+          ...(outcome.outputs ? { outputs: outcome.outputs } : {}),
         },
       },
     ];
@@ -267,18 +287,9 @@ export class Scheduler {
       if (!isTerminalRun(run.status)) events.push(runStatus(runId, run.status, "cancelled", "cancelled by user"));
     } else if (outcome.status === "succeeded") {
       events.push(taskStatus(runId, task.id, "running", "succeeded", attempt));
-      // Phase 1 runs are a fixed chain (implement → verify → open_pr); slice 2's Flow engine replaces this.
-      const next = this.store.tasksOfRun(runId).find((t) => t.status === "pending");
-      if (!isTerminalRun(run.status)) {
-        let from = run.status;
-        const reached = NODE_DONE_STATUS[task.node_id];
-        if (reached && canTransitionRun(from, reached)) {
-          events.push(runStatus(runId, from, reached, `${task.node_id} succeeded`));
-          from = reached;
-        }
-        if (next) events.push(taskStatus(runId, next.id, "pending", "ready", 0, `${task.node_id} succeeded`));
-        else events.push(runStatus(runId, from, "done", "all tasks succeeded"));
-      }
+      this.store.append(events);
+      this.onSucceeded(runId);
+      return;
     } else {
       const kind = outcome.error?.kind ?? "fatal";
       const error = outcome.error ?? { kind, message: outcome.summary || "task failed" };

@@ -66,6 +66,9 @@ describe("Phase 1 output", () => {
     expect(out).toContain("open a draft PR on acme/widgets");
     expect(out).toContain("navarch approve apr_1");
     expect(formatApprovals([])).toBe("no pending approvals");
+    // A plan keeps its lines while it waits for a decision.
+    const plan = formatApprovals([{ ...a, action: "flow.approval", summary: "Review:\n# Plan\n- add hello.txt" }]);
+    expect(plan).toContain("\n  # Plan\n  - add hello.txt");
   });
 
   it("summarises verification and PR events", () => {

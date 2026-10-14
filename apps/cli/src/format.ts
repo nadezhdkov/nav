@@ -15,6 +15,7 @@ export function formatRunDetail(run: RunDetail): string {
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
     `cost     ${usd(run.cost_total)} of ${usd(run.budget)}`,
+    ...(run.flow ? [`flow     ${run.flow}${run.autonomy_level !== null ? ` (autonomy level ${run.autonomy_level})` : ""}`] : []),
     ...(run.work_item ? [`issue    ${run.work_item.repo}#${run.work_item.number}  ${run.work_item.url}`] : []),
     ...(run.pr_url ? [`pr       ${run.pr_url}`] : []),
     `prompt   ${truncate(oneLine(run.prompt), 200)}`,
@@ -22,7 +23,8 @@ export function formatRunDetail(run: RunDetail): string {
     "tasks:",
   ];
   for (const t of run.tasks) {
-    lines.push(`  ${t.id}  ${t.node_id}  ${t.adapter}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
+    const node = t.iteration > 1 ? `${t.node_id}#${t.iteration}` : t.node_id;
+    lines.push(`  ${t.id}  ${node}  ${t.adapter}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
     if (t.branch) lines.push(`    branch   ${t.branch}`);
     if (t.sandbox_path) lines.push(`    worktree ${t.sandbox_path}`);
     if (t.error) lines.push(`    error    ${truncate(t.error, 300)}`);
@@ -88,6 +90,9 @@ export function formatEvent(e: NavarchEvent): string {
     case "github.pr.opened":
       detail = `${p.draft ? "draft " : ""}${p.url}`;
       break;
+    case "flow.node.skipped":
+      detail = `${p.node_id} skipped: ${p.reason}`;
+      break;
     case "quota.observed":
       detail = `${p.adapter} ${p.window}${p.utilization !== undefined ? ` ${Math.round(Number(p.utilization) * 100)}% used` : ""}${p.exhausted ? " (exhausted)" : ""}${p.resets_at ? `, resets ${p.resets_at}` : ""}`;
       break;
@@ -101,7 +106,9 @@ export function formatApprovals(approvals: ApprovalView[]): string {
   if (!approvals.length) return "no pending approvals";
   const lines: string[] = [];
   for (const a of approvals) {
-    lines.push(`${a.id}  ${a.action}  run ${a.run_id}  (${a.status})`, `  ${oneLine(a.summary)}`, `  why: ${a.reason}`);
+    // Pending approvals show the whole summary (a plan is read before it is approved); decided ones one line.
+    const summary = a.status === "pending" ? a.summary.trim().split("\n").map((l) => `  ${l}`.trimEnd()) : [`  ${truncate(oneLine(a.summary), 200)}`];
+    lines.push(`${a.id}  ${a.action}  run ${a.run_id}  (${a.status})`, ...summary, `  why: ${a.reason}`);
     if (a.status === "pending") lines.push(`  decide: navarch approve ${a.id} | navarch reject ${a.id} [--reason <text>]`);
     lines.push("");
   }

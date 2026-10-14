@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS runs (
   pr_url TEXT,
   verify TEXT NOT NULL DEFAULT '[]',
   protected_paths TEXT NOT NULL DEFAULT '[]',
+  flow TEXT,
+  autonomy_level INTEGER,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   ended_at TEXT
@@ -61,6 +63,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   error TEXT,
   not_before TEXT,
   rate_limit_waits INTEGER NOT NULL DEFAULT 0,
+  iteration INTEGER NOT NULL DEFAULT 1,
+  stage TEXT,
+  uses TEXT,
+  inputs TEXT,
+  outputs TEXT,
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_run ON tasks(run_id);
@@ -79,6 +86,12 @@ CREATE TABLE IF NOT EXISTS approvals (
   decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS approvals_task ON approvals(task_id);
+CREATE TABLE IF NOT EXISTS skipped_nodes (
+  run_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  PRIMARY KEY (run_id, node_id)
+);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -96,4 +109,5 @@ DROP TABLE IF EXISTS runs;
 DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS artifacts;
 DROP TABLE IF EXISTS approvals;
+DROP TABLE IF EXISTS skipped_nodes;
 `;

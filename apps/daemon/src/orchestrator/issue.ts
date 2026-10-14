@@ -45,6 +45,11 @@ export function prTitle(item: WorkItem): string {
 export type PrBodyInput = {
   item: WorkItem;
   summary: string;
+  /** The approved plan and the reviewer's verdict, when the Flow has those nodes. */
+  plan?: string;
+  review?: string;
+  /** Implementation attempts the fix loop needed. */
+  iterations?: number;
   changedFiles: string[];
   report: VerificationReport | undefined;
   cost: number;
@@ -56,6 +61,7 @@ export type PrBodyInput = {
 export function prBody(input: PrBodyInput): string {
   const { item, report } = input;
   const out: string[] = [`Fixes #${item.number}`, "", "## Summary", "", input.summary.trim() || "_The agent gave no summary._", ""];
+  if (input.plan?.trim()) out.push("## Plan", "", "<details><summary>Plan the implementation followed</summary>", "", input.plan.trim(), "", "</details>", "");
   out.push("## Changed files", "", ...(input.changedFiles.length ? input.changedFiles.map((f) => `- \`${f}\``) : ["_none_"]), "");
   out.push("## Verification", "");
   if (report?.checks.length) {
@@ -67,8 +73,10 @@ export function prBody(input: PrBodyInput): string {
   } else {
     out.push("_No verify commands are configured (`.navarch/project.yaml`)._");
   }
+  if (input.iterations && input.iterations > 1) out.push("", `Verification passed after ${input.iterations} implementation attempts.`);
   out.push("");
-  const red = report?.warnings ?? ["unverified: no verification report"];
+  if (input.review?.trim()) out.push("## Review", "", input.review.trim(), "");
+  const red = [...(report?.warnings ?? ["unverified: no verification report"]), ...(input.review === undefined ? ["not reviewed by an agent"] : [])];
   if (red.length) out.push("## 🔴 Needs human attention", "", ...red.map((w) => `- ${w}`), "");
   const models = input.models.length ? input.models.join(", ") : "unknown";
   out.push("## Run", "", `- Run: \`${input.runId}\``, `- Cost: $${input.cost.toFixed(2)} · Models: ${models}`, "");

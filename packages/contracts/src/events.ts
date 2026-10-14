@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { FlowDefinition } from "./flow.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
@@ -77,6 +78,10 @@ export const EventPayloads = {
     /** From `.navarch/project.yaml` at `base_commit`; absent in runs created before verification existed. */
     verify: z.array(VerifyCommand).optional(),
     protected_paths: z.array(z.string()).optional(),
+    /** The Flow this run executes, copied whole so a later edit of the YAML cannot change a running run. Absent before Flows. */
+    flow: z.object({ definition: FlowDefinition, params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])) }).optional(),
+    /** Spec §11: from `.navarch/project.yaml`, else the daemon's configuration. Absent before per-run levels. */
+    autonomy_level: z.number().int().min(0).max(4).optional(),
   }),
   "run.status_changed": z.object({ from: RunStatus, to: RunStatus, reason: z.string().optional() }),
   "task.created": z.object({
@@ -85,6 +90,14 @@ export const EventPayloads = {
     profile: z.string(),
     adapter: z.string(),
     max_attempts: z.number().int().positive(),
+    /** 1 for the first pass; loop nodes create one task per iteration. */
+    iteration: z.number().int().positive().optional(),
+    /** The run state while this task is in progress (spec §8.4). */
+    stage: RunStatus.optional(),
+    /** For action and github nodes: the operation, e.g. `verification.run`, `pr.create`. */
+    uses: z.string().optional(),
+    /** Inputs resolved when the task was created, rendered as text for the agent's prompt. */
+    inputs: z.record(z.string(), z.string()).optional(),
   }),
   "task.status_changed": z.object({
     from: TaskStatus,
@@ -107,6 +120,8 @@ export const EventPayloads = {
     cost: z.number().nonnegative(),
     duration_ms: z.number().int().nonnegative(),
     error: TaskError.optional(),
+    /** What later nodes can read as `nodes.<id>.outputs` (an agent's `summary`, a verification's `passed`, …). */
+    outputs: z.record(z.string(), z.unknown()).optional(),
   }),
   "sandbox.created": z.object({
     sandbox_id: z.string(),
@@ -160,6 +175,8 @@ export const EventPayloads = {
     decision: z.enum(["approved", "rejected"]),
     reason: z.string().optional(),
   }),
+  /** A node whose `when` was false; the flow continues with the next one. */
+  "flow.node.skipped": z.object({ node_id: z.string(), reason: z.string() }),
   "policy.denied": z.object({
     action: z.string(),
     resource: z.string(),

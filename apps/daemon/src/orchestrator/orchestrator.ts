@@ -1,5 +1,8 @@
-import { resolve } from "node:path";
+import { readdirSync, readFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
+  canTransitionRun,
   isTerminalRun,
   isTerminalTask,
   newId,
@@ -7,19 +10,35 @@ import {
   type ApprovalView,
   type CreateRunRequest,
   type TaskError,
+  type FlowDefinition,
   type WorkItem,
   type NewEvent,
   type RunStatus,
   type RunView,
   type TaskStatus,
 } from "@navarch/contracts";
+import { next, parseFlow, renderInputs, renderValue, resolveParams, type TaskState } from "@navarch/flow-engine";
 import { resolveHead, resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
 import { loadProjectConfig } from "../project.ts";
 import { issuePrompt } from "./issue.ts";
-import { implementer } from "./profiles.ts";
+import { implementer, PROFILES } from "./profiles.ts";
+
+/** The repository's built-in Flows (spec §13 `flows/`). */
+export const FLOWS_DIR = fileURLToPath(new URL("../../../../flows/", import.meta.url));
+
+/** Loads every `*.yaml` Flow of a directory; an invalid one stops the daemon from starting. */
+export function loadFlows(dir: string = FLOWS_DIR): Map<string, FlowDefinition> {
+  const flows = new Map<string, FlowDefinition>();
+  for (const file of readdirSync(dir).filter((f) => f.endsWith(".yaml")).sort()) {
+    const flow = parseFlow(readFileSync(join(dir, file), "utf8"), `flows/${file}`);
+    if (flows.has(flow.metadata.name)) throw new Error(`flows/${file}: a flow named ${flow.metadata.name} already exists`);
+    flows.set(flow.metadata.name, flow);
+  }
+  return flows;
+}
 
 export class OrchestratorError extends Error {
   readonly code: string;
@@ -33,9 +52,9 @@ export class OrchestratorError extends Error {
 const system = (component: string): Actor => ({ kind: "system", component });
 
 /**
- * Orchestrator (spec §6.1.1). There is no Flow engine yet: a run is a fixed chain of nodes,
- * `implement` (agent) → `verify` (action) → `open_pr` (github, issue runs only), mirroring the
- * `fix-issue` Flow of spec §9.4. Status changes are always written as events.
+ * Orchestrator (spec §6.1.1): turns a request into a run of a Flow and advances its TaskGraph.
+ * Tasks are created as their nodes become due (so a loop can add iterations); the Flow engine
+ * decides what is next from the tasks recorded so far. Status changes are always events.
  */
 export class Orchestrator {
   private readonly store: EventStore;
@@ -43,13 +62,26 @@ export class Orchestrator {
   private readonly adapters: string[];
   private readonly onReady: () => void;
   private readonly github: GitHubIntegration | undefined;
+  private readonly flows: Map<string, FlowDefinition>;
 
-  constructor(store: EventStore, config: Config, adapters: string[], onReady: () => void, github?: GitHubIntegration) {
+  constructor(
+    store: EventStore,
+    config: Config,
+    adapters: string[],
+    onReady: () => void,
+    github?: GitHubIntegration,
+    flows: Map<string, FlowDefinition> = loadFlows(),
+  ) {
     this.store = store;
     this.config = config;
     this.adapters = adapters;
     this.onReady = onReady;
     this.github = github;
+    this.flows = flows;
+  }
+
+  flowNames(): string[] {
+    return [...this.flows.keys()];
   }
 
   async startRun(req: CreateRunRequest, actor: Actor): Promise<RunView> {
@@ -89,19 +121,13 @@ export class Orchestrator {
     const prompt = workItem ? issuePrompt(workItem, req.prompt) : req.prompt;
     if (!prompt) throw new OrchestratorError("invalid_request", "a run needs a prompt or an issue");
 
+    const flowName = req.flow ?? (workItem ? "fix-issue" : "task");
+    const flow = this.flows.get(flowName);
+    if (!flow) throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
+    const usesGitHub = flow.nodes.some((n) => n.type === "github");
+    if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
+
     const runId = newId("run");
-    const taskId = newId("task");
-    const nodes: { id: string; type: string; profile: string; adapter: string }[] = [
-      { id: "verify", type: "action", profile: "verifier", adapter: "runner" },
-      ...(workItem ? [{ id: "open_pr", type: "github", profile: "github", adapter: "github" }] : []),
-    ];
-    const followers: NewEvent[] = nodes.map((node) => ({
-      type: "task.created",
-      run_id: runId,
-      task_id: newId("task"),
-      actor: system("orchestrator"),
-      payload: { node_id: node.id, type: node.type, profile: node.profile, adapter: node.adapter, max_attempts: this.config.scheduler.max_attempts },
-    }));
     this.store.append([
       {
         type: "run.created",
@@ -121,27 +147,115 @@ export class Orchestrator {
           ...(workItem ? { work_item: { source: workItem.source, repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
           verify: project.verify,
           protected_paths: project.protected_paths,
+          flow: { definition: flow, params: resolveParams(flow) },
+          autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
         },
       },
       ...(workItem ? [{ type: "workitem.received", run_id: runId, task_id: null, actor: system("github"), payload: workItem } as NewEvent] : []),
-      {
-        type: "task.created",
-        run_id: runId,
-        task_id: taskId,
-        actor: system("orchestrator"),
-        payload: {
-          node_id: "implement",
-          type: "agent",
-          profile: implementer.id,
-          adapter,
-          max_attempts: this.config.scheduler.max_attempts,
-        },
-      },
-      ...followers,
-      taskStatus(runId, taskId, "pending", "ready", 0, "dependencies satisfied"),
     ]);
+    this.advance(runId);
     this.onReady();
     return this.store.getRun(runId)!;
+  }
+
+  /**
+   * Moves a run's TaskGraph forward after a task succeeded (or a run started): creates the next
+   * node's task, records skipped nodes, or ends the run. Runs created before Flows keep their
+   * fixed chain of pre-created tasks.
+   */
+  advance(runId: string): void {
+    for (let guard = 0; guard < 100; guard++) {
+      const run = this.store.getRunRecord(runId);
+      if (!run || isTerminalRun(run.status) || run.status === "paused") return;
+      const tasks = this.store.taskRecordsOfRun(runId);
+      if (!run.flow_definition) return this.advanceLegacy(run.id, run.status, tasks);
+
+      const step = next(run.flow_definition.definition, {
+        params: run.flow_definition.params,
+        project: { autonomy_level: run.autonomy_level ?? this.config.autonomy_level },
+        tasks: tasks.map((t): TaskState => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })),
+        skipped: this.store.skippedNodes(runId),
+      });
+      switch (step.kind) {
+        case "wait":
+          return;
+        case "skip":
+          this.store.append([{ type: "flow.node.skipped", run_id: runId, task_id: null, actor: system("orchestrator"), payload: { node_id: step.nodeId, reason: step.reason } }]);
+          continue;
+        case "fail": {
+          const verify = tasks.filter((t) => t.uses === "verification.run").at(-1)?.outputs?.blocking_failures;
+          const detail = Array.isArray(verify) && verify.length ? `; last failures: ${verify.join("; ")}` : "";
+          this.store.append([runStatus(runId, run.status, "failed", step.reason + detail)]);
+          return;
+        }
+        case "done": {
+          const events: NewEvent[] = [];
+          let from = run.status;
+          if (step.prOpened && from !== "pr_opened") {
+            events.push(runStatus(runId, from, "pr_opened", "draft PR opened"));
+            from = "pr_opened";
+          }
+          events.push(runStatus(runId, from, "done", "all nodes finished"));
+          this.store.append(events);
+          return;
+        }
+        case "start": {
+          const { node, iteration, stage } = step.start;
+          const taskId = newId("task");
+          const agent = node.type === "agent";
+          const profile = agent ? node.profile : node.type;
+          if (agent && !PROFILES.has(node.profile)) {
+            this.store.append([runStatus(runId, run.status, "failed", `flow node ${node.id}: unknown profile ${node.profile}`)]);
+            return;
+          }
+          const adapter = agent ? (node.adapter ?? run.adapter) : node.type === "github" ? "github" : node.type === "approval" ? "human" : "runner";
+          const inputs = node.type === "approval"
+            ? Object.fromEntries(step.start.show.flatMap(({ path, value }) => (renderValue(value) ? [[path, renderValue(value)!]] : [])))
+            : renderInputs(step.start.inputs);
+          this.store.append([
+            {
+              type: "task.created",
+              run_id: runId,
+              task_id: taskId,
+              actor: system("orchestrator"),
+              payload: {
+                node_id: node.id,
+                type: node.type,
+                profile,
+                adapter,
+                max_attempts: this.config.scheduler.max_attempts,
+                iteration,
+                stage,
+                ...(node.type === "action" || node.type === "github" ? { uses: node.uses } : {}),
+                ...(Object.keys(inputs).length ? { inputs } : {}),
+              },
+            },
+            taskStatus(runId, taskId, "pending", "ready", 0, iteration > 1 ? `iteration ${iteration}` : "node due"),
+          ]);
+          this.onReady();
+          return;
+        }
+      }
+    }
+  }
+
+  /** Runs created before Flows: their tasks were created up front and run in order. */
+  private advanceLegacy(runId: string, status: RunStatus, tasks: { id: string; node_id: string; status: TaskStatus }[]): void {
+    const pending = tasks.find((t) => t.status === "pending");
+    if (pending) {
+      this.store.append([taskStatus(runId, pending.id, "pending", "ready", 0, "previous task succeeded")]);
+      this.onReady();
+      return;
+    }
+    if (tasks.some((t) => !isTerminalTask(t.status))) return;
+    const events: NewEvent[] = [];
+    let from = status;
+    if (tasks.some((t) => t.node_id === "open_pr") && canTransitionRun(from, "pr_opened")) {
+      events.push(runStatus(runId, from, "pr_opened", "open_pr succeeded"));
+      from = "pr_opened";
+    }
+    events.push(runStatus(runId, from, "done", "all tasks succeeded"));
+    this.store.append(events);
   }
 
   /** Cancels pending work directly; running tasks are stopped by the scheduler, which records the result. */
@@ -234,6 +348,8 @@ export class Orchestrator {
       }
       this.store.append(events);
     }
+    // A run whose task finished just before a stop may not have advanced yet.
+    for (const run of this.store.listRuns(1000)) if (!isTerminalRun(run.status)) this.advance(run.id);
     if (stale.length) this.onReady();
     return stale.length;
   }
