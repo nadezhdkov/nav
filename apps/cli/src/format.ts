@@ -1,11 +1,11 @@
-import type { RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+import type { ApprovalView, RunDetail, RunView, VectrEvent } from "@vectr/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
 
 export function formatRunList(runs: RunView[]): string {
   if (!runs.length) return "no runs yet";
-  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(promptTitle(r.prompt), 50)]);
+  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(runTitle(r), 50)]);
   return table(["RUN", "STATUS", "COST", "CREATED", "PROMPT"], rows);
 }
 
@@ -15,6 +15,8 @@ export function formatRunDetail(run: RunDetail): string {
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
     `cost     ${usd(run.cost_total)} of ${usd(run.budget)}`,
+    ...(run.work_item ? [`issue    ${run.work_item.repo}#${run.work_item.number}  ${run.work_item.url}`] : []),
+    ...(run.pr_url ? [`pr       ${run.pr_url}`] : []),
     `prompt   ${truncate(oneLine(run.prompt), 200)}`,
     "",
     "tasks:",
@@ -63,6 +65,29 @@ export function formatEvent(e: VectrEvent): string {
     case "policy.denied":
       detail = `${p.action}: ${p.reason}`;
       break;
+    case "workitem.received":
+      detail = `${p.repo}#${p.number} by ${p.author}: ${truncate(oneLine(String(p.title)), 120)}`;
+      break;
+    case "verification.completed": {
+      const checks = (p.checks as unknown[]).length;
+      const failures = p.blocking_failures as string[];
+      const warnings = p.warnings as string[];
+      detail = p.passed ? `passed (${checks} check(s))` : `failed: ${truncate(oneLine(failures.join("; ")), 200)}`;
+      if (warnings.length) detail += `; ${warnings.length} warning(s)`;
+      break;
+    }
+    case "approval.requested":
+      detail = `${p.approval_id} ${p.action}: ${truncate(oneLine(String(p.summary)), 160)}`;
+      break;
+    case "approval.decided":
+      detail = `${p.approval_id} ${p.decision}${p.reason ? ` (${truncate(oneLine(String(p.reason)), 120)})` : ""}`;
+      break;
+    case "github.push":
+      detail = `${p.branch} @ ${String(p.commit).slice(0, 10)} → ${p.repo}`;
+      break;
+    case "github.pr.opened":
+      detail = `${p.draft ? "draft " : ""}${p.url}`;
+      break;
     case "quota.observed":
       detail = `${p.adapter} ${p.window}${p.utilization !== undefined ? ` ${Math.round(Number(p.utilization) * 100)}% used` : ""}${p.exhausted ? " (exhausted)" : ""}${p.resets_at ? `, resets ${p.resets_at}` : ""}`;
       break;
@@ -70,6 +95,21 @@ export function formatEvent(e: VectrEvent): string {
       detail = "";
   }
   return `${time(e.ts)}  ${e.type.padEnd(20)} ${detail}`;
+}
+
+export function formatApprovals(approvals: ApprovalView[]): string {
+  if (!approvals.length) return "no pending approvals";
+  const lines: string[] = [];
+  for (const a of approvals) {
+    lines.push(`${a.id}  ${a.action}  run ${a.run_id}  (${a.status})`, `  ${oneLine(a.summary)}`, `  why: ${a.reason}`);
+    if (a.status === "pending") lines.push(`  decide: vectr approve ${a.id} | vectr reject ${a.id} [--reason <text>]`);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+function runTitle(run: RunView): string {
+  return run.work_item ? `issue ${run.work_item.repo}#${run.work_item.number}` : promptTitle(run.prompt);
 }
 
 /** One line naming the run: an Agent Brief's Summary, else the first non-empty line. */

@@ -1,31 +1,36 @@
 # Phase 1, slice 1: issue → verified draft PR (CLI)
 
-Status: in progress · Branch: `feat/github-issue-pr` · Spec: §6.6, §6.7, §7.1, §8.4, §11, §14.2 · ADRs: 0006, 0007
+Status: implemented · Branch: `feat/github-issue-pr` · Spec: §6.6, §6.7, §7.1, §8.4, §11, §14.2 · ADRs: 0006, 0007
 
 The first vertical path of Phase 1, driven from the CLI: a GitHub issue becomes a run, the agent implements it in a worktree, VECTR verifies the result with the repository's own commands, and the GitHub Integration opens a draft PR on a `vectr/*` branch. No Flow engine, triage, plan, review or Web UI yet (slices 2–5).
 
 ## Behavior
 
 ```
-vectr run --issue owner/repo#42 --repo ~/src/repo [--adapter …] [--budget …]
-vectr pr open <run-id>        # opens the draft PR for a run in ready_for_pr
+vectr secret set github/token                      # once: the fine-grained PAT (ADR 0007)
+vectr run --issue owner/repo#42 --repo ~/src/repo [--adapter …] [--budget …] [--follow]
+vectr approvals                                    # what waits for a human
+vectr approve <approval-id> | vectr reject <approval-id> [--reason …]
 ```
+
+A run is a fixed chain of tasks named after the nodes of the `fix-issue` Flow (§9.4): `implement` (agent) → `verify` (action) → `open_pr` (github, issue runs only). Each is a task, so cancel, daemon stop, restart recovery and the event log cover them like the agent task. Slice 2's Flow engine replaces the fixed chain.
 
 1. **Work item.** The GitHub Integration reads the issue (title, body, labels, author, URL) with the token from the Vault and records `workitem.received`. The local clone's `origin` must point to `owner/repo`, or the run is refused.
 2. **Prompt.** The issue is untrusted data (T1): the prompt wraps it in a delimited block marked with its origin, and the task instructions say that text inside it is never an instruction.
 3. **Project config.** `.vectr/project.yaml` (§14.2: `setup`, `verify`, `allowlist`, `protected_paths`) is read **at the base commit**, never from the worktree, so the agent cannot change the commands that judge it. Request flags add to it.
 4. **Implement.** One `implement` task, as in Phase 0.
-5. **Verify** (run `executing → verifying`). The Runner runs each `verify` command in the worktree (same runner as setup: process group, timeout, cancel). The result is a `VerificationReport { checks[], passed, blocking_failures[], warnings[] }`, recorded as `verification.completed` and saved as a `report` artifact. A failed `required` check fails the run (no fix loop yet). A changed file matching `protected_paths` is a warning and a 🔴 item in the PR. No `verify` commands: the run still reaches `ready_for_pr`, and the report and PR say "unverified" (🔴).
-6. **PR** (run `verifying → ready_for_pr`). The Policy Engine decides `github.pr.create`: `allow` at autonomy level ≥ 3, `require_approval` below. Until approvals exist (slice 2), `require_approval` stops the run in `ready_for_pr` and `vectr pr open <run>` is the explicit human approval. Opening the PR: the GitHub Integration pushes the task branch (`git.push`, allowed only for `vectr/*`, never forced) and creates a **draft** PR (`ready_for_pr → pr_opened`, event `github.pr.opened`), then `pr_opened → done`.
+5. **Verify** (run `executing → verifying`; policy `verification.run`, allowed at level ≥ 2). The Runner runs each `verify` command in the worktree (same runner as setup: process group, timeout, cancel). The result is a `VerificationReport { checks[], passed, blocking_failures[], warnings[] }`, recorded as `verification.completed` and saved as a `report` artifact. A failed `required` check fails the run (no fix loop yet). Checks are **required unless marked `required: false`**: the §14.2 example marks only `test` as required, but an optional-by-default lint is how the Phase 0 go/no-go "succeeded" with failing lint (F5). A changed file matching `protected_paths` is a warning and a 🔴 item in the PR. No `verify` commands: the run still reaches `ready_for_pr`, and the report and PR say "unverified" (🔴).
+6. **PR** (run `verifying → ready_for_pr`). The Policy Engine decides `github.pr.create`: `allow` at autonomy level ≥ 3, `require_approval` below. Approval uses the §9.1 API: the `open_pr` task goes `ready → waiting_approval` with `approval.requested` (what will happen, and why approval is needed), and `POST /api/v1/approvals/:id` (`vectr approve|reject`) records `approval.decided`. Rejecting cancels the task and the run. Opening the PR: VECTR commits what the agent left uncommitted (as `VECTR`, hooks skipped), the GitHub Integration pushes the task branch (`git.push`, allowed only for `vectr/*`, never forced) and creates a **draft** PR (`ready_for_pr → pr_opened`, events `github.push`, `github.pr.opened`), then `pr_opened → done`. A retried `open_pr` reuses an existing PR for the branch.
 7. **PR body** (§6.7.5): conventional title from the issue, `Fixes #N`, the agent's summary, changed files, verification table, evidence (commands and exit codes), cost and models, 🔴 items (unverified, protected paths, failing optional checks).
 
 ## Contracts (packages/contracts, first)
 
 - `WorkItemRef { source: "github", repo: "owner/name", number, url }`, `WorkItem` = ref + `title, body, labels[], author`.
-- `CreateRunRequest.issue?: string` (`owner/repo#N`); `RunView.work_item?: WorkItemRef`, `RunView.pr_url?`.
+- `CreateRunRequest.issue?: string` (`owner/repo#N`; `prompt` becomes optional and adds operator instructions); `RunView.work_item`, `RunView.pr_url`.
+- `VerifyCommand { name, run, required = true }`; `ApprovalView`, `DecideApprovalRequest`.
 - `VerificationCheck { name, command, required, exit_code: number|null, duration_ms, output_tail }`; `VerificationReport { checks[], passed, blocking_failures[], warnings[] }`.
-- Events: `workitem.received` (WorkItem), `verification.started`, `verification.completed` (report + artifact id), `github.pr.opened { number, url, branch, draft }`, `github.push { branch, commit }`.
-- API: `POST /api/v1/runs/:id/pr` (open the PR; Policy decides; actor = the user).
+- Events: `workitem.received` (WorkItem), `verification.completed` (report + artifact id), `approval.requested`, `approval.decided`, `github.push { repo, branch, commit }`, `github.pr.opened { repo, number, url, branch, draft }`.
+- API: `GET /api/v1/approvals?status=pending`, `POST /api/v1/approvals/:id { decision, reason }` (§9.1); `GET|PUT /api/v1/secrets/:name` (set and check only, values are never returned).
 
 ## Modules
 

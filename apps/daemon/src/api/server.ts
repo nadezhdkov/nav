@@ -11,6 +11,7 @@ import {
   type StreamServerMessage,
   type VectrEvent,
 } from "@vectr/contracts";
+import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
@@ -51,7 +52,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/runs", async (req, reply) => {
     const parsed = CreateRunRequest.safeParse(req.body);
-    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const run = await daemon.orchestrator.startRun(parsed.data, { kind: "user", via: viaOf(req.headers) });
     return reply.code(201).send(run);
   });
@@ -83,7 +84,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/approvals/:id", async (req, reply) => {
     const parsed = DecideApprovalRequest.safeParse(req.body);
-    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const id = (req.params as { id: string }).id;
     return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, { kind: "user", via: viaOf(req.headers) });
   });
