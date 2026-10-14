@@ -12,11 +12,14 @@ const USAGE = `vectr — VECTR command line (Phase 0)
 
 Usage:
   vectr daemon start|stop|status
-  vectr run [--repo <path>] [--budget <usd>] [--allow <cmd>]... [--model <id>] [--follow] <prompt...>
+  vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--follow] <prompt...>
   vectr run list
   vectr run show <run-id>
   vectr logs <run-id> [-f|--follow] [--raw]
   vectr cancel <run-id>
+
+Adapters: claude-code (default), gemini-cli, antigravity, codex, native.
+  native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
 
 Global options:
   --json      machine-readable output
@@ -38,6 +41,7 @@ async function main(argv: string[]): Promise<number> {
       budget: { type: "string" },
       allow: { type: "string", multiple: true },
       model: { type: "string" },
+      adapter: { type: "string", short: "a" },
       follow: { type: "boolean", short: "f", default: false },
       raw: { type: "boolean", default: false },
     },
@@ -66,6 +70,7 @@ async function main(argv: string[]): Promise<number> {
         ...(budget !== undefined ? { budget } : {}),
         ...(values.allow?.length ? { allow_commands: values.allow } : {}),
         ...(values.model ? { model: values.model } : {}),
+        ...(values.adapter ? { adapter: values.adapter } : {}),
       });
       if (json && !values.follow) return print(run, json);
       if (!json) console.log(`run ${run.id} created (${run.status})`);

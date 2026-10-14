@@ -1,3 +1,4 @@
+import { commandAllowed } from "@vectr/adapter-kit";
 import type { Actor, ToolGrant } from "@vectr/contracts";
 
 /**
@@ -65,7 +66,9 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "task.start", effect: "allow", reason: "agent task within budget" },
   {
-    match: (r) => r.action === "cmd.exec" && !commandAllowed(r.context.command ?? "", r.context.allowCommands ?? []),
+    match: (r) =>
+      r.action === "cmd.exec" &&
+      !commandAllowed(r.context.command ?? "", r.context.allowCommands ?? [], ALWAYS_DENIED_COMMANDS),
     effect: "require_approval",
     reason: "command is not in the allowlist",
   },
@@ -88,44 +91,32 @@ export class PolicyEngine {
   }
 
   /**
-   * Tool grant for the Claude Code adapter, in Claude Code permission-rule syntax. Commands
-   * outside the allowlist are not granted; headless runs then deny them instead of prompting.
+   * What an agent task may do, in neutral terms; each adapter translates it to its agent's own
+   * mechanism. Commands outside the allowlist are not granted: headless agents deny them
+   * instead of prompting.
    */
-  claudeCodeGrant(allowCommands: string[]): ToolGrant {
-    const base = ["Read", "Edit", "Write", "MultiEdit", "Glob", "Grep", "LS", "TodoWrite", "NotebookEdit"];
-    const readOnlyGit = ["git status", "git diff *", "git log *", "git show *", "git add *", "git commit *"];
-    const commands = [...readOnlyGit, ...allowCommands].map(toBashRule);
+  taskGrant(allowCommands: string[]): ToolGrant {
     return {
-      allow: [...base, ...commands],
-      deny: [
-        "Bash(git push:*)",
-        "Bash(git remote:*)",
-        "Bash(git config:*)",
-        "Bash(git worktree:*)",
-        "Bash(sudo:*)",
-        "Bash(ssh:*)",
-        "Bash(curl:*)",
-        "Bash(wget:*)",
-        "Read(~/.ssh/**)",
-        "Read(~/.vectr/**)",
-        "Read(~/.aws/**)",
-        "Read(~/.config/gh/**)",
-        "Edit(~/.ssh/**)",
-        "Edit(~/.vectr/**)",
-        "WebFetch",
-        "WebSearch",
-      ],
+      editFiles: true,
+      allowCommands: [...SAFE_GIT, ...allowCommands],
+      denyCommands: ALWAYS_DENIED_COMMANDS,
+      denyPaths: ["~/.ssh", "~/.vectr", "~/.aws", "~/.config/gh", "~/.gnupg"],
+      network: false,
     };
   }
 }
 
-/** `npm test` → `Bash(npm test)`, `npm run *` → `Bash(npm run:*)`. */
-export function toBashRule(command: string): string {
-  const trimmed = command.trim();
-  if (trimmed.endsWith(" *")) return `Bash(${trimmed.slice(0, -2)}:*)`;
-  return `Bash(${trimmed})`;
-}
+const SAFE_GIT = ["git status", "git diff *", "git log *", "git show *", "git add *", "git commit *"];
 
-export function commandAllowed(command: string, allowlist: string[]): boolean {
-  return allowlist.some((pattern) => glob(pattern.trim(), command.trim()));
-}
+/** Command prefixes denied in every task (spec §6.5.3). */
+export const ALWAYS_DENIED_COMMANDS = [
+  "git push",
+  "git remote",
+  "git config",
+  "git worktree",
+  "sudo",
+  "ssh",
+  "curl",
+  "wget",
+];
+

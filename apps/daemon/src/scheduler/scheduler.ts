@@ -116,7 +116,7 @@ export class Scheduler {
         profile: implementer,
         instructions: buildInstructions(implementer, run.prompt),
         ...(run.model ? { model: run.model } : {}),
-        tools: this.policy.claudeCodeGrant(run.allow_commands),
+        tools: this.policy.taskGrant(run.allow_commands),
         budget: {
           maxCost: Math.max(run.budget - run.cost_total, 0),
           maxTurns: 0,

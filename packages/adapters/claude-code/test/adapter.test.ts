@@ -15,7 +15,7 @@ function context(overrides: Partial<TaskContext> = {}): TaskContext {
     profile: { id: "implementer", role: "", instructions: "" },
     instructions: "create hello.txt",
     sandbox: { id: "sbx_1", kind: "worktree", path: dir, branch: "vectr/run_1/implement", baseCommit: "abc" },
-    tools: { allow: ["Read", "Bash(npm test)"], deny: ["Bash(git push:*)"] },
+    tools: { editFiles: true, allowCommands: ["npm test", "npm run *"], denyCommands: ["git push"], denyPaths: ["~/.ssh"], network: false },
     budget: { maxCost: 1.5, maxTurns: 0, timeoutMs: 10_000 },
     ...overrides,
   };
@@ -61,8 +61,9 @@ describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
     expect(call?.cwd).toBe(ctx.sandbox.path);
     expect(call?.prompt).toBe("create hello.txt");
     expect(call?.args).toEqual(expect.arrayContaining(["-p", "--output-format", "stream-json", "--session-id"]));
-    expect(call?.args.join(" ")).toContain("--allowedTools Read Bash(npm test)");
-    expect(call?.args.join(" ")).toContain("--disallowedTools Bash(git push:*)");
+    const argv = call?.args.join(" ") ?? "";
+    expect(argv).toMatch(/--allowedTools Read .*Edit .*Bash\(npm test\) Bash\(npm run:\*\)/);
+    expect(argv).toMatch(/--disallowedTools Bash\(git push:\*\) Read\(~\/.ssh\/\*\*\) Edit\(~\/.ssh\/\*\*\) WebFetch WebSearch/);
     expect(call?.args.join(" ")).toContain("--max-budget-usd 1.50");
 
     const token = events.find((e) => e.kind === "resume_token");

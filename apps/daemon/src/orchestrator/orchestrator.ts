@@ -34,15 +34,25 @@ const system = (component: string): Actor => ({ kind: "system", component });
 export class Orchestrator {
   private readonly store: EventStore;
   private readonly config: Config;
+  private readonly adapters: string[];
   private readonly onReady: () => void;
 
-  constructor(store: EventStore, config: Config, onReady: () => void) {
+  constructor(store: EventStore, config: Config, adapters: string[], onReady: () => void) {
     this.store = store;
     this.config = config;
+    this.adapters = adapters;
     this.onReady = onReady;
   }
 
   async startRun(req: CreateRunRequest, actor: Actor): Promise<RunView> {
+    const adapter = req.adapter ?? this.config.default_adapter;
+    if (!this.adapters.includes(adapter)) {
+      throw new OrchestratorError(
+        "unknown_adapter",
+        `adapter "${adapter}" is not enabled; available: ${this.adapters.join(", ") || "none"}`,
+      );
+    }
+    const model = req.model ?? this.config.adapters[adapter].model;
     let repoPath: string;
     let baseCommit: string;
     try {
@@ -54,8 +64,6 @@ export class Orchestrator {
 
     const runId = newId("run");
     const taskId = newId("task");
-    const adapter = "claude-code";
-    const model = req.model ?? this.config.adapters["claude-code"].model;
     this.store.append([
       {
         type: "run.created",
