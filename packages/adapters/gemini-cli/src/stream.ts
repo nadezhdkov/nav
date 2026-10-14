@@ -1,5 +1,5 @@
-import { toolSummary } from "@vectr/adapter-kit";
-import type { UsageRecord } from "@vectr/contracts";
+import { toolSummary } from "@navarch/adapter-kit";
+import type { UsageRecord } from "@navarch/contracts";
 
 /**
  * Parser for `gemini -p … --output-format stream-json`: one JSON event per line with

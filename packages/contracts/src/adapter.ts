@@ -96,7 +96,7 @@ export type AdapterCapabilities = {
   resumable: boolean;
   /**
    * How the grant's command allowlist is enforced:
-   * - `exact`: every command is checked against the allowlist (rules or VECTR's own tools).
+   * - `exact`: every command is checked against the allowlist (rules or Navarch's own tools).
    * - `sandbox`: commands are not filtered one by one; an OS sandbox confines writes to the
    *   worktree and blocks network instead.
    */

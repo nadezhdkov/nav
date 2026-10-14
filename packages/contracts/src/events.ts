@@ -74,7 +74,7 @@ export const EventPayloads = {
     model: z.string().optional(),
     /** The issue the run works on; absent for runs started from a prompt. */
     work_item: WorkItemRef.optional(),
-    /** From `.vectr/project.yaml` at `base_commit`; absent in runs created before verification existed. */
+    /** From `.navarch/project.yaml` at `base_commit`; absent in runs created before verification existed. */
     verify: z.array(VerifyCommand).optional(),
     protected_paths: z.array(z.string()).optional(),
   }),
@@ -137,7 +137,7 @@ export const EventPayloads = {
   "workitem.received": WorkItem,
   /** The Runner checked a task's worktree with the project's verify commands (spec §6.6). */
   "verification.completed": VerificationReport.extend({ artifact_id: z.string() }),
-  /** The GitHub Integration pushed a run branch. Only `vectr/*` branches, never forced. */
+  /** The GitHub Integration pushed a run branch. Only `navarch/*` branches, never forced. */
   "github.push": z.object({ repo: z.string(), branch: z.string(), commit: z.string() }),
   "github.pr.opened": z.object({
     repo: z.string(),
@@ -184,7 +184,7 @@ export const EventEnvelope = z.object({
   schema_version: z.literal(1),
 });
 
-export type VectrEvent<T extends EventType = EventType> = {
+export type NavarchEvent<T extends EventType = EventType> = {
   id: string;
   seq: number;
   ts: string;

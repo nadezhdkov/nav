@@ -86,7 +86,7 @@ describe("work items", () => {
     const report = { checks: [], passed: true, blocking_failures: [], warnings: ["unverified"], artifact_id: "art_1" };
     expect(parsePayload("verification.completed", report)).toEqual(report);
     expect(() =>
-      parsePayload("github.pr.opened", { repo: "o/r", number: 0, url: "https://github.com/o/r/pull/0", branch: "vectr/x", draft: true }),
+      parsePayload("github.pr.opened", { repo: "o/r", number: 0, url: "https://github.com/o/r/pull/0", branch: "navarch/x", draft: true }),
     ).toThrow();
   });
 });

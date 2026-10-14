@@ -1,12 +1,12 @@
-# VECTR — Plataforma de Engenharia de Software Autônoma
+# Navarch — Plataforma de Engenharia de Software Autônoma
 
 > **Documento de Visão, Produto e Arquitetura**
 > Centro de comando para desenvolvimento com agentes de IA: orquestração visual, integração com GitHub, roteamento de modelos e controle remoto pelo celular.
 
 | Campo | Valor |
 |---|---|
-| Nome do projeto | **VECTR** — *Verified Engineering Coordination for Tasks and Repos* (ver [§19.1](#191-nome-do-produto)) |
-| Versão do documento | 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
+| Versão do documento | 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -54,7 +54,7 @@ Agentes de programação (Claude Code, Codex, Gemini CLI, Aider, etc.) já conse
 
 ### 1.2 Proposta
 
-O VECTR é uma **camada de coordenação local** que roda no computador do desenvolvedor e:
+O Navarch é uma **camada de coordenação local** que roda no computador do desenvolvedor e:
 
 1. Reúne trabalho de várias fontes (GitHub primeiro) em uma central única.
 2. Transforma cada item de trabalho em um **grafo de tarefas** executado por agentes especializados.
@@ -63,7 +63,7 @@ O VECTR é uma **camada de coordenação local** que roda no computador do desen
 5. **Verifica** o resultado (testes, lint, revisão por outro modelo) antes de propor um PR.
 6. Permite **acompanhar e aprovar** tudo pela web local ou pelo celular, de qualquer lugar.
 
-> O VECTR **não substitui** Claude Code ou outros agentes. Ele os **orquestra**, da mesma forma que um CI orquestra compiladores sem substituí-los.
+> O Navarch **não substitui** Claude Code ou outros agentes. Ele os **orquestra**, da mesma forma que um CI orquestra compiladores sem substituí-los.
 
 ### 1.3 Princípios de projeto
 
@@ -163,7 +163,7 @@ Esta seção registra o que foi ajustado em relação ao esboço inicial e por q
 
 | Termo | Definição |
 |---|---|
-| **Workspace** | Conjunto de projetos gerenciados por uma instalação do VECTR. |
+| **Workspace** | Conjunto de projetos gerenciados por uma instalação do Navarch. |
 | **Project** | Agrupamento lógico de um ou mais repositórios com políticas próprias. |
 | **Repository** | Repositório git local, opcionalmente vinculado a um repositório remoto. |
 | **WorkSource** | Fonte de itens de trabalho (GitHub Issues, PRs, falhas de CI, arquivo local, agendamento). |
@@ -173,7 +173,7 @@ Esta seção registra o que foi ajustado em relação ao esboço inicial e por q
 | **TaskGraph** | Grafo dirigido de **Tasks** instanciado a partir de um Flow. Pode crescer dinamicamente (o Planner adiciona nós). |
 | **Task** | Nó executável do TaskGraph (ex.: "implementar", "rodar testes"). |
 | **Agent Profile** | Configuração reutilizável de um agente: papel, instruções, ferramentas permitidas, requisitos de modelo. |
-| **Agent Adapter** | Plugin que sabe executar um tipo de agente (Claude Code, Codex, agente nativo do VECTR, etc.). |
+| **Agent Adapter** | Plugin que sabe executar um tipo de agente (Claude Code, Codex, agente nativo do Navarch, etc.). |
 | **Model Catalog** | Registro de modelos disponíveis com capacidades, custos, limites e métricas observadas. |
 | **Routing Policy** | Regras que mapeiam requisitos de uma Task para um modelo do catálogo. |
 | **Sandbox** | Ambiente isolado onde uma Task executa (worktree + opcionalmente container). |
@@ -193,7 +193,7 @@ Esta seção registra o que foi ajustado em relação ao esboço inicial e por q
 flowchart TB
     subgraph Clients["Superfícies de controle"]
         WEB["Web UI<br/>Flow Studio / Runs / Inbox"]
-        CLI["CLI<br/>vectr"]
+        CLI["CLI<br/>navarch"]
         MOB["Mobile PWA"]
     end
 
@@ -202,7 +202,7 @@ flowchart TB
         PUSH["Push Service<br/>Web Push / ntfy"]
     end
 
-    subgraph Core["VECTR Core (daemon local)"]
+    subgraph Core["Navarch Core (daemon local)"]
         API["API Gateway<br/>REST + WebSocket"]
         ORCH["Orchestrator<br/>instancia Flows em TaskGraphs"]
         SCHED["Scheduler<br/>fila, concorrência, retries"]
@@ -283,7 +283,7 @@ flowchart TB
 
 ### 5.4 Modelo de execução
 
-- O Core é um **daemon local** (`vectrd`) iniciado pelo usuário ou pelo sistema.
+- O Core é um **daemon local** (`navarchd`) iniciado pelo usuário ou pelo sistema.
 - O estado é um **event store** (SQLite em modo WAL) + **projeções** materializadas para consulta rápida.
 - Execuções longas sobrevivem a reinícios: ao subir, o Core reprocessa eventos e retoma Tasks em estado `running` como `interrupted → retry` conforme política.
 
@@ -291,7 +291,7 @@ flowchart TB
 
 ## 6. Módulos em detalhe
 
-### 6.1 VECTR Core
+### 6.1 Navarch Core
 
 #### 6.1.1 Orchestrator
 
@@ -333,7 +333,7 @@ flowchart TB
 
 | Tipo | Função | Exemplo |
 |---|---|---|
-| `trigger` | Início do fluxo; recebe o WorkItem. | Issue rotulada `vectr:go` |
+| `trigger` | Início do fluxo; recebe o WorkItem. | Issue rotulada `navarch:go` |
 | `agent` | Executa um Agent Profile. | Implementer, Reviewer |
 | `action` | Operação determinística sem LLM. | Criar worktree, rodar comando, salvar artefato |
 | `llm` | Chamada simples de modelo sem ferramentas. | Melhorar prompt, classificar |
@@ -383,7 +383,7 @@ flowchart TB
 
 | Adaptador | Como executa | Observações |
 |---|---|---|
-| `native` | Loop de agente do próprio VECTR com ferramentas via MCP. | Funciona com qualquer modelo que suporte tool use. Base para modelos via API, inclusive locais. |
+| `native` | Loop de agente do próprio Navarch com ferramentas via MCP. | Funciona com qualquer modelo que suporte tool use. Base para modelos via API, inclusive locais. |
 | `claude-code` | Claude Agent SDK ou subprocesso headless do Claude Code. | Respeitar os termos de uso da forma de autenticação escolhida (API key vs. assinatura). |
 | `codex` | CLI em modo não interativo. | Idem. |
 | `gemini-cli`, `aider`, `opencode`, ... | Subprocesso com contrato de E/S. | Adicionados conforme demanda. |
@@ -403,9 +403,9 @@ flowchart TB
 | `reviewer` | Revisar diff contra plano e convenções. | leitura, diff | **provedor diferente** do implementer |
 | `ci-fixer` | Diagnosticar e corrigir falhas de CI. | logs de CI, edição, comandos | `tier: standard` → `expert` em retry |
 | `judge` | Comparar implementações concorrentes. | leitura de diffs e relatórios | `tier: expert` |
-| `spec-writer` | Gerar/atualizar especificações rastreáveis. | leitura, escrita em `.vectr/specs/` | `tier: standard` |
+| `spec-writer` | Gerar/atualizar especificações rastreáveis. | leitura, escrita em `.navarch/specs/` | `tier: standard` |
 
-**Regras de trabalho dos perfis (Fase 1).** As instruções dos perfis seguem as mesmas regras das skills do próprio repositório do VECTR (`.claude/skills/`, adaptadas de mattpocock/skills, MIT):
+**Regras de trabalho dos perfis (Fase 1).** As instruções dos perfis seguem as mesmas regras das skills do próprio repositório do Navarch (`.claude/skills/`, adaptadas de mattpocock/skills, MIT):
 
 - `planner` entrega cada subtarefa como um **Agent Brief** (skill `agent-brief`): categoria, comportamento atual e desejado, interfaces-chave, critérios de aceite testáveis, fora de escopo e evidências 🟢/🟡/🔴; sem caminhos de arquivo nem números de linha, que envelhecem; o pedido externo é reescrito, nunca copiado como instrução (T1).
 - `implementer` e `tester` trabalham em fatias verticais vermelho → verde (skill `tdd`): testes em interfaces públicas combinadas no plano, dublês só nas fronteiras do sistema, nada de testes tautológicos.
@@ -452,7 +452,7 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 
 #### 6.4.3 Implementação
 
-- **Opção A (recomendada para começar):** usar um gateway existente (ex.: LiteLLM como sidecar, ou OpenRouter como provedor agregado) para unificar APIs, e manter a **política de roteamento** dentro do VECTR.
+- **Opção A (recomendada para começar):** usar um gateway existente (ex.: LiteLLM como sidecar, ou OpenRouter como provedor agregado) para unificar APIs, e manter a **política de roteamento** dentro do Navarch.
 - **Opção B:** cliente próprio por provedor. Mais controle, mais manutenção.
 - Modelos locais via **Ollama** ou servidores compatíveis com a API OpenAI.
 
@@ -462,13 +462,13 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 
 | Nível | Mecanismo | Uso |
 |---|---|---|
-| **L1 — Worktree** | `git worktree` dedicado por Task/ramo, em diretório do VECTR. | Repositórios próprios e confiáveis. Padrão. |
+| **L1 — Worktree** | `git worktree` dedicado por Task/ramo, em diretório do Navarch. | Repositórios próprios e confiáveis. Padrão. |
 | **L2 — Container** | Docker/Podman com a worktree montada, rede restrita, usuário não-root. | Rodar testes, dependências de terceiros. |
 | **L3 — Container endurecido** | L2 + runtime com isolamento extra (ex.: gVisor), sem rede ou rede só para registries permitidos. | Código de PRs de terceiros, repositórios desconhecidos. |
 
 #### 6.5.2 Gestão de worktrees
 
-- Convenção de nome: `vectr/<run-id>/<task-slug>` para branches e `~/.vectr/worktrees/<repo>/<run-id>-<task>` para diretórios.
+- Convenção de nome: `navarch/<run-id>/<task-slug>` para branches e `~/.navarch/worktrees/<repo>/<run-id>-<task>` para diretórios.
 - Ramos paralelos partem do mesmo commit base registrado na Run.
 - Ao fim: worktree mantida até a Run ser encerrada (para inspeção), depois removida por política de limpeza.
 - **Integração de ramos paralelos:** quando subtarefas paralelas modificam o mesmo repositório, o Orchestrator executa um nó `integrate` que faz merge sequencial e, em conflito, aciona o `implementer` com o conflito como entrada.
@@ -501,7 +501,7 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 |---|---|
 | Somente leitura | Metadata, Contents (read), Issues (read), Pull requests (read), Checks (read), Actions (read) |
 | Comentários | + Issues (write), Pull requests (write) — apenas comentar/rotular |
-| PRs | + Contents (write) para branches `vectr/*` |
+| PRs | + Contents (write) para branches `navarch/*` |
 | Auto-merge (opcional) | + Pull requests (write) para merge; concedida somente se o usuário habilitar [§11.1](#111-auto-merge-opcional) |
 
 #### 6.7.3 Recebimento de eventos
@@ -515,9 +515,9 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 |---|---|
 | **Issues** | Triagem (tipo, área, complexidade 1–5), detecção de duplicatas, agrupamento de relacionadas, plano sugerido, comentário opcional. |
 | **Pull requests** | Resumo do diff, revisão assistida, detecção de conflitos, sugestão de correção, acompanhamento de checks. |
-| **CI** | Ingestão de logs de falha, diagnóstico, PR de correção ou commit em branch `vectr/*`. |
-| **Branches** | Criação apenas com prefixo `vectr/`. Nunca escreve em branches de outros. |
-| **Comandos por comentário** | `/vectr plan`, `/vectr implement`, `/vectr review` — **somente** de usuários autorizados na configuração. |
+| **CI** | Ingestão de logs de falha, diagnóstico, PR de correção ou commit em branch `navarch/*`. |
+| **Branches** | Criação apenas com prefixo `navarch/`. Nunca escreve em branches de outros. |
+| **Comandos por comentário** | `/navarch plan`, `/navarch implement`, `/navarch review` — **somente** de usuários autorizados na configuração. |
 
 #### 6.7.5 Formato do PR gerado
 
@@ -531,24 +531,24 @@ O Knowledge Engine responde a duas perguntas: **"o que este sistema faz e quais 
 
 #### 6.8.1 Especificações rastreáveis (inspirado no Reversa)
 
-- Especificações vivem em `.vectr/specs/` no repositório (ou fora dele, se o usuário preferir não versionar).
+- Especificações vivem em `.navarch/specs/` no repositório (ou fora dele, se o usuário preferir não versionar).
 - Cada afirmação marcada com **nível de confiança**:
   - 🟢 **Confirmado** — extraído do código, com arquivo e linha.
   - 🟡 **Inferido** — dedução a partir de padrões; pode estar errado.
   - 🔴 **Lacuna** — não determinável pelo código; requer validação humana.
 - Matrizes de rastreabilidade: `código ↔ spec`, `spec ↔ teste`, `bug ↔ spec`.
 - **Adendos pós-entrega**: após um PR mesclado, um nó `spec-sync` gera um adendo descrevendo o que mudou, sem reescrever a spec original até a próxima extração completa.
-- **Regra de escrita restrita**: agentes de especificação só escrevem em `.vectr/specs/`.
+- **Regra de escrita restrita**: agentes de especificação só escrevem em `.navarch/specs/`.
 
 #### 6.8.2 Compilação de contexto
 
 - Em vez de enviar arquivos inteiros, o Knowledge Engine **compila** um pacote de contexto por Task: trechos relevantes, assinaturas, regras de negócio aplicáveis, decisões arquiteturais e convenções.
 - Fontes: índice de símbolos (tree-sitter), grafo de dependências, specs, `AGENTS.md`/`CLAUDE.md` do repositório, histórico de PRs.
-- **Oportunidade de integração com o SCA (Semantic Context Architecture):** o compilador de contexto do SCA é candidato natural a implementar esta parte, e o VECTR serviria como mais um ambiente de dogfooding com medição direta de redução de tokens por Task.
+- **Oportunidade de integração com o SCA (Semantic Context Architecture):** o compilador de contexto do SCA é candidato natural a implementar esta parte, e o Navarch serviria como mais um ambiente de dogfooding com medição direta de redução de tokens por Task.
 
 #### 6.8.3 Memória do projeto
 
-- Decisões aprovadas pelo usuário durante Runs ("neste repo, usar Pest em vez de PHPUnit") viram **regras do projeto** (`.vectr/principles.md`), aplicadas nas próximas execuções.
+- Decisões aprovadas pelo usuário durante Runs ("neste repo, usar Pest em vez de PHPUnit") viram **regras do projeto** (`.navarch/principles.md`), aplicadas nas próximas execuções.
 - Regras só entram com confirmação explícita do usuário.
 
 ### 6.9 Explorer / Reverse Engineering
@@ -580,7 +580,7 @@ Flow `reverse-spec`, com etapas inspiradas nos papéis do Reversa:
 #### 6.9.3 Engenharia reversa de artefatos (integração com REA)
 
 - O REA é um servidor MCP para análise de binários nativos, apps JavaScript/Electron, assemblies .NET, APKs, sites e capturas de rede, retornando achados com evidências e limitações.
-- No VECTR, ele entra como **ferramenta opcional** do toolkit do Explorer, disponível para o perfil `explorer` em Flows como `feature-study` ("entender como o recurso X funciona no app Y e propor implementação equivalente no meu projeto").
+- No Navarch, ele entra como **ferramenta opcional** do toolkit do Explorer, disponível para o perfil `explorer` em Flows como `feature-study` ("entender como o recurso X funciona no app Y e propor implementação equivalente no meu projeto").
 - Executa sempre em **sandbox L2/L3**.
 - **Aviso legal obrigatório** na UI ao ativar: uso somente em alvos que o usuário tem autorização para analisar, respeitando leis e licenças aplicáveis.
 
@@ -603,7 +603,7 @@ decide(actor, action, resource, context) -> allow | deny | require_approval(reas
 
 ```yaml
 policies:
-  - match: { action: git.push, branch: "vectr/*" }
+  - match: { action: git.push, branch: "navarch/*" }
     effect: allow
   - match: { action: git.push }
     effect: deny
@@ -636,22 +636,22 @@ policies:
 
 #### 6.12.1 Princípio
 
-O trabalho roda no PC. O celular é **controle remoto e painel**. Nenhuma porta do VECTR é exposta diretamente à internet.
+O trabalho roda no PC. O celular é **controle remoto e painel**. Nenhuma porta do Navarch é exposta diretamente à internet.
 
 #### 6.12.2 Topologias suportadas
 
 ```mermaid
 flowchart LR
     subgraph A["Opção A — Tailscale (padrão)"]
-        P1["Celular"] -- "tailnet (WireGuard)" --> N1["vectrd no PC"]
+        P1["Celular"] -- "tailnet (WireGuard)" --> N1["navarchd no PC"]
     end
     subgraph B["Opção B — Relay (opcional)"]
         P2["Celular"] -- "HTTPS" --> R["Relay"]
-        N2["vectrd no PC"] -- "conexão de saída persistente" --> R
+        N2["navarchd no PC"] -- "conexão de saída persistente" --> R
     end
 ```
 
-- **Opção A — Tailscale:** mais simples e segura para uso pessoal. O PWA é servido pelo próprio `vectrd` no endereço da tailnet.
+- **Opção A — Tailscale:** mais simples e segura para uso pessoal. O PWA é servido pelo próprio `navarchd` no endereço da tailnet.
 - **Opção B — Relay:** o PC mantém uma conexão **de saída** com um relay (self-hosted ou serviço futuro). O relay apenas encaminha mensagens **cifradas de ponta a ponta** entre celular e PC; não vê conteúdo.
 
 #### 6.12.3 Autenticação
@@ -686,7 +686,7 @@ flowchart LR
 
 Telas detalhadas em [§15](#15-interface-telas-e-interações). Requisitos gerais:
 
-- SPA servida pelo `vectrd`.
+- SPA servida pelo `navarchd`.
 - Atualização em tempo real por WebSocket (assinatura por Run, por projeto, global).
 - Tema escuro como padrão, seguindo a linguagem visual das referências (navegação lateral, canvas central, painel de propriedades, biblioteca de nós).
 - Atalhos de teclado e paleta de comandos.
@@ -695,21 +695,21 @@ Telas detalhadas em [§15](#15-interface-telas-e-interações). Requisitos gerai
 ### 6.14 CLI
 
 ```bash
-vectr init                          # cria ~/.vectr e configuração inicial
-vectr daemon start|stop|status
-vectr project add ./meu-repo --github owner/repo
-vectr sync                          # sincroniza WorkSources
-vectr inbox                         # itens de trabalho triados
-vectr run <flow> --issue 123        # inicia uma Run
-vectr run list | show <id> | logs <id> -f
-vectr approve <approval-id> [--reject --reason "..."]
-vectr pause|resume|cancel <run-id>
-vectr flow validate flows/fix-issue.yaml
-vectr flow publish flows/fix-issue.yaml
-vectr models list | test <model-id>
-vectr budget show | set --project x --daily 5.00
-vectr devices pair | list | revoke <id>
-vectr doctor                        # diagnóstico de ambiente
+navarch init                          # cria ~/.navarch e configuração inicial
+navarch daemon start|stop|status
+navarch project add ./meu-repo --github owner/repo
+navarch sync                          # sincroniza WorkSources
+navarch inbox                         # itens de trabalho triados
+navarch run <flow> --issue 123        # inicia uma Run
+navarch run list | show <id> | logs <id> -f
+navarch approve <approval-id> [--reject --reason "..."]
+navarch pause|resume|cancel <run-id>
+navarch flow validate flows/fix-issue.yaml
+navarch flow publish flows/fix-issue.yaml
+navarch models list | test <model-id>
+navarch budget show | set --project x --daily 5.00
+navarch devices pair | list | revoke <id>
+navarch doctor                        # diagnóstico de ambiente
 ```
 
 - Saída humana por padrão e `--json` para scripts.
@@ -751,7 +751,7 @@ sequenceDiagram
     P-->>C: require_approval
     C->>U: notificação "Aprovar plano"
     U-->>C: aprovado
-    C->>R: criar worktree vectr/run-42/impl
+    C->>R: criar worktree navarch/run-42/impl
     C->>RT: Task implement
     RT->>R: editar arquivos / rodar comandos permitidos
     R-->>C: diff + logs
@@ -799,7 +799,7 @@ flowchart LR
 1. `check_run` com falha em PR aberto.
 2. `ci-fixer` recebe logs e diff do PR.
 3. Classifica: falha do código, teste instável (flaky), infraestrutura.
-4. Se código: corrige em branch `vectr/ci-fix/<pr>` e abre PR para o branch do PR original (ou comenta com o patch, conforme autonomia).
+4. Se código: corrige em branch `navarch/ci-fix/<pr>` e abre PR para o branch do PR original (ou comenta com o patch, conforme autonomia).
 5. Se flaky: comenta com evidência e sugere rerun.
 6. Se infraestrutura: notifica, sem alterar código.
 
@@ -990,7 +990,7 @@ interface Claim {
 ### 9.4 Formato de Flow (YAML)
 
 ```yaml
-apiVersion: vectr/v1
+apiVersion: navarch/v1
 kind: Flow
 metadata:
   name: fix-issue
@@ -1003,7 +1003,7 @@ nodes:
   - id: start
     type: trigger
     on: [github.issue.labeled]
-    filter: { label: "vectr:go" }
+    filter: { label: "navarch:go" }
 
   - id: triage
     type: agent
@@ -1059,7 +1059,7 @@ edges:
 
 ### 9.5 Ferramentas expostas via MCP
 
-O VECTR expõe ferramentas aos agentes por um servidor MCP interno e também pode **ser consumido** como servidor MCP por agentes externos (ex.: Claude Code chamando `vectr.search_specs`).
+O Navarch expõe ferramentas aos agentes por um servidor MCP interno e também pode **ser consumido** como servidor MCP por agentes externos (ex.: Claude Code chamando `navarch.search_specs`).
 
 | Ferramenta | Descrição |
 |---|---|
@@ -1088,14 +1088,14 @@ O VECTR expõe ferramentas aos agentes por um servidor MCP interno e também pod
 
 | # | Ameaça | Vetor | Controles |
 |---|---|---|---|
-| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. Também os arquivos de instrução do repositório-alvo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/skills/`, `.agents/skills/`, `.claude/settings.json`, hooks), que os CLIs de agente carregam sozinhos: num PR de terceiro ou num repositório não confiável, eles são escritos pelo atacante. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. Os agentes rodam com a configuração do VECTR, não a do operador (Claude Code sem as configurações de usuário; Gemini com home própria por tarefa; ADR 0006), e o prompt da tarefa lista os comandos permitidos. Arquivos de instrução e skills do repositório-alvo são dados não confiáveis: a concessão de ferramentas vem só da Policy Engine, nunca deles; um diff que os altera é tratado como caminho protegido (revisão humana); em Runs sobre código de terceiros, o adaptador roda sem carregar a configuração do projeto quando o CLI permitir, ou a Task exige aprovação. |
+| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. Também os arquivos de instrução do repositório-alvo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/skills/`, `.agents/skills/`, `.claude/settings.json`, hooks), que os CLIs de agente carregam sozinhos: num PR de terceiro ou num repositório não confiável, eles são escritos pelo atacante. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. Os agentes rodam com a configuração do Navarch, não a do operador (Claude Code sem as configurações de usuário; Gemini com home própria por tarefa; ADR 0006), e o prompt da tarefa lista os comandos permitidos. Arquivos de instrução e skills do repositório-alvo são dados não confiáveis: a concessão de ferramentas vem só da Policy Engine, nunca deles; um diff que os altera é tratado como caminho protegido (revisão humana); em Runs sobre código de terceiros, o adaptador roda sem carregar a configuração do projeto quando o CLI permitir, ou a Task exige aprovação. |
 | T2 | **Execução de código malicioso** | Testes ou scripts de build de PRs de terceiros. | Isolamento L2/L3, rede bloqueada, usuário não-root, limites de recursos. |
 | T3 | **Exfiltração de dados** | Agente envia código a domínios externos. | Egress allowlist no container; modelos permitidos por projeto; tag `confidential` restringe a modelos locais. |
-| T4 | **Escrita destrutiva no repositório** | Agente força push, apaga branches. | Somente branches `vectr/*`; `git push` só pelo GitHub Integration; nunca `--force` em branches de terceiros. |
+| T4 | **Escrita destrutiva no repositório** | Agente força push, apaga branches. | Somente branches `navarch/*`; `git push` só pelo GitHub Integration; nunca `--force` em branches de terceiros. |
 | T5 | **Acesso remoto não autorizado** | Porta exposta, sessão roubada. | Sem portas públicas; Tailscale ou relay E2E; sessões por dispositivo revogáveis; WebAuthn para ações sensíveis. |
 | T6 | **Gasto descontrolado** | Loop infinito, Modo Compete mal configurado. | Orçamentos em três níveis; `max_iterations`; kill switch global; alertas em 80%. |
 | T7 | **Vazamento de segredos em logs** | Saída de comando com tokens. | Redação automática; segredos nunca no payload de eventos. |
-| T8 | **Comandos por comentário de terceiros** | Alguém comenta `/vectr implement` em repo público. | Comandos aceitos apenas de usuários na allowlist. |
+| T8 | **Comandos por comentário de terceiros** | Alguém comenta `/navarch implement` em repo público. | Comandos aceitos apenas de usuários na allowlist. |
 | T9 | **Supply chain** | Agente adiciona dependência maliciosa ou com nome parecido. | Verificação destaca dependências novas; política pode exigir aprovação para alterações em manifestos (package.json, composer.json, Cargo.toml). |
 | T10 | **Uso indevido de engenharia reversa** | Análise de software sem autorização. | Recurso desabilitado por padrão; aviso legal; registro em auditoria. |
 
@@ -1111,12 +1111,12 @@ O VECTR expõe ferramentas aos agentes por um servidor MCP interno e também pod
 
 Configurável por **projeto**, sobrescrevível por **repositório** e por **Flow**.
 
-| Nível | Nome | O que o VECTR pode fazer sem perguntar | O que exige aprovação |
+| Nível | Nome | O que o Navarch pode fazer sem perguntar | O que exige aprovação |
 |---|---|---|---|
 | 0 | **Observar** | Sincronizar e ler. | Qualquer execução de agente. |
 | 1 | **Analisar** | Triar, planejar, gerar relatórios locais. | Editar arquivos, comentar no GitHub. |
 | 2 | **Propor** | + Implementar em worktree, rodar verificação local. | Abrir PR, comentar, comandos fora da allowlist. |
-| 3 | **Entregar rascunho** | + Abrir PR em rascunho em branches `vectr/*`, comentar em PRs próprios. | Marcar PR como pronto, comentar em itens de terceiros, alterar manifestos de dependência. |
+| 3 | **Entregar rascunho** | + Abrir PR em rascunho em branches `navarch/*`, comentar em PRs próprios. | Marcar PR como pronto, comentar em itens de terceiros, alterar manifestos de dependência. |
 | 4 | **Manter** | + Corrigir CI em PRs próprios, atualizar PR com revisões. | Merge (exceto com [auto-merge](#111-auto-merge-opcional) habilitado), release, alterações de política e orçamento. |
 
 > **Release e deploy nunca são automáticos em nenhum nível. Merge só é automático se o usuário habilitar explicitamente o auto-merge no repositório (§11.1); caso contrário, sempre exige aprovação.**
@@ -1126,14 +1126,14 @@ Configurável por **projeto**, sobrescrevível por **repositório** e por **Flow
 Recurso **opt-in, por repositório**, desligado por padrão. Existe para quem quer fechar o ciclo sem aprovação manual do merge em repositórios de baixo risco.
 
 **Habilitação**
-- Chave `github.auto_merge.enabled` (padrão `false`) em `.vectr/project.yaml`.
+- Chave `github.auto_merge.enabled` (padrão `false`) em `.navarch/project.yaml`.
 - Somente o **usuário humano** pode habilitá-la, por UI ou CLI, com **confirmação explícita** que mostra repositório, condições e riscos, mais **reautenticação** (WebAuthn) quando disponível. Edição de arquivo por agente, comentário de terceiros ou um checkbox isolado não valem.
 - O Policy Engine rejeita (`policy.denied`) qualquer tentativa de agente de alterar essa chave.
 - Pré-requisito: autonomia nível ≥ 3 no repositório.
 
 **Condições para o merge ocorrer** (todas)
-- Todos os checks obrigatórios e a verificação do VECTR passaram; a revisão (`reviewer`, outro provedor) não tem ressalvas bloqueantes.
-- O PR é da própria Run (branch `vectr/*`) e não altera `protected_paths` nem manifestos de dependência.
+- Todos os checks obrigatórios e a verificação do Navarch passaram; a revisão (`reviewer`, outro provedor) não tem ressalvas bloqueantes.
+- O PR é da própria Run (branch `navarch/*`) e não altera `protected_paths` nem manifestos de dependência.
 - Sem itens 🔴 pendentes e custo da Run dentro do orçamento.
 - Branch de destino **não é protegida** (ou a proteção do GitHub permite o merge da App). Branches protegidas nunca são alvo do auto-merge.
 - A Policy Engine retorna `allow` para `github.pr.merge` naquele contexto.
@@ -1155,7 +1155,7 @@ Padrão recomendado: nível **2** para repositórios novos; subir para **3** ap�
 
 | Componente | Tecnologia | Motivo |
 |---|---|---|
-| Core (`vectrd`) | **TypeScript + Node.js 22 LTS**, Fastify | Ecossistema mais maduro de SDKs de agentes e MCP; mesma linguagem do front-end; streaming nativo. |
+| Core (`navarchd`) | **TypeScript + Node.js 22 LTS**, Fastify | Ecossistema mais maduro de SDKs de agentes e MCP; mesma linguagem do front-end; streaming nativo. |
 | Persistência | **SQLite (WAL)** + Drizzle ORM | Local-first, zero operação, transacional; suficiente para uso pessoal/pequeno time. |
 | Event bus interno | Emissor em processo + outbox no SQLite | Simples; trocável por NATS se virar multi-máquina. |
 | Front-end | **Vue 3 + Vite + Pinia** | Alinhado à experiência do autor; |
@@ -1184,9 +1184,9 @@ Padrão recomendado: nível **2** para repositórios novos; subir para **3** ap�
 ## 13. Estrutura de repositório
 
 ```
-vectr/
+navarch/
 ├── apps/
-│   ├── daemon/                  # vectrd: API, orchestrator, scheduler
+│   ├── daemon/                  # navarchd: API, orchestrator, scheduler
 │   │   ├── src/
 │   │   │   ├── api/             # rotas REST + WebSocket
 │   │   │   ├── orchestrator/
@@ -1204,7 +1204,7 @@ vectr/
 │   │   │   ├── components/graph/
 │   │   │   └── stores/
 │   │   └── public/manifest.webmanifest
-│   └── cli/                     # comando vectr
+│   └── cli/                     # comando navarch
 ├── packages/
 │   ├── contracts/               # schemas Zod, tipos, OpenAPI
 │   ├── flow-engine/             # parser/validador de Flow YAML, expressões
@@ -1220,7 +1220,7 @@ vectr/
 │   ├── github/
 │   ├── knowledge/               # specs, índice, compilação de contexto
 │   ├── explorer/                # toolkit MCP, integração REA
-│   └── mcp-server/              # VECTR como servidor MCP
+│   └── mcp-server/              # Navarch como servidor MCP
 ├── flows/                       # Flows padrão (fix-issue, review-pr, ci-fix, compete, reverse-spec)
 ├── profiles/                    # Agent Profiles padrão
 ├── docs/
@@ -1235,15 +1235,15 @@ vectr/
 ### 13.1 Diretórios em tempo de execução
 
 ```
-~/.vectr/
+~/.navarch/
 ├── config.yaml                  # configuração global
-├── vectr.db                     # event store + projeções
+├── navarch.db                     # event store + projeções
 ├── logs/<run-id>/<task-id>.log
 ├── artifacts/<run-id>/
 ├── worktrees/<repo>/<run-id>-<task>/
 └── cache/
 
-<repositório>/.vectr/            # opcional, versionável
+<repositório>/.navarch/            # opcional, versionável
 ├── project.yaml                 # verificação, allowlist, autonomia
 ├── principles.md                # regras do projeto aprovadas
 ├── flows/                       # Flows específicos do repo
@@ -1254,7 +1254,7 @@ vectr/
 
 ## 14. Configuração
 
-### 14.1 Global (`~/.vectr/config.yaml`)
+### 14.1 Global (`~/.navarch/config.yaml`)
 
 ```yaml
 daemon:
@@ -1275,7 +1275,7 @@ notifications:
 
 models:
   gateway: litellm               # litellm | openrouter | direct
-  catalog: ~/.vectr/models.yaml
+  catalog: ~/.navarch/models.yaml
   tiers:
     fast:     { prefer: [local/qwen-coder, provider/small-model], max_cost_per_call: 0.02 }
     standard: { prefer: [provider/mid-coding-model], max_cost_per_call: 0.50 }
@@ -1292,7 +1292,7 @@ security:
   command_approval_timeout: 30m
 ```
 
-### 14.2 Por repositório (`.vectr/project.yaml`)
+### 14.2 Por repositório (`.navarch/project.yaml`)
 
 ```yaml
 autonomy_level: 2
@@ -1301,7 +1301,7 @@ isolation: worktree
 
 setup:                           # rodados pelo Runner na worktree antes da 1ª tentativa do agente,
   - npm ci                       # com rede e fora da concessão do agente (ADR 0006); nunca detectados
-                                 # automaticamente (T2). Na Fase 0: `vectr run --setup <cmd>`.
+                                 # automaticamente (T2). Na Fase 0: `navarch run --setup <cmd>`.
 
 verify:
   - name: lint
@@ -1325,7 +1325,7 @@ protected_paths:                 # alteração exige aprovação
 
 github:
   trusted_users: [nestif]
-  label_trigger: "vectr:go"
+  label_trigger: "navarch:go"
   auto_merge:                    # opt-in; só o usuário habilita (§11.1)
     enabled: false
     strategy: squash
@@ -1388,7 +1388,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 **Escopo**
 - Monorepo, contratos (`packages/contracts`), event store em SQLite.
-- `vectrd` mínimo com API e WebSocket.
+- `navarchd` mínimo com API e WebSocket.
 - Adaptador `claude-code` executando uma tarefa em worktree.
 - CLI: `run`, `logs`, `cancel`.
 
@@ -1398,7 +1398,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 ### Fase 1 — MVP: Issue → PR (4–6 semanas)
 
 **Escopo**
-- GitHub Integration (leitura + PR rascunho em `vectr/*`).
+- GitHub Integration (leitura + PR rascunho em `navarch/*`).
 - Triagem, planejamento, aprovação, implementação, verificação, revisão.
 - Flow `fix-issue` fixo (sem editor visual ainda; YAML).
 - Model Router v1 com catálogo e fallback; adaptador `native` com 1 provedor via API + 1 modelo local.
@@ -1408,7 +1408,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 **Go/no-go**
 - ≥ 50% dos PRs gerados em issues de complexidade ≤ 2 aceitos com no máximo ajustes pequenos.
-- Nenhuma ação de escrita fora de `vectr/*` em 100% das Runs (verificado por auditoria).
+- Nenhuma ação de escrita fora de `navarch/*` em 100% das Runs (verificado por auditoria).
 - Custo médio por Run dentro do orçamento definido.
 - Aprovação pelo celular funcionando de fora da rede local.
 
@@ -1433,7 +1433,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 - Specs rastreáveis com confiança, Flow `reverse-spec` (modos guiado e autônomo).
 - Adendos pós-merge (`spec-sync`), `principles.md`.
 - Integração opcional com REA em sandbox L3.
-- VECTR como servidor MCP para agentes externos.
+- Navarch como servidor MCP para agentes externos.
 
 **Go/no-go**
 - Redução mensurável de tokens de entrada por Task (meta inicial: ≥ 30%) sem queda na taxa de aceitação de PRs.
@@ -1456,7 +1456,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 | Categoria | Métrica | Meta inicial |
 |---|---|---|
-| Valor | PRs aceitos / PRs abertos pelo VECTR | ≥ 50% (MVP), ≥ 70% (v1) |
+| Valor | PRs aceitos / PRs abertos pelo Navarch | ≥ 50% (MVP), ≥ 70% (v1) |
 | Valor | Tempo de issue → PR rascunho (mediana) | < 30 min para complexidade ≤ 2 |
 | Valor | Horas de atenção do usuário poupadas por semana (autodeclarado) | Acompanhar |
 | Qualidade | Retrabalho: PRs que precisaram de > 2 rodadas de ajuste | < 25% |
@@ -1474,11 +1474,11 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 | Risco | Prob. | Impacto | Mitigação |
 |---|---|---|---|
 | Escopo grande demais para um desenvolvedor | Alta | Alto | Fases com go/no-go; MVP com um Flow fixo; reaproveitar ferramentas existentes (LiteLLM, Vue Flow, Tailscale). |
-| Mudanças frequentes nas CLIs/SDKs dos agentes | Alta | Médio | Adaptadores isolados com testes de contrato; fixar versões; `vectr doctor`. |
+| Mudanças frequentes nas CLIs/SDKs dos agentes | Alta | Médio | Adaptadores isolados com testes de contrato; fixar versões; `navarch doctor`. |
 | Termos de uso de provedores (automação, assinaturas vs. API) | Média | Alto | Verificar termos de cada provedor antes de integrar; preferir autenticação por API onde houver dúvida; documentar no catálogo. |
 | Cotas gratuitas instáveis | Alta | Baixo | Nunca dependência crítica; fallback automático; métricas `observed`. |
 | Qualidade inconsistente dos agentes | Alta | Alto | Verificação obrigatória, revisor de outro provedor, loops limitados, escalonamento de tier. |
-| Prompt injection | Média | Alto | Controles de [§10](#10-segurança-e-modelo-de-ameaças); testes adversariais no CI do próprio VECTR. |
+| Prompt injection | Média | Alto | Controles de [§10](#10-segurança-e-modelo-de-ameaças); testes adversariais no CI do próprio Navarch. |
 | Custos inesperados | Média | Médio | Orçamentos em 3 níveis, alertas, kill switch. |
 | Conflitos entre ramos paralelos | Média | Médio | Planner divide por arquivos/módulos; nó `integrate`; preferir sequencial quando o plano indicar sobreposição. |
 | Complexidade do editor visual | Média | Médio | YAML como fonte da verdade; editor visual só na Fase 2. |
@@ -1491,11 +1491,11 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 Registrar cada uma como ADR em `docs/adr/` quando decidida.
 
 ### 19.1 Nome do produto
-**Decidido:** o produto se chama **VECTR**, sigla de *Verified Engineering Coordination for Tasks and Repos*.
+**Decidido (ADR 0008):** o produto se chama **Navarch**. O nome anterior, VECTR (*Verified Engineering Coordination for Tasks and Repos*), foi abandonado porque já existe uma marca com esse nome.
 
-Justificativa: "vetor" tem direção e magnitude, o que representa bem tarefas com destino claro e intensidade controlada. A sigla destaca a verificação, um dos princípios do projeto. A grafia com "R" final diferencia de "vector", muito usado em bancos vetoriais.
+Justificativa: o *navarca* comandava uma frota na Grécia antiga. O Navarch coordena uma frota de agentes sem ser um deles, como descrito em §1.2. O comando de linha é `navarch`, com o atalho `nav`.
 
-**Pendências antes de publicar:** verificar disponibilidade de marca, domínio, nomes de pacote (npm, Maven, PyPI) e colisões em repositórios públicos e na web. Esta verificação ainda não foi feita.
+**Verificado em 2026-10-14:** livre no npm e no PyPI; domínio `navarch.dev` livre (`.com` e `.io` ocupados); no GitHub, só projetos pequenos de outros nichos (o maior é um gerenciador de GPUs com 8 estrelas); nenhum software com esse nome em buscas na web. **Pendente antes de publicar:** busca formal de marca no INPI, USPTO e WIPO (classes 9 e 42).
 
 ### 19.2 Linguagem do Core
 **Decidido (Fase 0):** TypeScript, executado direto pelo Node ≥ 22.18 (type stripping, sem build), `node:sqlite` no event store; Drizzle e turbo adiados. Ver `docs/adr/0002-phase-0-toolchain.md`.
@@ -1510,7 +1510,7 @@ LiteLLM como sidecar (Python) vs. OpenRouter vs. clientes próprios.
 Tailscale obrigatório no MVP, relay só na Fase 4? (Recomendado: sim.)
 
 ### 19.6 Onde ficam as specs
-Versionadas no repositório (`.vectr/specs/`) vs. somente locais em `~/.vectr/`. Pode ser escolha por projeto.
+Versionadas no repositório (`.navarch/specs/`) vs. somente locais em `~/.navarch/`. Pode ser escolha por projeto.
 
 ### 19.7 Integração com o SCA
 O Knowledge Engine usa o SCA como biblioteca, como serviço separado, ou o SCA evolui para ser o Knowledge Engine?
@@ -1529,7 +1529,7 @@ Projeto pessoal fechado, open source (MIT/Apache-2.0) ou open core?
 2. **Replay com outro modelo**: reexecutar uma Task passada com outro modelo para comparar resultados — ótimo para calibrar o roteador.
 3. **Benchmarks pessoais**: conjunto de issues já resolvidas usado como suíte de avaliação de modelos e perfis (o "eval" do próprio usuário).
 4. **Aprendizado de roteamento**: ajustar `qualidade_esperada(perfil, modelo)` a partir da taxa de aceitação real.
-5. **Integração com editor**: extensão VS Code/JetBrains para "enviar seleção ao VECTR" e ver status de Runs.
+5. **Integração com editor**: extensão VS Code/JetBrains para "enviar seleção ao Navarch" e ver status de Runs.
 6. **Modo pareamento**: o usuário edita na IDE enquanto um agente roda testes e revisa em paralelo na mesma worktree (com bloqueio de arquivos).
 7. **Snapshots de ambiente**: imagens de container pré-aquecidas por repositório para reduzir tempo de verificação.
 8. **Relatório semanal**: o que foi entregue, custo, aprendizados registrados em `principles.md`.

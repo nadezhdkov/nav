@@ -1,4 +1,4 @@
-import type { Actor } from "@vectr/contracts";
+import type { Actor } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
 import { PolicyEngine } from "../src/policy/engine.ts";
 
@@ -6,8 +6,8 @@ const agent: Actor = { kind: "agent", profile: "implementer", adapter: "claude-c
 const policy = new PolicyEngine();
 
 describe("PolicyEngine", () => {
-  it("allows pushes only to vectr/* branches", () => {
-    expect(policy.decide(agent, "git.push", "repo", { autonomyLevel: 4, branch: "vectr/run_1/x" }).effect).toBe("allow");
+  it("allows pushes only to navarch/* branches", () => {
+    expect(policy.decide(agent, "git.push", "repo", { autonomyLevel: 4, branch: "navarch/run_1/x" }).effect).toBe("allow");
     expect(policy.decide(agent, "git.push", "repo", { autonomyLevel: 4, branch: "main" }).effect).toBe("deny");
   });
 
@@ -38,7 +38,7 @@ describe("PolicyEngine", () => {
     const grant = policy.taskGrant(["npm test", "npm run *"]);
     expect(grant.allowCommands).toEqual(expect.arrayContaining(["git status", "npm test", "npm run *"]));
     expect(grant.denyCommands).toEqual(expect.arrayContaining(["git push", "curl", "sudo"]));
-    expect(grant.denyPaths).toEqual(expect.arrayContaining(["~/.ssh", "~/.vectr"]));
+    expect(grant.denyPaths).toEqual(expect.arrayContaining(["~/.ssh", "~/.navarch"]));
     expect(grant.network).toBe(false);
   });
 

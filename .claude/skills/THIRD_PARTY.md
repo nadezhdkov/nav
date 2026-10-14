@@ -1,6 +1,6 @@
 # Third-party notices
 
-The skills `tdd`, `agent-brief`, `review-two-axis` and `domain-modeling` are adapted from [mattpocock/skills](https://github.com/mattpocock/skills) (commit `49dd158`): `engineering/tdd`, the Agent Brief format of `engineering/triage`, `engineering/code-review` and `engineering/domain-modeling`. `tdd/tests.md` and `tdd/mocking.md` are copied unchanged. The adaptations point the skills at VECTR's spec, ADRs, Makefile, fakes and evidence conventions.
+The skills `tdd`, `agent-brief`, `review-two-axis` and `domain-modeling` are adapted from [mattpocock/skills](https://github.com/mattpocock/skills) (commit `49dd158`): `engineering/tdd`, the Agent Brief format of `engineering/triage`, `engineering/code-review` and `engineering/domain-modeling`. `tdd/tests.md` and `tdd/mocking.md` are copied unchanged. The adaptations point the skills at Navarch's spec, ADRs, Makefile, fakes and evidence conventions.
 
 ```
 MIT License

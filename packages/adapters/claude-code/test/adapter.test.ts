@@ -1,20 +1,20 @@
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AdapterEvent, TaskContext } from "@vectr/contracts";
+import type { AdapterEvent, TaskContext } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
 import { ClaudeCodeAdapter, parseLine } from "../src/index.ts";
 import { fakeClaude } from "./fake.ts";
 
 function context(overrides: Partial<TaskContext> = {}): TaskContext {
-  const dir = mkdtempSync(join(tmpdir(), "vectr-sbx-"));
+  const dir = mkdtempSync(join(tmpdir(), "navarch-sbx-"));
   return {
     taskId: "task_1",
     runId: "run_1",
     attempt: 1,
     profile: { id: "implementer", role: "", instructions: "" },
     instructions: "create hello.txt",
-    sandbox: { id: "sbx_1", kind: "worktree", path: dir, branch: "vectr/run_1/implement", baseCommit: "abc" },
+    sandbox: { id: "sbx_1", kind: "worktree", path: dir, branch: "navarch/run_1/implement", baseCommit: "abc" },
     tools: { editFiles: true, allowCommands: ["npm test", "npm run *"], denyCommands: ["git push"], denyPaths: ["~/.ssh"], network: false },
     budget: { maxCost: 1.5, maxTurns: 0, timeoutMs: 10_000 },
     ...overrides,
@@ -84,7 +84,7 @@ describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
     expect(argv).toMatch(/--allowedTools Read .*Edit .*Bash\(npm test\) Bash\(npm run:\*\)/);
     expect(argv).toMatch(/--disallowedTools Bash\(git push:\*\) Read\(~\/.ssh\/\*\*\) Edit\(~\/.ssh\/\*\*\) WebFetch WebSearch/);
     expect(call?.args.join(" ")).toContain("--max-budget-usd 1.50");
-    // The user's own ~/.claude (CLAUDE.md, hooks, plugins) must not steer a VECTR task.
+    // The user's own ~/.claude (CLAUDE.md, hooks, plugins) must not steer a Navarch task.
     expect(argv).toContain("--setting-sources project,local");
 
     const token = events.find((e) => e.kind === "resume_token");

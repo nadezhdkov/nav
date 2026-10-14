@@ -1,17 +1,19 @@
-import type { ErrorKind, TaskResult, UsageRecord } from "@vectr/contracts";
+import type { ErrorKind, TaskResult, UsageRecord } from "@navarch/contracts";
 import type { CliExit } from "./process.ts";
 import { retryAtFromText } from "./retry.ts";
 
 /** Environment variables removed before spawning an agent, so it never sees them. */
-export const DEFAULT_SCRUB_ENV = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "VECTR_GITHUB_TOKEN", "OPENROUTER_API_KEY"];
+export const DEFAULT_SCRUB_ENV = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "NAVARCH_GITHUB_TOKEN", "OPENROUTER_API_KEY"];
 
 /** Vault overrides (ADR 0007) hold the daemon's own secrets; no agent or command ever gets them. */
-export const VAULT_ENV_PREFIX = "VECTR_SECRET_";
+export const VAULT_ENV_PREFIX = "NAVARCH_SECRET_";
+/** The prefix before the rename (ADR 0008); still scrubbed, since an operator's shell may export it. */
+export const LEGACY_VAULT_ENV_PREFIX = "VECTR_SECRET_";
 
 export function scrubbedEnv(names: string[] = DEFAULT_SCRUB_ENV, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   const env = { ...process.env, ...extra };
   for (const name of names) delete env[name];
-  for (const name of Object.keys(env)) if (name.startsWith(VAULT_ENV_PREFIX)) delete env[name];
+  for (const name of Object.keys(env)) if (name.startsWith(VAULT_ENV_PREFIX) || name.startsWith(LEGACY_VAULT_ENV_PREFIX)) delete env[name];
   return env;
 }
 

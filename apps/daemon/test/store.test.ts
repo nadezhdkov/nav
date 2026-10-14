@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Actor, NewEvent } from "@vectr/contracts";
+import type { Actor, NewEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
 import { tempHome } from "../../../packages/runner/test/helpers.ts";
 import { EventStore } from "../src/events/store.ts";
@@ -50,7 +50,7 @@ function seed(store: EventStore): void {
 
 describe("EventStore", () => {
   it("assigns increasing seq numbers and updates projections", () => {
-    const store = new EventStore(join(tempHome(), "vectr.db"));
+    const store = new EventStore(join(tempHome(), "navarch.db"));
     seed(store);
     const events = store.events();
     expect(events.map((e) => e.seq)).toEqual([1, 2, 3, 4]);
@@ -59,7 +59,7 @@ describe("EventStore", () => {
   });
 
   it("rejects an invalid transition and writes nothing from that batch", () => {
-    const store = new EventStore(join(tempHome(), "vectr.db"));
+    const store = new EventStore(join(tempHome(), "navarch.db"));
     seed(store);
     expect(() =>
       store.append([
@@ -72,14 +72,14 @@ describe("EventStore", () => {
   });
 
   it("refuses to update or delete events", () => {
-    const store = new EventStore(join(tempHome(), "vectr.db"));
+    const store = new EventStore(join(tempHome(), "navarch.db"));
     seed(store);
     expect(() => store.db.exec("UPDATE events SET type = 'x'")).toThrow(/append-only/);
     expect(() => store.db.exec("DELETE FROM events")).toThrow(/append-only/);
   });
 
   it("rebuilds identical projections from the log", () => {
-    const store = new EventStore(join(tempHome(), "vectr.db"));
+    const store = new EventStore(join(tempHome(), "navarch.db"));
     seed(store);
     const before = { run: store.getRun("run_1"), tasks: store.tasksOfRun("run_1") };
     store.rebuildProjections();
@@ -87,7 +87,7 @@ describe("EventStore", () => {
   });
 
   it("rebuilds projections from the log when an older database lacks a new column", () => {
-    const path = join(tempHome(), "vectr.db");
+    const path = join(tempHome(), "navarch.db");
     const old = new EventStore(path);
     seed(old);
     old.db.exec("ALTER TABLE tasks DROP COLUMN not_before");
@@ -99,7 +99,7 @@ describe("EventStore", () => {
   });
 
   it("publishes to subscribers only after commit", () => {
-    const store = new EventStore(join(tempHome(), "vectr.db"));
+    const store = new EventStore(join(tempHome(), "navarch.db"));
     const seen: number[] = [];
     store.subscribe((e) => seen.push(e.seq));
     seed(store);

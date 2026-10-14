@@ -1,5 +1,5 @@
 {
-  "name": "@vectr/agent-runtime",
+  "name": "@navarch/agent-runtime",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -7,8 +7,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vectr/adapter-kit": "workspace:*",
-    "@vectr/contracts": "workspace:*",
-    "@vectr/runner": "workspace:*"
+    "@navarch/adapter-kit": "workspace:*",
+    "@navarch/contracts": "workspace:*",
+    "@navarch/runner": "workspace:*"
   }
 }

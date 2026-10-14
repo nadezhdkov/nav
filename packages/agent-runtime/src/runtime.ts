@@ -12,9 +12,9 @@ import {
   type SandboxHandle,
   type TaskResult,
   type ToolGrant,
-} from "@vectr/contracts";
-import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@vectr/adapter-kit";
-import { changedFiles, createWorktree, runShell, worktreeDiff } from "@vectr/runner";
+} from "@navarch/contracts";
+import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
+import { changedFiles, createWorktree, runShell, worktreeDiff } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and

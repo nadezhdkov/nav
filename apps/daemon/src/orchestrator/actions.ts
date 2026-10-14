@@ -2,8 +2,8 @@ import { createHash } from "node:crypto";
 import { createWriteStream, type WriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { TaskOutcome } from "@vectr/agent-runtime";
-import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@vectr/adapter-kit";
+import type { TaskOutcome } from "@navarch/agent-runtime";
+import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import {
   newId,
   redact,
@@ -13,9 +13,9 @@ import {
   type NewEvent,
   type SandboxHandle,
   type WorkItem,
-} from "@vectr/contracts";
-import { changedFiles, commitAll } from "@vectr/runner";
-import { verify } from "@vectr/verification";
+} from "@navarch/contracts";
+import { changedFiles, commitAll } from "@navarch/runner";
+import { verify } from "@navarch/verification";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import type { GitHubIntegration } from "../github/integration.ts";
@@ -81,7 +81,7 @@ function openPrNode(deps: Deps): ActionExecutor {
       const impl = implementTask(deps.store, run);
       const sandbox = implementSandbox(deps.store, run);
       try {
-        await commitAll(sandbox, `${prTitle(item)}\n\nFixes #${item.number}\n\nCommitted by VECTR for run ${run.id}.`);
+        await commitAll(sandbox, `${prTitle(item)}\n\nFixes #${item.number}\n\nCommitted by Navarch for run ${run.id}.`);
         if (signal.aborted) return failed("cancelled", "cancelled before push", started);
         const level = deps.config.autonomy_level;
         const commit = await deps.github.push(sandbox.path, item.repo, sandbox.branch, level);

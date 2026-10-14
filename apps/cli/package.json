@@ -1,13 +1,14 @@
 {
-  "name": "@vectr/cli",
+  "name": "@navarch/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "bin": {
-    "vectr": "./bin/vectr.js"
+    "navarch": "./bin/navarch.js",
+    "nav": "./bin/navarch.js"
   },
   "dependencies": {
-    "@vectr/contracts": "workspace:*",
-    "@vectr/daemon": "workspace:*"
+    "@navarch/contracts": "workspace:*",
+    "@navarch/daemon": "workspace:*"
   }
 }

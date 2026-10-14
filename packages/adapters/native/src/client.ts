@@ -1,4 +1,4 @@
-import type { ErrorKind } from "@vectr/contracts";
+import type { ErrorKind } from "@navarch/contracts";
 import type { ToolSpec } from "./tools.ts";
 
 /**

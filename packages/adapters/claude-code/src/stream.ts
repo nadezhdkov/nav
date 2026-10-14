@@ -1,9 +1,9 @@
-import { toolSummary } from "@vectr/adapter-kit";
-import type { UsageRecord } from "@vectr/contracts";
+import { toolSummary } from "@navarch/adapter-kit";
+import type { UsageRecord } from "@navarch/contracts";
 
 /**
  * Parser for `claude -p --output-format stream-json --verbose` output: one JSON object per line.
- * Only the fields VECTR uses are read; unknown lines and fields are ignored, so CLI additions
+ * Only the fields Navarch uses are read; unknown lines and fields are ignored, so CLI additions
  * do not break the adapter.
  */
 

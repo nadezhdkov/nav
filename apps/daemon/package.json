@@ -1,5 +1,5 @@
 {
-  "name": "@vectr/daemon",
+  "name": "@navarch/daemon",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,21 +9,21 @@
     "./main": "./src/main.ts"
   },
   "bin": {
-    "vectrd": "./src/main.ts"
+    "navarchd": "./src/main.ts"
   },
   "dependencies": {
     "@fastify/websocket": "^11.3.4",
-    "@vectr/adapter-antigravity": "workspace:*",
-    "@vectr/adapter-claude-code": "workspace:*",
-    "@vectr/adapter-codex": "workspace:*",
-    "@vectr/adapter-gemini-cli": "workspace:*",
-    "@vectr/adapter-kit": "workspace:*",
-    "@vectr/adapter-native": "workspace:*",
-    "@vectr/agent-runtime": "workspace:*",
-    "@vectr/contracts": "workspace:*",
-    "@vectr/github": "workspace:*",
-    "@vectr/runner": "workspace:*",
-    "@vectr/verification": "workspace:*",
+    "@navarch/adapter-antigravity": "workspace:*",
+    "@navarch/adapter-claude-code": "workspace:*",
+    "@navarch/adapter-codex": "workspace:*",
+    "@navarch/adapter-gemini-cli": "workspace:*",
+    "@navarch/adapter-kit": "workspace:*",
+    "@navarch/adapter-native": "workspace:*",
+    "@navarch/agent-runtime": "workspace:*",
+    "@navarch/contracts": "workspace:*",
+    "@navarch/github": "workspace:*",
+    "@navarch/runner": "workspace:*",
+    "@navarch/verification": "workspace:*",
     "fastify": "^5.12.7",
     "yaml": "^2.8.1",
     "zod": "^4.6.7"

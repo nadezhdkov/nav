@@ -10,12 +10,12 @@ const script = fileURLToPath(new URL("./fixtures/fake-gemini.mjs", import.meta.u
 
 /** A user home with an AI Studio key in `~/.gemini/.env`, and a root for per-task Gemini homes. */
 function homes(withKey = true) {
-  const userHome = mkdtempSync(join(tmpdir(), "vectr-user-"));
+  const userHome = mkdtempSync(join(tmpdir(), "navarch-user-"));
   if (withKey) {
     mkdirSync(join(userHome, ".gemini"));
     writeFileSync(join(userHome, ".gemini", ".env"), "GEMINI_API_KEY=test-key\n");
   }
-  return { userHome, homeRoot: mkdtempSync(join(tmpdir(), "vectr-gemini-homes-")) };
+  return { userHome, homeRoot: mkdtempSync(join(tmpdir(), "navarch-gemini-homes-")) };
 }
 
 /** Fake CLI options plus hermetic homes. */

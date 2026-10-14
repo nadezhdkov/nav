@@ -3,28 +3,28 @@ import { mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isTerminalRun, type ApprovalView, type RunDetail, type RunView, type VectrEvent } from "@vectr/contracts";
-import { vectrHome } from "@vectr/daemon/config";
+import { isTerminalRun, type ApprovalView, type RunDetail, type RunView, type NavarchEvent } from "@navarch/contracts";
+import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { formatApprovals, formatEvent, formatRunDetail, formatRunList } from "./format.ts";
 
-const USAGE = `vectr — VECTR command line
+const USAGE = `navarch — Navarch command line
 
 Usage:
-  vectr daemon start|stop|status
-  vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt...>
-  vectr run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
+  navarch daemon start|stop|status
+  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt...>
+  navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
                                          implement a GitHub issue, verify it, then open a draft PR
-  vectr run list
-  vectr run show <run-id>
-  vectr run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
-  vectr logs <run-id> [-f|--follow] [--raw]
-  vectr cancel <run-id>
-  vectr approvals [--all]                pending approvals (e.g. opening a PR below autonomy level 3)
-  vectr approve <approval-id> [--reason <text>]
-  vectr reject <approval-id> [--reason <text>]
-  vectr secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
-  vectr secret status <name>
+  navarch run list
+  navarch run show <run-id>
+  navarch run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
+  navarch logs <run-id> [-f|--follow] [--raw]
+  navarch cancel <run-id>
+  navarch approvals [--all]                pending approvals (e.g. opening a PR below autonomy level 3)
+  navarch approve <approval-id> [--reason <text>]
+  navarch reject <approval-id> [--reason <text>]
+  navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
+  navarch secret status <name>
 
 Adapters: claude-code (default), gemini-cli, antigravity, codex, native.
   native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
@@ -36,7 +36,7 @@ Global options:
 Exit codes: 0 ok · 1 error · 2 usage · 3 daemon not running · 4 run ended failed/cancelled
 `;
 
-const home = vectrHome();
+const home = navarchHome();
 
 async function main(argv: string[]): Promise<number> {
   const { values, positionals } = parseArgs({
@@ -132,7 +132,7 @@ async function main(argv: string[]): Promise<number> {
         const status = await api.request<{ name: string; set: boolean }>("GET", path);
         return print(json ? status : `${status.name}: ${status.set ? "set" : "not set"}`, json);
       }
-      if (rest[0] !== "set") throw new CliError("usage: vectr secret set|status <name>", EXIT.usage);
+      if (rest[0] !== "set") throw new CliError("usage: navarch secret set|status <name>", EXIT.usage);
       const value = await readSecret(`value for ${name} (input hidden): `);
       if (!value) throw new CliError("empty value; nothing stored", EXIT.usage);
       await api.request("PUT", path, { value });
@@ -164,7 +164,7 @@ async function runShow(id: string, json: boolean): Promise<number> {
 }
 
 async function printEvents(api: ApiClient, id: string, json: boolean): Promise<number> {
-  const events = await api.request<VectrEvent[]>("GET", `/api/v1/runs/${id}/events`);
+  const events = await api.request<NavarchEvent[]>("GET", `/api/v1/runs/${id}/events`);
   for (const event of events) console.log(json ? JSON.stringify(event) : formatEvent(event));
   return EXIT.ok;
 }
@@ -173,8 +173,8 @@ async function printEvents(api: ApiClient, id: string, json: boolean): Promise<n
 async function follow(api: ApiClient, id: string, json: boolean): Promise<number> {
   let lastSeq = 0;
   let historyLoaded = false;
-  const pending: VectrEvent[] = [];
-  const show = (event: VectrEvent) => {
+  const pending: NavarchEvent[] = [];
+  const show = (event: NavarchEvent) => {
     if (event.seq <= lastSeq) return;
     lastSeq = event.seq;
     console.log(json ? JSON.stringify(event) : formatEvent(event));
@@ -182,10 +182,10 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
   const ws = api.stream([`run:${id}`]);
   const ended = new Promise<number>((resolve, reject) => {
     ws.addEventListener("message", async (msg) => {
-      const data = JSON.parse(String(msg.data)) as { kind: string; event?: VectrEvent };
+      const data = JSON.parse(String(msg.data)) as { kind: string; event?: NavarchEvent };
       if (data.kind === "subscribed") {
         // Live events that arrive while history loads are buffered, then everything prints in seq order.
-        for (const event of await api.request<VectrEvent[]>("GET", `/api/v1/runs/${id}/events`)) show(event);
+        for (const event of await api.request<NavarchEvent[]>("GET", `/api/v1/runs/${id}/events`)) show(event);
         historyLoaded = true;
         for (const event of pending.sort((a, b) => a.seq - b.seq)) show(event);
         pending.length = 0;
@@ -204,7 +204,7 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
         if (pending) {
           // Following ends here: the run waits for a human, which may take hours.
           ws.close();
-          if (!json) console.log(`\nwaiting for approval: vectr approve ${pending.id}  (or vectr reject ${pending.id})`);
+          if (!json) console.log(`\nwaiting for approval: navarch approve ${pending.id}  (or navarch reject ${pending.id})`);
           resolve(EXIT.ok);
           return;
         }
@@ -215,7 +215,7 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
       }
     });
     ws.addEventListener("error", () => reject(new CliError("stream connection failed", EXIT.daemonDown)));
-    ws.addEventListener("close", () => reject(new CliError("stream closed by vectrd", EXIT.daemonDown)));
+    ws.addEventListener("close", () => reject(new CliError("stream closed by navarchd", EXIT.daemonDown)));
   });
   return ended;
 }
@@ -226,40 +226,40 @@ async function daemonCommand(sub: string | undefined, json: boolean): Promise<nu
   switch (sub) {
     case "status": {
       if (!info || !alive) {
-        print(json ? { running: false } : "vectrd is not running", json);
+        print(json ? { running: false } : "navarchd is not running", json);
         return EXIT.daemonDown;
       }
       const health = await new ApiClient(home).request<{ running_tasks: number }>("GET", "/api/v1/health");
       return print(
-        json ? { running: true, ...info, ...health } : `vectrd running (pid ${info.pid}, ${info.url}, ${health.running_tasks} task(s) running)`,
+        json ? { running: true, ...info, ...health } : `navarchd running (pid ${info.pid}, ${info.url}, ${health.running_tasks} task(s) running)`,
         json,
       );
     }
     case "start": {
-      if (info && alive) return print(json ? { running: true, ...info } : `vectrd already running (pid ${info.pid})`, json);
+      if (info && alive) return print(json ? { running: true, ...info } : `navarchd already running (pid ${info.pid})`, json);
       mkdirSync(home, { recursive: true, mode: 0o700 });
-      const daemonMain = fileURLToPath(import.meta.resolve("@vectr/daemon/main"));
-      const out = openSync(join(home, "vectrd.log"), "a");
+      const daemonMain = fileURLToPath(import.meta.resolve("@navarch/daemon/main"));
+      const out = openSync(homeFiles(home).daemonLog, "a");
       const child = spawn(process.execPath, [daemonMain], { detached: true, stdio: ["ignore", out, out], env: process.env });
       child.unref();
       for (let i = 0; i < 50; i++) {
         await sleep(100);
         const started = daemonInfo(home);
         if (started && started.pid === child.pid) {
-          return print(json ? { running: true, ...started } : `vectrd started (pid ${started.pid}, ${started.url})`, json);
+          return print(json ? { running: true, ...started } : `navarchd started (pid ${started.pid}, ${started.url})`, json);
         }
       }
-      throw new CliError(`vectrd did not start; see ${join(home, "vectrd.log")}`);
+      throw new CliError(`navarchd did not start; see ${homeFiles(home).daemonLog}`);
     }
     case "stop": {
-      if (!info || !alive) return print(json ? { running: false } : "vectrd is not running", json);
+      if (!info || !alive) return print(json ? { running: false } : "navarchd is not running", json);
       process.kill(info.pid, "SIGTERM");
       for (let i = 0; i < 100 && isAlive(info.pid); i++) await sleep(100);
-      if (isAlive(info.pid)) throw new CliError(`vectrd (pid ${info.pid}) did not stop`);
-      return print(json ? { running: false } : "vectrd stopped", json);
+      if (isAlive(info.pid)) throw new CliError(`navarchd (pid ${info.pid}) did not stop`);
+      return print(json ? { running: false } : "navarchd stopped", json);
     }
     default:
-      throw new CliError("usage: vectr daemon start|stop|status", EXIT.usage);
+      throw new CliError("usage: navarch daemon start|stop|status", EXIT.usage);
   }
 }
 
@@ -309,11 +309,11 @@ main(process.argv.slice(2)).then(
   (code) => process.exit(code),
   (err: unknown) => {
     if (err instanceof CliError) {
-      console.error(`vectr: ${err.message}`);
+      console.error(`navarch: ${err.message}`);
       process.exit(err.exitCode);
     }
     if (err instanceof TypeError && "code" in err && String(err.code).startsWith("ERR_PARSE_ARGS")) {
-      console.error(`vectr: ${err.message}`);
+      console.error(`navarch: ${err.message}`);
       process.exit(EXIT.usage);
     }
     console.error(err);

@@ -29,13 +29,13 @@ lint-workflows: ## Lint the GitHub Actions workflows (needs actionlint)
 
 ci: verify audit secrets lint-workflows ## Every quality gate the CI pipelines run
 
-daemon: ## Run vectrd in the foreground (VECTR_HOME defaults to ~/.vectr)
+daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch)
 	node apps/daemon/src/main.ts
 
 cli: ## Run the CLI: make cli ARGS="run list"
 	node apps/cli/src/main.ts $(ARGS)
 
-doctor: ## Check the toolchain VECTR needs
+doctor: ## Check the toolchain Navarch needs
 	@node --version
 	@pnpm --version
 	@git --version

@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ApprovalView, RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+import type { ApprovalView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { fakeGitHub, type FakeGitHub } from "../../../packages/github/test/fake-github.ts";
@@ -21,15 +21,15 @@ afterEach(async () => {
 const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" };
 const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8", env: gitEnv }).trim();
 
-/** A clone of acme/widgets with `.vectr/project.yaml` committed, and a bare "GitHub" remote for pushes. */
+/** A clone of acme/widgets with `.navarch/project.yaml` committed, and a bare "GitHub" remote for pushes. */
 function project(projectYaml: string) {
   const repo = makeRepo();
   git(repo, "remote", "add", "origin", "https://github.com/acme/widgets.git");
-  mkdirSync(join(repo, ".vectr"));
-  writeFileSync(join(repo, ".vectr", "project.yaml"), projectYaml);
+  mkdirSync(join(repo, ".navarch"));
+  writeFileSync(join(repo, ".navarch", "project.yaml"), projectYaml);
   git(repo, "add", ".");
-  git(repo, "commit", "-q", "-m", "vectr project config");
-  const gitUrl = mkdtempSync(join(tmpdir(), "vectr-remote-"));
+  git(repo, "commit", "-q", "-m", "navarch project config");
+  const gitUrl = mkdtempSync(join(tmpdir(), "navarch-remote-"));
   mkdirSync(join(gitUrl, "acme"));
   const bare = join(gitUrl, "acme", "widgets.git");
   execFileSync("git", ["clone", "-q", "--bare", repo, bare]);
@@ -63,7 +63,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     home,
     config,
     adapters: { "claude-code": fake.options },
-    vault: new Vault({ env: { VECTR_SECRET_GITHUB_TOKEN: gh.token } }),
+    vault: new Vault({ env: { NAVARCH_SECRET_GITHUB_TOKEN: gh.token } }),
   });
   await daemon.start();
   daemons.push(daemon);
@@ -130,11 +130,11 @@ describe("issue → verified draft PR", () => {
     expect(body).toContain("hello.txt");
     expect(body).toMatch(/Cost/);
 
-    // The agent left hello.txt uncommitted: VECTR committed it on the run branch and pushed only that branch.
+    // The agent left hello.txt uncommitted: Navarch committed it on the run branch and pushed only that branch.
     expect(git(bare, "show", `${branch}:hello.txt`)).toBe("hello from fake claude");
     expect(git(bare, "for-each-ref", "--format=%(refname)", "refs/heads").split("\n").sort()).toEqual(["refs/heads/main", `refs/heads/${branch}`]);
 
-    const events = (await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
     const order = events.filter((e) => e.type === "run.status_changed").map((e) => (e.payload as { to: string }).to);
     expect(order).toEqual(["executing", "verifying", "ready_for_pr", "pr_opened", "done"]);
     expect(events.map((e) => e.type)).toEqual(
@@ -155,7 +155,7 @@ describe("issue → verified draft PR", () => {
   it("fails the run without a PR when a required check fails, using the checks committed at the base", async () => {
     const { repo, gitUrl, bare } = project("verify:\n  - name: test\n    run: echo '2 failed'; exit 1\n");
     // An uncommitted edit in the clone must not replace the committed checks.
-    writeFileSync(join(repo, ".vectr", "project.yaml"), "verify: []\n");
+    writeFileSync(join(repo, ".navarch", "project.yaml"), "verify: []\n");
     const { api, gh, waitRun } = await start({ gitUrl, autonomy: 3 });
     const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
     const run = await waitRun(created.body.id, (r) => r.status === "failed");

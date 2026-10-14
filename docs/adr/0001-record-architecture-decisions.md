@@ -5,7 +5,7 @@
 
 ## Context
 
-The spec (`docs/vectr-especificacao.md` §19) lists open decisions and asks for each to be recorded as an ADR once decided.
+The spec (`docs/navarch-especificacao.md` §19) lists open decisions and asks for each to be recorded as an ADR once decided.
 
 ## Decision
 

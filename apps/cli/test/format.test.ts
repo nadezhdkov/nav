@@ -1,4 +1,4 @@
-import type { ApprovalView, RunView, VectrEvent } from "@vectr/contracts";
+import type { ApprovalView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
 import { formatApprovals, formatEvent, formatRunList } from "../src/format.ts";
 
@@ -36,7 +36,7 @@ describe("formatEvent", () => {
       ts: "2026-10-14T19:36:14.000Z",
       type: "task.status_changed",
       payload: { from: "running", to: "failed", reason: "boom\n    at frame (file.js:1:1)" },
-    } as unknown as VectrEvent;
+    } as unknown as NavarchEvent;
     expect(formatEvent(event).split("\n")).toHaveLength(1);
   });
 });
@@ -55,7 +55,7 @@ describe("Phase 1 output", () => {
       action: "github.pr.create",
       resource: "task_3",
       reason: "opening a PR requires approval below autonomy level 3",
-      summary: "Push vectr/run_1/implement and open a draft PR on acme/widgets for issue #7.",
+      summary: "Push navarch/run_1/implement and open a draft PR on acme/widgets for issue #7.",
       status: "pending",
       decision_reason: null,
       created_at: "2026-10-14T19:34:47.558Z",
@@ -64,12 +64,12 @@ describe("Phase 1 output", () => {
     const out = formatApprovals([a]);
     expect(out).toContain("apr_1");
     expect(out).toContain("open a draft PR on acme/widgets");
-    expect(out).toContain("vectr approve apr_1");
+    expect(out).toContain("navarch approve apr_1");
     expect(formatApprovals([])).toBe("no pending approvals");
   });
 
   it("summarises verification and PR events", () => {
-    const event = (type: string, payload: unknown) => ({ type, payload, ts: "2026-10-14T19:34:47.558Z" }) as unknown as VectrEvent;
+    const event = (type: string, payload: unknown) => ({ type, payload, ts: "2026-10-14T19:34:47.558Z" }) as unknown as NavarchEvent;
     expect(formatEvent(event("verification.completed", { passed: false, checks: [{}, {}], blocking_failures: ["test: exit 1"], warnings: [] }))).toContain(
       "failed: test: exit 1",
     );

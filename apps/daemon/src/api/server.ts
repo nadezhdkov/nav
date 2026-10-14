@@ -9,14 +9,14 @@ import {
   DecideApprovalRequest,
   StreamClientMessage,
   type StreamServerMessage,
-  type VectrEvent,
-} from "@vectr/contracts";
+  type NavarchEvent,
+} from "@navarch/contracts";
 import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 
-/** Core API, spec §9.1. Every request needs the local bearer token from `~/.vectr/token`. */
+/** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
   await app.register(websocket);
@@ -144,7 +144,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const send = (msg: StreamServerMessage) => socket.send(JSON.stringify(msg));
     const matches = (runId: string | null) => topics.has("*") || topics.has("runs") || (runId !== null && topics.has(`run:${runId}`));
 
-    const offEvent = daemon.store.subscribe((event: VectrEvent) => {
+    const offEvent = daemon.store.subscribe((event: NavarchEvent) => {
       if (matches(event.run_id)) send({ kind: "event", event });
     });
     const offLog = daemon.onLog((runId, taskId, line) => {
@@ -173,7 +173,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 }
 
 function viaOf(headers: Record<string, unknown>): "cli" | "web" | "mobile" | "api" {
-  const via = headers["x-vectr-client"];
+  const via = headers["x-navarch-client"];
   return via === "cli" || via === "web" || via === "mobile" ? via : "api";
 }
 

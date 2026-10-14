@@ -1,5 +1,5 @@
 {
-  "name": "vectr",
+  "name": "navarch",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.11.2",
@@ -10,7 +10,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "dev:daemon": "node apps/daemon/src/main.ts",
-    "vectr": "node apps/cli/src/main.ts"
+    "navarch": "node apps/cli/src/main.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

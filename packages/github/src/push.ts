@@ -1,12 +1,12 @@
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { REPO_PATTERN, redact } from "@vectr/contracts";
+import { REPO_PATTERN, redact } from "@navarch/contracts";
 
-/** Branches VECTR may write (spec §6.7.4): `vectr/` plus safe path segments, nothing else. */
-const VECTR_BRANCH = /^vectr(\/[A-Za-z0-9_][A-Za-z0-9._-]*)+$/;
+/** Branches Navarch may write (spec §6.7.4): `navarch/` plus safe path segments, nothing else. */
+const NAVARCH_BRANCH = /^navarch(\/[A-Za-z0-9_][A-Za-z0-9._-]*)+$/;
 
-export function isVectrBranch(branch: string): boolean {
-  return VECTR_BRANCH.test(branch) && !branch.split("/").some((part) => part === ".." || part.endsWith(".lock"));
+export function isNavarchBranch(branch: string): boolean {
+  return NAVARCH_BRANCH.test(branch) && !branch.split("/").some((part) => part === ".." || part.endsWith(".lock"));
 }
 
 /** `owner/name` of a GitHub remote URL (https, ssh or scp form), or undefined for anything else. */
@@ -27,13 +27,13 @@ export type PushSpec = {
 };
 
 /**
- * Pushes one `vectr/*` branch to GitHub and returns the pushed commit. The URL is built from the
+ * Pushes one `navarch/*` branch to GitHub and returns the pushed commit. The URL is built from the
  * repository name, not read from `origin`, so the operator's SSH keys and credential helpers are
  * never used. The token reaches git for this one command through `GIT_CONFIG_*` (ADR 0007), and
  * the refspec has no `+`: a branch that moved on GitHub is not overwritten.
  */
 export async function pushBranch(spec: PushSpec): Promise<string> {
-  if (!isVectrBranch(spec.branch)) throw new Error(`refusing to push ${JSON.stringify(spec.branch)}: only vectr/* branches`);
+  if (!isNavarchBranch(spec.branch)) throw new Error(`refusing to push ${JSON.stringify(spec.branch)}: only navarch/* branches`);
   const base = spec.gitUrl ?? "https://github.com";
   if (!new RegExp(`^${REPO_PATTERN}$`).test(spec.repo)) throw new Error(`invalid repository name ${JSON.stringify(spec.repo)}`);
   const web = /^https?:\/\//.test(base) ? base.replace(/\/$/, "") : undefined;

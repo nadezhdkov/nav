@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
-import { registerSecret } from "@vectr/contracts";
+import { registerSecret } from "@navarch/contracts";
 
 /**
  * Secrets Vault (spec §6.1.5, ADR 0007). Secrets are named, e.g. `secret://github/token`, and kept
- * in the OS keychain through libsecret's `secret-tool`. `VECTR_SECRET_<NAME>` in the daemon's
- * environment takes precedence (tests, headless setups). Every value read is registered for
+ * in the OS keychain through libsecret's `secret-tool`. `NAVARCH_SECRET_<NAME>` in the daemon's
+ * environment takes precedence (tests, headless setups). Secrets stored before the rename
+ * (ADR 0008), under the keychain service `vectr` or in `VECTR_SECRET_<NAME>`, are still read.
+ * Every value read is registered for
  * redaction, and values are handed only to the module that needs them.
  */
 
@@ -29,9 +31,9 @@ export class Vault {
 
   async get(ref: string): Promise<string> {
     const name = parseName(ref);
-    const value = this.env[envName(name)] || (await this.lookup(name));
+    const value = this.fromEnv(name) || (await this.lookup(name));
     if (!value) {
-      throw new VaultError(`secret ${name} is not set; store it with \`vectr secret set ${name}\` (reads stdin) or set ${envName(name)}`);
+      throw new VaultError(`secret ${name} is not set; store it with \`navarch secret set ${name}\` (reads stdin) or set ${envName(name)}`);
     }
     registerSecret(value);
     return value;
@@ -39,25 +41,32 @@ export class Vault {
 
   async has(ref: string): Promise<boolean> {
     const name = parseName(ref);
-    return Boolean(this.env[envName(name)] || (await this.lookup(name)));
+    return Boolean(this.fromEnv(name) || (await this.lookup(name)));
   }
 
   async set(ref: string, value: string): Promise<void> {
     const name = parseName(ref);
     if (!value) throw new VaultError("refusing to store an empty secret");
     registerSecret(value);
-    await this.run(["store", `--label=VECTR ${name}`, "service", "vectr", "name", name], value);
+    await this.run(["store", `--label=Navarch ${name}`, "service", "navarch", "name", name], value);
+  }
+
+  private fromEnv(name: string): string | undefined {
+    return this.env[envName(name)] || this.env[envName(name, "VECTR_SECRET_")];
   }
 
   private async lookup(name: string): Promise<string | undefined> {
-    try {
-      return (await this.run(["lookup", "service", "vectr", "name", name])) || undefined;
-    } catch (err) {
-      if ((err as { code?: unknown }).code === "ENOENT") {
-        throw new VaultError(`${this.command} not found: install libsecret tools, or set ${envName(name)}`);
+    for (const service of ["navarch", "vectr"]) {
+      try {
+        const value = await this.run(["lookup", "service", service, "name", name]);
+        if (value) return value;
+      } catch (err) {
+        if ((err as { code?: unknown }).code === "ENOENT") {
+          throw new VaultError(`${this.command} not found: install libsecret tools, or set ${envName(name)}`);
+        }
       }
-      return undefined;
     }
+    return undefined;
   }
 
   private run(args: string[], stdin?: string): Promise<string> {
@@ -74,6 +83,6 @@ function parseName(ref: string): string {
   return name;
 }
 
-function envName(name: string): string {
-  return `VECTR_SECRET_${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
+function envName(name: string, prefix = "NAVARCH_SECRET_"): string {
+  return `${prefix}${name.toUpperCase().replace(/[^A-Z0-9]/g, "_")}`;
 }

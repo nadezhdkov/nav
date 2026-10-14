@@ -17,11 +17,11 @@ The Phase 0 go/no-go ran 10 real tasks. The tasks themselves went well, but the 
 
 ## Decision
 
-- **Each agent runs with VECTR's configuration, not the operator's.**
+- **Each agent runs with Navarch's configuration, not the operator's.**
   - claude-code: `--setting-sources project,local` by default (`adapters.claude-code.setting_sources`), so user-level CLAUDE.md, hooks and plugins are not loaded. The subscription login still works, which `--bare` would break. The target repository's project settings still load, so T1 now also covers them.
-  - gemini-cli: per-task `GEMINI_CLI_HOME` under `<VECTR_HOME>/agents/gemini-cli/`, with `settings.json` selecting `gemini-api-key` and a symlink to the operator's `~/.gemini/.env`, so the key is never copied. The home is kept after a failure, so a retry can resume the session. When no `GEMINI_API_KEY` is available, the task fails at once with a fatal error saying where to put the key. This follows the per-task HOME that antigravity already uses (ADR 0004).
+  - gemini-cli: per-task `GEMINI_CLI_HOME` under `<NAVARCH_HOME>/agents/gemini-cli/`, with `settings.json` selecting `gemini-api-key` and a symlink to the operator's `~/.gemini/.env`, so the key is never copied. The home is kept after a failure, so a retry can resume the session. When no `GEMINI_API_KEY` is available, the task fails at once with a fatal error saying where to put the key. This follows the per-task HOME that antigravity already uses (ADR 0004).
 - **The task context lists the allowlist.** `buildInstructions` adds a "Commands you may run" section from the grant (`x` exactly, or `x` followed by any arguments) before `<task>`. The grant is still enforced by each adapter; the list only stops the agent from guessing.
-- **Setup commands prepare the worktree.** `CreateRunRequest.setup_commands` (CLI `vectr run --setup <cmd>`, repeatable; later `setup:` in `.vectr/project.yaml`, §14.2) is recorded in `run.created`.
+- **Setup commands prepare the worktree.** `CreateRunRequest.setup_commands` (CLI `navarch run --setup <cmd>`, repeatable; later `setup:` in `.navarch/project.yaml`, §14.2) is recorded in `run.created`.
   - The Runner runs these commands in the sandbox before the agent's first attempt, through `sh -c`, with network and the operator's environment minus `DEFAULT_SCRUB_ENV`.
   - Each command emits `sandbox.setup` (command, exit code, duration), and its output goes to the task log.
   - A marker in the run's log directory makes setup run once per sandbox, across retries and restarts.
@@ -29,7 +29,7 @@ The Phase 0 go/no-go ran 10 real tasks. The tasks themselves went well, but the 
   - Cancelling the task or stopping the daemon kills the running command and its process group; the agent is not started. The Scheduler gives each task an `AbortSignal`, so a cancel or stop also reaches a task between dispatch and the agent's process.
   - Setup is opt-in, never auto-detected: an implicit `npm ci` would run third-party install scripts (T2) without anyone having asked.
 - **Already-attempted tasks are dispatched first.** The Scheduler orders ready tasks so that those with `attempt > 0` go first, keeping FIFO order within each group.
-- `vectr run list` shows one line per run: the brief's `**Summary:**` line or the first line of the prompt. Multi-line reasons in `vectr logs` are folded onto one line.
+- `navarch run list` shows one line per run: the brief's `**Summary:**` line or the first line of the prompt. Multi-line reasons in `navarch logs` are folded onto one line.
 
 ## Consequences
 

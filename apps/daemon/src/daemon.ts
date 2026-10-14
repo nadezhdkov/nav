@@ -1,18 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AntigravityAdapter, type AntigravityOptions } from "@vectr/adapter-antigravity";
-import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@vectr/adapter-claude-code";
-import { CodexAdapter, type CodexOptions } from "@vectr/adapter-codex";
-import { GeminiCliAdapter, type GeminiCliOptions } from "@vectr/adapter-gemini-cli";
-import { NativeAdapter, type NativeOptions, type Provider } from "@vectr/adapter-native";
-import { AgentRuntime } from "@vectr/agent-runtime";
-import { registerSecret, type AdapterId, type AgentAdapter } from "@vectr/contracts";
+import { AntigravityAdapter, type AntigravityOptions } from "@navarch/adapter-antigravity";
+import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@navarch/adapter-claude-code";
+import { CodexAdapter, type CodexOptions } from "@navarch/adapter-codex";
+import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini-cli";
+import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
+import { AgentRuntime } from "@navarch/agent-runtime";
+import { registerSecret, type AdapterId, type AgentAdapter } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
 import { buildActions } from "./orchestrator/actions.ts";
-import { loadConfig, type Config } from "./config.ts";
+import { homeFiles, loadConfig, type Config } from "./config.ts";
 import { EventStore } from "./events/store.ts";
 import { Orchestrator } from "./orchestrator/orchestrator.ts";
 import { PolicyEngine } from "./policy/engine.ts";
@@ -31,13 +31,13 @@ export type DaemonOptions = {
     native?: Partial<NativeOptions>;
   };
   port?: number;
-  /** Defaults to the OS keychain plus `VECTR_SECRET_*` (ADR 0007). */
+  /** Defaults to the OS keychain plus `NAVARCH_SECRET_*` (ADR 0007). */
   vault?: Vault;
 };
 
 type LogListener = (runId: string, taskId: string, line: string) => void;
 
-/** `vectrd`: wires the event store, policy, orchestrator, scheduler, runtime and API. */
+/** `navarchd`: wires the event store, policy, orchestrator, scheduler, runtime and API. */
 export class Daemon {
   readonly home: string;
   readonly config: Config;
@@ -56,7 +56,7 @@ export class Daemon {
     this.config = options.config ?? loadConfig(this.home);
     if (options.port !== undefined) this.config.daemon.port = options.port;
 
-    this.store = new EventStore(join(this.home, "vectr.db"));
+    this.store = new EventStore(homeFiles(this.home).db);
     this.adapters = buildAdapters(this.config, options.adapters ?? {}, this.home);
     const adapters = this.adapters;
     const runtime = new AgentRuntime({
@@ -98,7 +98,7 @@ export class Daemon {
     await this.server.listen({ host: this.config.daemon.host, port: this.config.daemon.port });
     const address = this.server.server.address();
     this.port = typeof address === "object" && address ? address.port : this.config.daemon.port;
-    writeFileSync(join(this.home, "vectrd.json"), JSON.stringify({ pid: process.pid, url: this.url }));
+    writeFileSync(homeFiles(this.home).daemonInfo, JSON.stringify({ pid: process.pid, url: this.url }));
     this.orchestrator.recover();
     this.scheduler.pump();
   }
@@ -113,7 +113,7 @@ export class Daemon {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });
     this.store.close();
-    rmSync(join(this.home, "vectrd.json"), { force: true });
+    rmSync(homeFiles(this.home).daemonInfo, { force: true });
   }
 }
 

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import { CliProcesses, cliOutcome, DEFAULT_SCRUB_ENV, failed, healthcheck, parsePattern, scrubbedEnv } from "@vectr/adapter-kit";
+import { CliProcesses, cliOutcome, DEFAULT_SCRUB_ENV, failed, healthcheck, parsePattern, scrubbedEnv } from "@navarch/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -11,7 +11,7 @@ import type {
   TaskResult,
   ToolGrant,
   UsageRecord,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { parseAgyLine } from "./stream.ts";
 
 /**
@@ -68,7 +68,7 @@ export class AntigravityAdapter implements AgentAdapter {
       commandArgs: options.commandArgs ?? [],
       scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
-      homeRoot: options.homeRoot ?? join(tmpdir(), "vectr-agy"),
+      homeRoot: options.homeRoot ?? join(tmpdir(), "navarch-agy"),
     };
     this.processes = new CliProcesses(this.options.killGraceMs);
   }

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { matchesPath, verify } from "../src/index.ts";
 
 function sandbox(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vectr-verify-"));
+  const dir = mkdtempSync(join(tmpdir(), "navarch-verify-"));
   writeFileSync(join(dir, "ok.txt"), "ok\n");
   return dir;
 }
@@ -56,7 +56,7 @@ describe("verify", () => {
   it("warns that a run without checks is unverified", async () => {
     const report = await verify({ ...base, cwd: sandbox(), checks: [], changedFiles: ["a"], protectedPaths: [] });
     expect(report).toMatchObject({ passed: true, blocking_failures: [] });
-    expect(report.warnings).toEqual(["unverified: the project defines no verify commands (.vectr/project.yaml)"]);
+    expect(report.warnings).toEqual(["unverified: the project defines no verify commands (.navarch/project.yaml)"]);
   });
 
   it("warns about changed files under protected paths", async () => {

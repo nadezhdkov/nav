@@ -37,7 +37,7 @@ const git = (cwd: string, ...args: string[]) =>
 
 /** A local "GitHub" for git: `<root>/acme/widgets.git`, a bare clone of the repository. */
 function bareRemote(repo: string): { gitUrl: string; bare: string } {
-  const root = mkdtempSync(join(tmpdir(), "vectr-remote-"));
+  const root = mkdtempSync(join(tmpdir(), "navarch-remote-"));
   mkdirSync(join(root, "acme"));
   const bare = join(root, "acme", "widgets.git");
   execFileSync("git", ["clone", "-q", "--bare", repo, bare]);
@@ -77,19 +77,19 @@ describe("GitHubClient", () => {
     expect(await client.defaultBranch("acme/widgets")).toBe("main");
     const pr = await client.createPullRequest({
       repo: "acme/widgets",
-      head: "vectr/run_1/implement",
+      head: "navarch/run_1/implement",
       base: "main",
       title: "fix: crash on empty input",
       body: "Fixes #7",
       draft: true,
     });
     expect(pr).toEqual({ number: 100, url: "https://github.com/acme/widgets/pull/100" });
-    expect(gh.pulls[0]).toMatchObject({ head: "vectr/run_1/implement", base: "main", draft: true });
+    expect(gh.pulls[0]).toMatchObject({ head: "navarch/run_1/implement", base: "main", draft: true });
     await expect(
-      client.createPullRequest({ repo: "acme/widgets", head: "vectr/run_1/implement", base: "main", title: "t", body: "", draft: true }),
+      client.createPullRequest({ repo: "acme/widgets", head: "navarch/run_1/implement", base: "main", title: "t", body: "", draft: true }),
     ).rejects.toThrow("already exists");
-    expect(await client.findPullRequest("acme/widgets", "vectr/run_1/implement")).toEqual(pr);
-    expect(await client.findPullRequest("acme/widgets", "vectr/other")).toBeUndefined();
+    expect(await client.findPullRequest("acme/widgets", "navarch/run_1/implement")).toEqual(pr);
+    expect(await client.findPullRequest("acme/widgets", "navarch/other")).toBeUndefined();
   });
 });
 
@@ -106,10 +106,10 @@ describe("repoFromRemote", () => {
 });
 
 describe("pushBranch", () => {
-  it("pushes a vectr/* branch to the repository's remote and keeps the token out of git config", async () => {
+  it("pushes a navarch/* branch to the repository's remote and keeps the token out of git config", async () => {
     const repo = makeRepo();
     const { gitUrl, bare } = bareRemote(repo);
-    git(repo, "switch", "-q", "-c", "vectr/run_1/implement");
+    git(repo, "switch", "-q", "-c", "navarch/run_1/implement");
     writeFileSync(join(repo, "fix.txt"), "fixed\n");
     git(repo, "add", ".");
     git(repo, "commit", "-q", "-m", "fix");
@@ -118,33 +118,33 @@ describe("pushBranch", () => {
     const hookRan = join(repo, "hook-ran");
     writeFileSync(join(repo, ".git", "hooks", "pre-push"), `#!/bin/sh\nenv > '${hookRan}'\n`, { mode: 0o755 });
 
-    const commit = await pushBranch({ repoPath: repo, repo: "acme/widgets", branch: "vectr/run_1/implement", token: "github_pat_secret", gitUrl });
+    const commit = await pushBranch({ repoPath: repo, repo: "acme/widgets", branch: "navarch/run_1/implement", token: "github_pat_secret", gitUrl });
     expect(commit).toBe(head);
-    expect(git(bare, "rev-parse", "refs/heads/vectr/run_1/implement")).toBe(head);
+    expect(git(bare, "rev-parse", "refs/heads/navarch/run_1/implement")).toBe(head);
     expect(readFileSync(join(repo, ".git", "config"), "utf8")).not.toContain("github_pat_secret");
     expect(existsSync(hookRan)).toBe(false);
   });
 
-  it("never pushes outside vectr/* and never forces", async () => {
+  it("never pushes outside navarch/* and never forces", async () => {
     const repo = makeRepo();
     const { gitUrl, bare } = bareRemote(repo);
     const push = (branch: string) => pushBranch({ repoPath: repo, repo: "acme/widgets", branch, token: "t", gitUrl });
-    for (const branch of ["main", "feature/x", "vectr/../main", "vectr/", "vectr/a b", "vectr/x:refs/heads/main"]) {
-      await expect(push(branch), branch).rejects.toThrow("only vectr/* branches");
+    for (const branch of ["main", "feature/x", "navarch/../main", "navarch/", "navarch/a b", "navarch/x:refs/heads/main"]) {
+      await expect(push(branch), branch).rejects.toThrow("only navarch/* branches");
     }
 
     // The remote branch moved on: a non-forced push must fail instead of overwriting it.
-    git(repo, "switch", "-q", "-c", "vectr/run_2/implement");
+    git(repo, "switch", "-q", "-c", "navarch/run_2/implement");
     writeFileSync(join(repo, "a.txt"), "a\n");
     git(repo, "add", ".");
     git(repo, "commit", "-q", "-m", "a");
-    await push("vectr/run_2/implement");
+    await push("navarch/run_2/implement");
     git(repo, "reset", "-q", "--hard", "HEAD~1");
     writeFileSync(join(repo, "b.txt"), "b\n");
     git(repo, "add", ".");
     git(repo, "commit", "-q", "-m", "b");
-    const before = git(bare, "rev-parse", "refs/heads/vectr/run_2/implement");
-    await expect(push("vectr/run_2/implement")).rejects.toThrow("push failed");
-    expect(git(bare, "rev-parse", "refs/heads/vectr/run_2/implement")).toBe(before);
+    const before = git(bare, "rev-parse", "refs/heads/navarch/run_2/implement");
+    await expect(push("navarch/run_2/implement")).rejects.toThrow("push failed");
+    expect(git(bare, "rev-parse", "refs/heads/navarch/run_2/implement")).toBe(before);
   });
 });

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+import type { RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeModelServer, type FakeServer } from "../../../packages/adapters/native/test/fake-server.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -62,7 +62,7 @@ describe("adapter selection", () => {
     expect(run.body.tasks[0]).toMatchObject({ adapter: "native", status: "succeeded", summary: "Added docs/NOTE.md." });
     expect(run.body.artifacts[0]?.summary).toContain("docs/NOTE.md");
 
-    const events = await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
+    const events = await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`);
     const call = events.body.find((e) => e.type === "model.call.completed");
     expect(call?.payload).toMatchObject({ model: "fake/tiny", cost: 0 });
     expect(server.requests[0]?.model).toBe("tiny");

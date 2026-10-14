@@ -8,7 +8,7 @@ import {
   parsePattern,
   scrubbedEnv,
   withRetryAt,
-} from "@vectr/adapter-kit";
+} from "@navarch/adapter-kit";
 import type {
   AdapterCapabilities,
   AdapterIO,
@@ -17,7 +17,7 @@ import type {
   TaskContext,
   TaskResult,
   ToolGrant,
-} from "@vectr/contracts";
+} from "@navarch/contracts";
 import { parseLine, type ClaudeLimit, type ClaudeResult } from "./stream.ts";
 
 /**
@@ -28,7 +28,7 @@ import { parseLine, type ClaudeLimit, type ClaudeResult } from "./stream.ts";
 export type ClaudeCodeOptions = {
   /** Executable, `claude` by default. */
   command?: string;
-  /** Arguments placed before VECTR's own (used by tests to run a fake CLI through node). */
+  /** Arguments placed before Navarch's own (used by tests to run a fake CLI through node). */
   commandArgs?: string[];
   /** Claude Code permission mode. `acceptEdits` lets it edit files; other tools follow the grant. */
   permissionMode?: string;

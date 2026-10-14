@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 /** Creates a throwaway git repository with one commit. */
 export function makeRepo(): string {
-  const dir = mkdtempSync(join(tmpdir(), "vectr-repo-"));
+  const dir = mkdtempSync(join(tmpdir(), "navarch-repo-"));
   const git = (...args: string[]) =>
     execFileSync("git", args, {
       cwd: dir,
@@ -25,5 +25,5 @@ export function makeRepo(): string {
 }
 
 export function tempHome(): string {
-  return mkdtempSync(join(tmpdir(), "vectr-home-"));
+  return mkdtempSync(join(tmpdir(), "navarch-home-"));
 }

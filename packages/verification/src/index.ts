@@ -1,9 +1,9 @@
-import { redact, type VerificationCheck, type VerificationReport } from "@vectr/contracts";
-import { runShell } from "@vectr/runner";
+import { redact, type VerificationCheck, type VerificationReport } from "@navarch/contracts";
+import { runShell } from "@navarch/runner";
 
 /**
  * Verification (spec §6.6): runs the project's own checks in a task's worktree and turns them into
- * a `VerificationReport`. The commands come from `.vectr/project.yaml` at the run's base commit,
+ * a `VerificationReport`. The commands come from `.navarch/project.yaml` at the run's base commit,
  * never from the worktree the agent changed.
  */
 
@@ -55,7 +55,7 @@ export async function verify(spec: VerifySpec): Promise<VerificationReport> {
   }
 
   if (spec.signal?.aborted && !blocking.length) blocking.push("verification was cancelled");
-  if (!spec.checks.length) warnings.push("unverified: the project defines no verify commands (.vectr/project.yaml)");
+  if (!spec.checks.length) warnings.push("unverified: the project defines no verify commands (.navarch/project.yaml)");
   for (const file of spec.changedFiles) {
     if (spec.protectedPaths.some((pattern) => matchesPath(pattern, file))) warnings.push(`protected path changed: ${file}`);
   }
