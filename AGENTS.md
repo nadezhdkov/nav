@@ -1,6 +1,6 @@
 # AGENTS.md — VECTR
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.4, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.5, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -8,13 +8,33 @@ Instructions for AI agents working in this repository. Product source of truth: 
 
 ## Current state
 
-The project is in the **specification phase**: no code, no `package.json`, no git yet. Next milestone: **Phase 0** (spec §16): monorepo, `packages/contracts`, SQLite event store, minimal `vectrd`, `claude-code` adapter running in a worktree, CLI `run/logs/cancel`. Go/no-go: 10 real tasks, resuming correctly after restarting the daemon.
+**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `vectrd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants, the `claude-code` adapter running in a worktree with resume after restart, and the CLI. Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
 
-Do not invent build/test commands. Once scaffolding exists, record the real ones here and in the `Makefile` (see [Makefile](#makefile)).
+Go/no-go still open: 10 real tasks on your own repositories, 2 of them resumed after restarting the daemon. Only smoke runs have been done so far.
+
+Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
+
+| Command | What it does |
+|---|---|
+| `make install` | `pnpm install --frozen-lockfile` |
+| `make typecheck` | `tsc` over every package, no emit |
+| `make test` | Vitest; adapter tests use a fake `claude` CLI, no network or cost |
+| `make verify` | typecheck + test, the check to run before committing |
+| `make daemon` | run `vectrd` in the foreground |
+| `make cli ARGS="…"` | run the `vectr` CLI, e.g. `ARGS="run list"` |
+| `make doctor` | print node, pnpm, git and claude versions |
+
+CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--budget] [--allow <cmd>]... [--model] [--follow] <prompt>`, `vectr run list|show <id>`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
+
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/claude-code`, `docs/adr`.
 
 ## Stack (spec §12)
 
 TypeScript + Node 22 LTS, Fastify · SQLite (WAL) + Drizzle · Zod (shared contracts) · Vue 3 + Vite + Pinia + Vue Flow + Tailwind/shadcn-vue · Vitest + Playwright · pnpm workspaces + turbo · LiteLLM/OpenRouter as model gateway · tree-sitter + ripgrep.
+
+Phase 0 deviations (ADR 0002):
+- Sources run directly on Node ≥ 22.18 through type stripping, with no build step. Use erasable syntax only: no `enum`, no `namespace`, no constructor parameter properties. Import with `.ts` extensions.
+- The event store uses `node:sqlite` with plain SQL. Drizzle and turbo are deferred.
 
 Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine,agent-runtime,adapters/*,model-router,runner,verification,github,knowledge,explorer,mcp-server}`, `flows/`, `profiles/`, `docs/{adr,specs,threat-model.md}`, `relay/` (later phase), plus the repo-local directories `.worktree/`, `.claude/skills/` and `.agents/skills/` described below.
 

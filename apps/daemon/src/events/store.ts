@@ -1,0 +1,223 @@
+import { DatabaseSync } from "node:sqlite";
+import {
+  newId,
+  parsePayload,
+  type NewEvent,
+  type RunDetail,
+  type RunView,
+  type TaskView,
+  type VectrEvent,
+} from "@vectr/contracts";
+import { applyEvent } from "./projections.ts";
+import { dropProjections, eventsTable, projectionTables } from "./schema.ts";
+
+export type EventListener = (event: VectrEvent) => void;
+
+/**
+ * Event store (spec §6.1.3): events are validated, written and projected in one transaction,
+ * and only published to listeners after the commit (outbox semantics within one process).
+ */
+export class EventStore {
+  readonly db: DatabaseSync;
+  private readonly listeners = new Set<EventListener>();
+
+  constructor(path: string) {
+    this.db = new DatabaseSync(path);
+    this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
+    this.db.exec(eventsTable);
+    this.db.exec(projectionTables);
+  }
+
+  close(): void {
+    this.listeners.clear();
+    this.db.close();
+  }
+
+  subscribe(listener: EventListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /** Appends events atomically; throws (and writes nothing) if any is invalid. */
+  append(events: NewEvent[]): VectrEvent[] {
+    const stored: VectrEvent[] = [];
+    const insert = this.db.prepare(
+      "INSERT INTO events (id, ts, type, run_id, task_id, actor, payload, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+    );
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const e of events) {
+        const payload = parsePayload(e.type, e.payload);
+        const id = newId("evt");
+        const ts = new Date().toISOString();
+        const info = insert.run(id, ts, e.type, e.run_id, e.task_id, JSON.stringify(e.actor), JSON.stringify(payload));
+        const event = {
+          id,
+          seq: Number(info.lastInsertRowid),
+          ts,
+          type: e.type,
+          run_id: e.run_id,
+          task_id: e.task_id,
+          actor: e.actor,
+          payload,
+          schema_version: 1,
+        } as VectrEvent;
+        applyEvent(this.db, event);
+        stored.push(event);
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+    for (const event of stored) {
+      for (const listener of this.listeners) {
+        try {
+          listener(event);
+        } catch {
+          // A failing subscriber must not affect the writer or other subscribers.
+        }
+      }
+    }
+    return stored;
+  }
+
+  events(filter: { runId?: string; afterSeq?: number; limit?: number } = {}): VectrEvent[] {
+    const rows = filter.runId
+      ? this.db
+          .prepare("SELECT * FROM events WHERE run_id = ? AND seq > ? ORDER BY seq LIMIT ?")
+          .all(filter.runId, filter.afterSeq ?? 0, filter.limit ?? 10_000)
+      : this.db
+          .prepare("SELECT * FROM events WHERE seq > ? ORDER BY seq LIMIT ?")
+          .all(filter.afterSeq ?? 0, filter.limit ?? 10_000);
+    return rows.map(rowToEvent);
+  }
+
+  /** Rebuilds every projection from the event log (replay, spec P5). */
+  rebuildProjections(): void {
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      this.db.exec(dropProjections);
+      this.db.exec(projectionTables);
+      for (const row of this.db.prepare("SELECT * FROM events ORDER BY seq").all()) {
+        applyEvent(this.db, rowToEvent(row));
+      }
+      this.db.exec("COMMIT");
+    } catch (err) {
+      this.db.exec("ROLLBACK");
+      throw err;
+    }
+  }
+
+  // --- projection queries ---
+
+  listRuns(limit = 50): RunView[] {
+    return this.db.prepare("SELECT * FROM runs ORDER BY created_at DESC, id DESC LIMIT ?").all(limit).map(toRunView);
+  }
+
+  getRun(id: string): RunView | undefined {
+    const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id);
+    return row ? toRunView(row) : undefined;
+  }
+
+  getRunRecord(id: string): RunRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id) as RunRow | undefined;
+    if (!row) return undefined;
+    return { ...toRunView(row), adapter: row.adapter, profile: row.profile, allow_commands: JSON.parse(row.allow_commands), model: row.model };
+  }
+
+  getRunDetail(id: string): RunDetail | undefined {
+    const run = this.getRun(id);
+    if (!run) return undefined;
+    const artifacts = this.db
+      .prepare("SELECT id, task_id, kind, uri, summary FROM artifacts WHERE run_id = ? ORDER BY created_at")
+      .all(id) as RunDetail["artifacts"];
+    return { ...run, tasks: this.tasksOfRun(id), artifacts: artifacts.map((a) => ({ ...a })) };
+  }
+
+  tasksOfRun(runId: string): TaskView[] {
+    return this.db.prepare("SELECT * FROM tasks WHERE run_id = ? ORDER BY rowid").all(runId).map(toTaskView);
+  }
+
+  getTask(id: string): TaskRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | undefined;
+    return row ? toTaskRecord(row) : undefined;
+  }
+
+  tasksWithStatus(status: string): TaskRecord[] {
+    return (this.db.prepare("SELECT * FROM tasks WHERE status = ? ORDER BY updated_at").all(status) as TaskRow[]).map(
+      toTaskRecord,
+    );
+  }
+
+  getArtifact(id: string): { id: string; run_id: string; kind: string; uri: string; summary: string } | undefined {
+    const row = this.db.prepare("SELECT id, run_id, kind, uri, summary FROM artifacts WHERE id = ?").get(id) as
+      | { id: string; run_id: string; kind: string; uri: string; summary: string }
+      | undefined;
+    return row ? { ...row } : undefined;
+  }
+}
+
+export type RunRecord = RunView & { adapter: string; profile: string; allow_commands: string[]; model: string | null };
+export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null };
+
+type Row = Record<string, unknown>;
+type RunRow = Row & { adapter: string; profile: string; allow_commands: string; model: string | null };
+type TaskRow = Row;
+
+function rowToEvent(row: Row): VectrEvent {
+  return {
+    id: String(row.id),
+    seq: Number(row.seq),
+    ts: String(row.ts),
+    type: row.type,
+    run_id: (row.run_id as string | null) ?? null,
+    task_id: (row.task_id as string | null) ?? null,
+    actor: JSON.parse(String(row.actor)),
+    payload: JSON.parse(String(row.payload)),
+    schema_version: 1,
+  } as VectrEvent;
+}
+
+function toRunView(row: Row): RunView {
+  return {
+    id: String(row.id),
+    status: row.status as RunView["status"],
+    repo_path: String(row.repo_path),
+    base_commit: String(row.base_commit),
+    prompt: String(row.prompt),
+    budget: Number(row.budget),
+    cost_total: Number(row.cost_total),
+    created_at: String(row.created_at),
+    updated_at: String(row.updated_at),
+    ended_at: (row.ended_at as string | null) ?? null,
+  };
+}
+
+function toTaskView(row: Row): TaskView {
+  return {
+    id: String(row.id),
+    run_id: String(row.run_id),
+    node_id: String(row.node_id),
+    type: String(row.type),
+    status: row.status as TaskView["status"],
+    attempt: Number(row.attempt),
+    max_attempts: Number(row.max_attempts),
+    profile: String(row.profile),
+    adapter: String(row.adapter),
+    sandbox_path: (row.sandbox_path as string | null) ?? null,
+    branch: (row.branch as string | null) ?? null,
+    cost: Number(row.cost),
+    summary: (row.summary as string | null) ?? null,
+    error: (row.error as string | null) ?? null,
+    updated_at: String(row.updated_at),
+  };
+}
+
+function toTaskRecord(row: Row): TaskRecord {
+  return {
+    ...toTaskView(row),
+    sandbox_id: (row.sandbox_id as string | null) ?? null,
+    resume_token: (row.resume_token as string | null) ?? null,
+  };
+}

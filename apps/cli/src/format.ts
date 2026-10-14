@@ -1,0 +1,76 @@
+import type { RunDetail, RunView, VectrEvent } from "@vectr/contracts";
+
+const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
+const time = (iso: string) => iso.slice(11, 19);
+
+export function formatRunList(runs: RunView[]): string {
+  if (!runs.length) return "no runs yet";
+  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(r.prompt, 50)]);
+  return table(["RUN", "STATUS", "COST", "CREATED", "PROMPT"], rows);
+}
+
+export function formatRunDetail(run: RunDetail): string {
+  const lines = [
+    `run      ${run.id}`,
+    `status   ${run.status}`,
+    `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
+    `cost     ${usd(run.cost_total)} of ${usd(run.budget)}`,
+    `prompt   ${truncate(run.prompt, 200)}`,
+    "",
+    "tasks:",
+  ];
+  for (const t of run.tasks) {
+    lines.push(`  ${t.id}  ${t.node_id}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
+    if (t.branch) lines.push(`    branch   ${t.branch}`);
+    if (t.sandbox_path) lines.push(`    worktree ${t.sandbox_path}`);
+    if (t.error) lines.push(`    error    ${truncate(t.error, 300)}`);
+    if (t.summary) lines.push(`    summary  ${truncate(t.summary.replace(/\s+/g, " "), 300)}`);
+  }
+  if (run.artifacts.length) {
+    lines.push("", "artifacts:");
+    for (const a of run.artifacts) lines.push(`  ${a.id}  ${a.kind}  ${a.summary}`);
+  }
+  return lines.join("\n");
+}
+
+export function formatEvent(e: VectrEvent): string {
+  const p = e.payload as Record<string, unknown>;
+  let detail: string;
+  switch (e.type) {
+    case "run.status_changed":
+    case "task.status_changed":
+      detail = `${p.from} → ${p.to}${p.reason ? ` (${p.reason})` : ""}`;
+      break;
+    case "task.progress":
+      detail = truncate(String(p.message).replace(/\s+/g, " "), 160);
+      break;
+    case "task.completed":
+      detail = `${p.status} in ${Math.round(Number(p.duration_ms) / 1000)}s, ${usd(Number(p.cost))}`;
+      break;
+    case "model.call.completed":
+      detail = `${p.model} in=${p.tokens_in} out=${p.tokens_out} ${usd(Number(p.cost))}`;
+      break;
+    case "sandbox.created":
+      detail = `${p.branch} at ${p.path}${p.reused ? " (reused)" : ""}`;
+      break;
+    case "artifact.created":
+      detail = `${p.kind} ${p.artifact_id}: ${p.summary}`;
+      break;
+    case "policy.denied":
+      detail = `${p.action}: ${p.reason}`;
+      break;
+    default:
+      detail = "";
+  }
+  return `${time(e.ts)}  ${e.type.padEnd(20)} ${detail}`;
+}
+
+function truncate(s: string, n: number): string {
+  return s.length > n ? `${s.slice(0, n - 1)}…` : s;
+}
+
+function table(header: string[], rows: string[][]): string {
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
+  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] ?? 0)).join("  ").trimEnd();
+  return [line(header), ...rows.map(line)].join("\n");
+}

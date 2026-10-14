@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **VECTR** — *Verified Engineering Coordination for Tasks and Repos* (ver [§19.1](#191-nome-do-produto)) |
-| Versão do documento | 0.4 (auto-merge opcional por repositório; ver [§11.1](#111-auto-merge-opcional)) |
+| Versão do documento | 0.5 (decisões da Fase 0: §19.2, §19.4; transições de cancelamento em §8.3; eventos em §9.2) |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -872,7 +872,16 @@ stateDiagram-v2
     cancelled --> [*]
     running --> paused: usuário pausou
     paused --> running: retomado
+    pending --> cancelled: Run cancelada
+    ready --> cancelled: Run cancelada
+    blocked --> cancelled: Run cancelada
+    running --> cancelled: Run cancelada
+    paused --> cancelled: Run cancelada
+    interrupted --> failed: sem tentativas restantes
+    interrupted --> cancelled: Run cancelada
 ```
+
+> Transições implementadas em `packages/contracts/src/status.ts` e validadas pelo event store: um evento com transição inválida é rejeitado.
 
 ### 8.4 Máquina de estados da Run
 
@@ -925,7 +934,7 @@ Especificação formal em OpenAPI 3.1 gerada a partir do código.
 }
 ```
 
-Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `task.ready`, `task.started`, `task.progress`, `task.completed`, `task.failed`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
+Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `run.message`, `task.created`, `task.status_changed` (substitui `task.ready`/`task.started`/`task.failed`: toda mudança de estado da Task é um único tipo com `from`/`to`), `task.progress`, `task.resume_token`, `task.completed`, `artifact.created`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
 
 ### 9.3 Interface de Agent Adapter
 
@@ -1477,13 +1486,13 @@ Justificativa: "vetor" tem direção e magnitude, o que representa bem tarefas c
 **Pendências antes de publicar:** verificar disponibilidade de marca, domínio, nomes de pacote (npm, Maven, PyPI) e colisões em repositórios públicos e na web. Esta verificação ainda não foi feita.
 
 ### 19.2 Linguagem do Core
-TypeScript (recomendado) vs. Rust vs. Python — ver [§12.2](#122-alternativas-consideradas).
+**Decidido (Fase 0):** TypeScript, executado direto pelo Node ≥ 22.18 (type stripping, sem build), `node:sqlite` no event store; Drizzle e turbo adiados. Ver `docs/adr/0002-phase-0-toolchain.md`.
 
 ### 19.3 Gateway de modelos
 LiteLLM como sidecar (Python) vs. OpenRouter vs. clientes próprios.
 
 ### 19.4 Integração com Claude Code
-SDK em processo vs. subprocesso headless; forma de autenticação compatível com os termos de uso.
+**Decidido (Fase 0):** subprocesso headless (`claude -p --output-format stream-json`), com `--session-id`/`--resume` para retomar após reinício e a concessão da Policy Engine via `--allowedTools`/`--disallowedTools`. Autenticação: a do CLI do usuário, que deve conferir os termos do seu plano. Ver `docs/adr/0003-claude-code-headless-subprocess.md`.
 
 ### 19.5 Topologia remota padrão
 Tailscale obrigatório no MVP, relay só na Fase 4? (Recomendado: sim.)
@@ -1541,4 +1550,4 @@ Projeto pessoal fechado, open source (MIT/Apache-2.0) ou open core?
 
 ---
 
-*Fim do documento — versão 0.4.*
+*Fim do documento — versão 0.5.*

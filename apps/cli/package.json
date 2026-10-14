@@ -1,0 +1,13 @@
+{
+  "name": "@vectr/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "vectr": "./bin/vectr.js"
+  },
+  "dependencies": {
+    "@vectr/contracts": "workspace:*",
+    "@vectr/daemon": "workspace:*"
+  }
+}
