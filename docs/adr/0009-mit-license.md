@@ -1,6 +1,6 @@
 # 0009 — Open source under the MIT license
 
-- Status: accepted
+- Status: superseded by [0010](0010-polyform-noncommercial-license.md)
 - Date: 2026-10-14
 - Spec: §19.9 (license and distribution), v0.9
 

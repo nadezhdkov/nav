@@ -54,4 +54,4 @@ Runtime state lives in `~/.navarch`. Set `NAVARCH_HOME` to use another directory
 
 ## License
 
-[MIT](LICENSE): use, change and redistribute it as you like. The skills in `.claude/skills/` are adapted from mattpocock/skills, also MIT (`.claude/skills/THIRD_PARTY.md`).
+[PolyForm Noncommercial 1.0.0](LICENSE): you may use, change and share Navarch for any noncommercial purpose (personal use, study, research, hobby projects, charities and public institutions). Commercial use, including selling it or offering it as a paid service, is not allowed; ask the author if you need a commercial license. Navarch is source-available, not open source. The skills in `.claude/skills/` are adapted from mattpocock/skills and stay under MIT (`.claude/skills/THIRD_PARTY.md`).
