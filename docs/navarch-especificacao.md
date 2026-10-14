@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -1519,7 +1519,7 @@ O Knowledge Engine usa o SCA como biblioteca, como serviço separado, ou o SCA e
 **Decidido (v0.4):** auto-merge existe como opt-in por repositório, desligado por padrão, habilitável só pelo usuário com confirmação explícita ([§11.1](#111-auto-merge-opcional)). Registrar em ADR ao implementar.
 
 ### 19.9 Licença e distribuição
-**Decidido (ADR 0009):** open source sob a licença **MIT**, no repositório público `nadezhdkov/nav`. Qualquer pessoa pode clonar, modificar e redistribuir. Open core fica fora por ora.
+**Decidido (ADR 0010, substitui o ADR 0009):** código disponível (*source-available*) sob a **PolyForm Noncommercial License 1.0.0**, no repositório público `nadezhdkov/nav`. Qualquer pessoa pode copiar, modificar e redistribuir para fins não comerciais; uso comercial, incluindo vender ou oferecer como serviço pago, não é permitido. O autor mantém o direito de licenciar comercialmente. Por não restringir só a distribuição, a licença não é *open source* na definição da OSI.
 
 ---
 

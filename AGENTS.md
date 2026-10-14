@@ -1,6 +1,6 @@
 # AGENTS.md — Navarch
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.9, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.10, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -154,4 +154,4 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
 - Stay within the current phase; do not build Flow Studio, Knowledge Engine or the relay before the previous go/no-go criteria are met.
 - Contracts first (Zod in `packages/contracts`), implementation after; OpenAPI is generated from code.
 - Write tests with the code (Vitest); add contract tests for every adapter.
-- The name "Navarch" was checked for npm, PyPI, GitHub and domain collisions (ADR 0008) and, by the user, in trademark registries (none found). The repository is public under the MIT license (ADR 0009). Publishing packages or registering domains is still the user's call: never do it on your own.
+- The name "Navarch" was checked for npm, PyPI, GitHub and domain collisions (ADR 0008) and, by the user, in trademark registries (none found). The repository is public and source-available under the PolyForm Noncommercial License 1.0.0 (ADR 0010): never call it open source, and do not accept outside contributions until there is a contributor agreement. Publishing packages or registering domains is still the user's call: never do it on your own.
