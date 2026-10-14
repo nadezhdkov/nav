@@ -1,6 +1,6 @@
 # AGENTS.md — Navarch
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.8, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) (v0.9, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -49,7 +49,7 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 | `make cli ARGS="…"` | run the `navarch` CLI, e.g. `ARGS="run list"` |
 | `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, ollama) |
 
-CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is private, so CodeQL and dependency review (GitHub Advanced Security) are not used.
+CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
 
 CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
@@ -154,4 +154,4 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
 - Stay within the current phase; do not build Flow Studio, Knowledge Engine or the relay before the previous go/no-go criteria are met.
 - Contracts first (Zod in `packages/contracts`), implementation after; OpenAPI is generated from code.
 - Write tests with the code (Vitest); add contract tests for every adapter.
-- The name "Navarch" was checked for npm, PyPI, GitHub and domain collisions (ADR 0008), but **not yet in trademark registries** (INPI, USPTO, WIPO): do not publish packages or register names before the user confirms that check.
+- The name "Navarch" was checked for npm, PyPI, GitHub and domain collisions (ADR 0008) and, by the user, in trademark registries (none found). The repository is public under the MIT license (ADR 0009). Publishing packages or registering domains is still the user's call: never do it on your own.
