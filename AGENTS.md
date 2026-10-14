@@ -22,7 +22,7 @@ When an agent runs out of quota, the task waits for the reset time the agent rep
 
 Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
 
-Go/no-go still open: 10 real tasks on your own repositories, 2 of them resumed after restarting the daemon. Only smoke runs have been done so far.
+Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md). Phase 1 is next.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
