@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyError, commandAllowed, matchesPattern } from "../src/index.ts";
+import { classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText } from "../src/index.ts";
 
 describe("command patterns", () => {
   it("matches exact commands and prefix wildcards on word boundaries", () => {
@@ -25,5 +25,43 @@ describe("classifyError", () => {
     expect(classifyError("socket hang up")).toBe("transient");
     expect(classifyError("max budget reached")).toBe("budget_exceeded");
     expect(classifyError("invalid argument")).toBe("fatal");
+  });
+});
+
+describe("retryAtFromText", () => {
+  const now = Date.parse("2026-10-14T12:00:00Z");
+  const at = (ms: number) => new Date(now + ms).toISOString();
+
+  it("reads the reset hints providers put in rate-limit messages", () => {
+    expect(retryAtFromText("Quota exceeded. Please retry in 23.5s.", now)).toBe(at(23_500));
+    expect(retryAtFromText('{"@type":"RetryInfo","retryDelay": "41s"}', now)).toBe(at(41_000));
+    expect(retryAtFromText("Weekly limit reached. Refreshes in 167h 2m", now)).toBe(at(167 * 3_600_000 + 2 * 60_000));
+    expect(retryAtFromText("rate limited, try again in 5 minutes", now)).toBe(at(300_000));
+    expect(retryAtFromText("usage limit reached; resets in 1h30m", now)).toBe(at(5_400_000));
+  });
+
+  it("returns undefined without a hint", () => {
+    expect(retryAtFromText("You exceeded your current quota (429)", now)).toBeUndefined();
+    expect(retryAtFromText("retry in a while", now)).toBeUndefined();
+  });
+
+  it("converts epoch seconds and milliseconds", () => {
+    expect(epochToIso(1792400400)).toBe("2026-10-19T09:00:00.000Z");
+    expect(epochToIso(1792400400000)).toBe("2026-10-19T09:00:00.000Z");
+  });
+});
+
+describe("cliOutcome", () => {
+  const exit = { code: 1, signal: null, stderr: "", cancelled: false, timedOut: false };
+
+  it("adds the reset time to a rate-limited failure", () => {
+    const result = cliOutcome("gemini", exit, { ok: false, error: "429 RESOURCE_EXHAUSTED. Please retry in 30s.", summary: "", usage: [] }, "");
+    expect(result.error?.kind).toBe("rate_limited");
+    expect(Date.parse(result.error!.retry_at!)).toBeGreaterThan(Date.now() + 25_000);
+  });
+
+  it("leaves other failures alone", () => {
+    const result = cliOutcome("gemini", exit, { ok: false, error: "boom, retry in 30s", summary: "", usage: [] }, "");
+    expect(result.error).toEqual({ kind: "fatal", message: "boom, retry in 30s" });
   });
 });

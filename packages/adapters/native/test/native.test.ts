@@ -47,6 +47,11 @@ describe("NativeAdapter", () => {
   it("maps HTTP errors to retry classes", async () => {
     const limited = await setup([{ status: 429, body: { error: { message: "free model rate limit" } } }]);
     expect(await limited.adapter.run(limited.ctx, collect().io)).toMatchObject({ status: "failed", error: { kind: "rate_limited" } });
+
+    const waited = await setup([{ status: 429, headers: { "retry-after": "120" }, body: { error: { message: "rate limit" } } }]);
+    const result = await waited.adapter.run(waited.ctx, collect().io);
+    expect(result.error?.message).toContain("retry after 120s");
+    expect(Date.parse(result.error!.retry_at!)).toBeGreaterThan(Date.now() + 100_000);
     const auth = await setup([{ status: 401, body: { error: { message: "no auth" } } }]);
     expect(await auth.adapter.run(auth.ctx, collect().io)).toMatchObject({ status: "failed", error: { kind: "fatal" } });
   });

@@ -119,6 +119,24 @@ export class Orchestrator {
   }
 
   /**
+   * Continues a paused run (spec §10, `/runs/:id/resume`): its failed tasks are requeued and
+   * keep their resume token, so the agent continues the same conversation.
+   */
+  resumeRun(runId: string, actor: Actor): RunView {
+    const run = this.store.getRun(runId);
+    if (!run) throw new OrchestratorError("not_found", `run ${runId} not found`);
+    if (run.status !== "paused") throw new OrchestratorError("conflict", `run ${runId} is ${run.status}, not paused`);
+
+    const events: NewEvent[] = [runStatus(runId, "paused", "executing", "resumed by user", actor)];
+    for (const task of this.store.tasksOfRun(runId)) {
+      if (task.status === "failed") events.push(taskStatus(runId, task.id, "failed", "ready", task.attempt, "run resumed by user"));
+    }
+    this.store.append(events);
+    this.onReady();
+    return this.store.getRun(runId)!;
+  }
+
+  /**
    * Called on startup (spec §5.4): tasks left `running` by a previous process are marked
    * `interrupted` and requeued while attempts remain.
    */
@@ -153,13 +171,21 @@ export function taskStatus(
   attempt: number,
   reason?: string,
   error?: TaskError,
+  notBefore?: string,
 ): NewEvent {
   return {
     type: "task.status_changed",
     run_id: runId,
     task_id: taskId,
     actor: system("scheduler"),
-    payload: { from, to, attempt, ...(reason ? { reason } : {}), ...(error ? { error } : {}) },
+    payload: {
+      from,
+      to,
+      attempt,
+      ...(reason ? { reason } : {}),
+      ...(error ? { error } : {}),
+      ...(notBefore ? { not_before: notBefore } : {}),
+    },
   };
 }
 

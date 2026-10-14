@@ -18,6 +18,8 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
 | `native` | VECTR's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
 
+When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `vectr run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events.
+
 Every run is a single `implement` task: there are no Flows, GitHub integration, Model Router or Web UI yet (Phase 1).
 
 Go/no-go still open: 10 real tasks on your own repositories, 2 of them resumed after restarting the daemon. Only smoke runs have been done so far.
@@ -34,7 +36,7 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 | `make cli ARGS="…"` | run the `vectr` CLI, e.g. `ARGS="run list"` |
 | `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, ollama) |
 
-CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
+CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr run resume <id> [--follow]`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
 
 Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
 

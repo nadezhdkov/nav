@@ -38,6 +38,12 @@ export const Config = z.object({
       concurrency: z.number().int().positive().default(2),
       max_attempts: z.number().int().positive().default(3),
       task_timeout_minutes: z.number().positive().default(60),
+      /** Waits after a rate limit when the agent did not say when its quota resets (last one repeats). */
+      rate_limit_backoff_minutes: z.array(z.number().positive()).nonempty().default([1, 5, 15, 60]),
+      /** Rate-limit waits per task before the run is paused; they do not count as attempts. */
+      rate_limit_max_waits: z.number().int().nonnegative().default(8),
+      /** Longest automatic wait for a quota reset; a later reset pauses the run (`vectr run resume`). */
+      rate_limit_max_wait_hours: z.number().positive().default(12),
     })
     .prefault({}),
   autonomy_level: z.number().int().min(0).max(4).default(2),

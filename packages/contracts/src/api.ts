@@ -34,6 +34,8 @@ export const TaskView = z.object({
   cost: z.number(),
   summary: z.string().nullable(),
   error: z.string().nullable(),
+  /** Set while a rate-limited task waits for its quota to reset. */
+  not_before: z.string().nullable(),
   updated_at: z.string(),
 });
 export type TaskView = z.infer<typeof TaskView>;

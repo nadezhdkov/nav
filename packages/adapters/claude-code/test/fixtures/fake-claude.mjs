@@ -75,6 +75,28 @@ switch (scenario) {
     result(true, "Worked on the second try.");
     break;
   }
+  case "limit-once":
+  case "limit-weekly": {
+    // Shape of a real rate_limit_event (claude 2.x); the refused window resets soon or in 30 days.
+    const marker = join(stateDir, "limited");
+    const now = Math.floor(Date.now() / 1000);
+    const type = scenario === "limit-once" ? "five_hour" : "seven_day";
+    const reset = scenario === "limit-once" ? now + 1 : now + 30 * 86_400;
+    if (!existsSync(marker) || scenario === "limit-weekly") {
+      writeFileSync(marker, "1");
+      const windows = {
+        five_hour: { utilization: type === "five_hour" ? 1 : 0.4, resetsAt: type === "five_hour" ? reset : now + 3_600 },
+        seven_day: { utilization: type === "seven_day" ? 1 : 0.9, resetsAt: type === "seven_day" ? reset : now + 5 * 86_400 },
+      };
+      out({ type: "rate_limit_event", rate_limit_info: { status: "rejected", resetsAt: reset, rateLimitType: type, utilization: 1, unifiedWindows: windows } });
+      result(false, "You've hit your limit", 0);
+      process.exit(1);
+    }
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed", resetsAt: now + 3_600, rateLimitType: "five_hour", utilization: 0.1, unifiedWindows: { five_hour: { utilization: 0.1, resetsAt: now + 3_600 } } } });
+    writeFileSync("ok.txt", "ok\n");
+    result(true, "Worked after the reset.");
+    break;
+  }
   case "secret":
     out({ type: "assistant", message: { content: [{ type: "text", text: "token ghp_abcdefghijklmnopqrstuvwxyz0123" }] } });
     result(true, "done");

@@ -15,6 +15,7 @@ Usage:
   vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--follow] <prompt...>
   vectr run list
   vectr run show <run-id>
+  vectr run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
   vectr logs <run-id> [-f|--follow] [--raw]
   vectr cancel <run-id>
 
@@ -59,6 +60,13 @@ async function main(argv: string[]): Promise<number> {
     case "run": {
       if (rest[0] === "list" && rest.length === 1) return runList(json);
       if (rest[0] === "show") return runShow(required(rest[1], "run id"), json);
+      if (rest[0] === "resume" && rest.length <= 2) {
+        const api = new ApiClient(home);
+        const run = await api.request<RunView>("POST", `/api/v1/runs/${required(rest[1], "run id")}/resume`);
+        if (json && !values.follow) return print(run, json);
+        if (!json) console.log(`run ${run.id} ${run.status}`);
+        return values.follow ? follow(api, run.id, json) : EXIT.ok;
+      }
       const prompt = rest.join(" ").trim();
       if (!prompt) throw new CliError("missing prompt", EXIT.usage);
       const budget = values.budget !== undefined ? Number(values.budget) : undefined;
