@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Stand-in for `gemini --prompt … --output-format stream-json`, used by tests.
 // Usage: fake-gemini.mjs <scenario> <state-dir> [gemini args...]
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const [scenario, stateDir, ...args] = process.argv.slice(2);
@@ -15,7 +15,15 @@ const flag = (name) => {
 };
 const policyFile = flag("--policy");
 const policy = policyFile ? readFileSync(policyFile, "utf8") : "";
-appendFileSync(join(stateDir, "calls.jsonl"), JSON.stringify({ args, cwd: process.cwd(), policy }) + "\n");
+const geminiHome = process.env.GEMINI_CLI_HOME;
+const settingsFile = geminiHome ? join(geminiHome, ".gemini", "settings.json") : "";
+const settings = settingsFile && existsSync(settingsFile) ? JSON.parse(readFileSync(settingsFile, "utf8")) : undefined;
+const envFile = geminiHome ? readIfExists(join(geminiHome, ".gemini", ".env")) : undefined;
+appendFileSync(join(stateDir, "calls.jsonl"), JSON.stringify({ args, cwd: process.cwd(), policy, geminiHome, settings, envFile }) + "\n");
+
+function readIfExists(file) {
+  return existsSync(file) ? readFileSync(file, "utf8") : undefined;
+}
 
 const resume = flag("--resume");
 const session = resume ?? flag("--session-id") ?? "none";

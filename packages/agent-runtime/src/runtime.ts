@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -13,7 +13,8 @@ import {
   type TaskResult,
   type ToolGrant,
 } from "@vectr/contracts";
-import { changedFiles, createWorktree, worktreeDiff } from "@vectr/runner";
+import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@vectr/adapter-kit";
+import { changedFiles, createWorktree, runShell, worktreeDiff } from "@vectr/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -40,6 +41,8 @@ export type TaskSpec = {
   instructions: string;
   model?: string;
   tools: ToolGrant;
+  /** Run by the Runner in the sandbox before the agent's first attempt; not part of the agent's grant. */
+  setupCommands?: string[];
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   resumeToken?: string;
   sandboxId?: string;
@@ -63,6 +66,11 @@ export class AgentRuntime {
     const sandbox = await this.prepareSandbox(spec);
     const log = await this.openLog(spec);
     try {
+      const setupError = await this.runSetup(spec, sandbox, log);
+      if (setupError) {
+        const error = { kind: "fatal" as const, message: setupError };
+        return { status: "failed", summary: "", artifacts: [], claims: [], usage: [], error, cost: 0, durationMs: Date.now() - started };
+      }
       const result = await adapter.run(
         {
           taskId: spec.taskId,
@@ -140,6 +148,35 @@ export class AgentRuntime {
       reused: handle.reused,
     });
     return handle;
+  }
+
+  /**
+   * Runs the run's setup commands once per sandbox (a marker survives retries and restarts).
+   * They are the operator's own commands, so they run through the shell with network, outside
+   * the agent's grant; their output goes to the task log. Returns an error message on failure.
+   */
+  private async runSetup(spec: TaskSpec, sandbox: SandboxHandle, log: WriteStream): Promise<string | undefined> {
+    const commands = spec.setupCommands ?? [];
+    const marker = join(this.deps.home, "logs", spec.runId, `${spec.taskId}.setup-done`);
+    if (!commands.length || existsSync(marker)) return undefined;
+    const runner: Actor = { kind: "system", component: "runner" };
+    for (const command of commands) {
+      log.write(`--- setup: ${command}\n`);
+      const started = Date.now();
+      const { code, tail } = await runShell(command, {
+        cwd: sandbox.path,
+        env: scrubbedEnv(DEFAULT_SCRUB_ENV),
+        timeoutMs: spec.budget.timeoutMs,
+        onOutput: (chunk) => log.write(redact(chunk)),
+      });
+      this.publish(spec, runner, "sandbox.setup", { command, exit_code: code, duration_ms: Date.now() - started });
+      if (code !== 0) {
+        const how = code === null ? "timed out" : `exited with ${code}`;
+        return redact(`setup command failed: \`${command}\` ${how}${tail ? `: ${tail}` : ""}`);
+      }
+    }
+    await writeFile(marker, new Date().toISOString());
+    return undefined;
   }
 
   private async openLog(spec: TaskSpec): Promise<WriteStream> {

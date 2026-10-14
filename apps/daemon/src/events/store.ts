@@ -27,8 +27,9 @@ export class EventStore {
     this.db.exec(eventsTable);
     this.db.exec(projectionTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
-    const columns = this.db.prepare("PRAGMA table_info(tasks)").all() as { name: string }[];
-    if (!columns.some((c) => c.name === "not_before")) this.rebuildProjections();
+    const has = (table: string, column: string) =>
+      (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
+    if (!has("tasks", "not_before") || !has("runs", "setup_commands")) this.rebuildProjections();
   }
 
   close(): void {
@@ -126,7 +127,14 @@ export class EventStore {
   getRunRecord(id: string): RunRecord | undefined {
     const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id) as RunRow | undefined;
     if (!row) return undefined;
-    return { ...toRunView(row), adapter: row.adapter, profile: row.profile, allow_commands: JSON.parse(row.allow_commands), model: row.model };
+    return {
+      ...toRunView(row),
+      adapter: row.adapter,
+      profile: row.profile,
+      allow_commands: JSON.parse(row.allow_commands),
+      setup_commands: JSON.parse(row.setup_commands),
+      model: row.model,
+    };
   }
 
   getRunDetail(id: string): RunDetail | undefined {
@@ -161,11 +169,11 @@ export class EventStore {
   }
 }
 
-export type RunRecord = RunView & { adapter: string; profile: string; allow_commands: string[]; model: string | null };
+export type RunRecord = RunView & { adapter: string; profile: string; allow_commands: string[]; setup_commands: string[]; model: string | null };
 export type TaskRecord = TaskView & { sandbox_id: string | null; resume_token: string | null; rate_limit_waits: number };
 
 type Row = Record<string, unknown>;
-type RunRow = Row & { adapter: string; profile: string; allow_commands: string; model: string | null };
+type RunRow = Row & { adapter: string; profile: string; allow_commands: string; setup_commands: string; model: string | null };
 type TaskRow = Row;
 
 function rowToEvent(row: Row): VectrEvent {

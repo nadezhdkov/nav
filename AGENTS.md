@@ -1,6 +1,6 @@
 # AGENTS.md — VECTR
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.6, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.7, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -13,10 +13,12 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | Adapter | Runs | Login / key | Resume |
 |---|---|---|---|
 | `claude-code` (default) | `claude -p` | the `claude` CLI | yes |
-| `gemini-cli` | `gemini --prompt` | `GEMINI_API_KEY` (AI Studio); Google-account login no longer works | yes |
+| `gemini-cli` | `gemini --prompt` | `GEMINI_API_KEY` (AI Studio) in the environment or `~/.gemini/.env`; each task gets its own Gemini home that selects it (ADR 0006) | yes |
 | `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
 | `native` | VECTR's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
+
+Agents run with VECTR's configuration, not the operator's: Claude Code without user-level settings (`--setting-sources project,local`), gemini-cli with a per-task home. The task prompt lists the allowed commands, and `--setup <cmd>` prepares the worktree (e.g. `npm ci`) before the agent starts (ADR 0006). After a restart, interrupted tasks are dispatched first.
 
 When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `vectr run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events.
 
@@ -42,7 +44,7 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 
 CI (`.github/workflows/`, details in `.github/README.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is private, so CodeQL and dependency review (GitHub Advanced Security) are not used.
 
-CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr run resume <id> [--follow]`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
+CLI: `vectr daemon start|stop|status`, `vectr run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt>`, `vectr run list|show <id>`, `vectr run resume <id> [--follow]`, `vectr logs <id> [-f] [--raw]`, `vectr cancel <id>`. Set `VECTR_HOME` to use a home other than `~/.vectr` (tests and smoke runs do this).
 
 Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy), `apps/cli`, `packages/contracts`, `packages/runner`, `packages/agent-runtime`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `docs/adr`.
 

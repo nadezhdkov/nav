@@ -84,6 +84,8 @@ describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
     expect(argv).toMatch(/--allowedTools Read .*Edit .*Bash\(npm test\) Bash\(npm run:\*\)/);
     expect(argv).toMatch(/--disallowedTools Bash\(git push:\*\) Read\(~\/.ssh\/\*\*\) Edit\(~\/.ssh\/\*\*\) WebFetch WebSearch/);
     expect(call?.args.join(" ")).toContain("--max-budget-usd 1.50");
+    // The user's own ~/.claude (CLAUDE.md, hooks, plugins) must not steer a VECTR task.
+    expect(argv).toContain("--setting-sources project,local");
 
     const token = events.find((e) => e.kind === "resume_token");
     expect(token?.kind === "resume_token" && call?.args.includes(token.token)).toBe(true);

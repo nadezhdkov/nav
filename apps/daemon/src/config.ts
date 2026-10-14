@@ -57,6 +57,8 @@ export const Config = z.object({
           enabled: z.boolean().default(true),
           command: z.string().default("claude"),
           permission_mode: z.string().default("acceptEdits"),
+          /** Claude Code settings to load; `user` is left out so the operator's ~/.claude does not steer tasks. */
+          setting_sources: z.string().default("project,local"),
           model: z.string().optional(),
         })
         .prefault({}),

@@ -36,6 +36,12 @@ export type ClaudeCodeOptions = {
   scrubEnv?: string[];
   /** Grace period between SIGTERM and SIGKILL on cancel. */
   killGraceMs?: number;
+  /**
+   * `--setting-sources`: which Claude Code settings to load. The default leaves out `user`, so the
+   * operator's own `~/.claude` (CLAUDE.md, hooks, plugins) does not steer the task; the
+   * repository's project settings still apply.
+   */
+  settingSources?: string;
 };
 
 const READ_TOOLS = ["Read", "Glob", "Grep", "LS", "TodoWrite"];
@@ -71,6 +77,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       permissionMode: options.permissionMode ?? "acceptEdits",
       scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
+      settingSources: options.settingSources ?? "project,local",
     };
     this.processes = new CliProcesses(this.options.killGraceMs);
   }
@@ -108,6 +115,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     if (session.resume) args.push("--resume", session.resume);
     else if (session.sessionId) args.push("--session-id", session.sessionId);
     args.push("--permission-mode", this.options.permissionMode);
+    if (this.options.settingSources) args.push("--setting-sources", this.options.settingSources);
     if (ctx.model) args.push("--model", ctx.model);
     if (ctx.budget.maxCost > 0) args.push("--max-budget-usd", ctx.budget.maxCost.toFixed(2));
     if (rules.allow.length) args.push("--allowedTools", ...rules.allow);

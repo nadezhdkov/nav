@@ -13,9 +13,9 @@ afterEach(async () => {
   for (const d of daemons.splice(0)) await d.stop().catch(() => {});
 });
 
-async function startDaemon(home: string, scenario: FakeScenario, fake = fakeClaude(scenario)) {
+async function startDaemon(home: string, scenario: FakeScenario, fake = fakeClaude(scenario), concurrency = 2) {
   // Rate-limit waits without a reset hint last 60 ms here instead of minutes.
-  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency: 2, max_attempts: 3, rate_limit_backoff_minutes: [0.001] } });
+  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency, max_attempts: 3, rate_limit_backoff_minutes: [0.001] } });
   const daemon = new Daemon({ home, config, adapters: { "claude-code": fake.options } });
   await daemon.start();
   daemons.push(daemon);
@@ -43,6 +43,61 @@ async function waitFor<T>(fn: () => Promise<T>, done: (v: T) => boolean, timeout
 }
 
 describe("vectrd", () => {
+  it("tells the agent exactly which commands it may run", async () => {
+    const { api, fake } = await startDaemon(tempHome(), "edit");
+    const created = await api<RunView>("POST", "/api/v1/runs", {
+      repo_path: makeRepo(),
+      prompt: "add hello.txt",
+      allow_commands: ["uv run pytest *", "make check"],
+    });
+    await waitFor(
+      () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
+      (r) => r.body.status === "done",
+    );
+    const prompt = fake.calls()[0]?.prompt ?? "";
+    expect(prompt).toContain("- `uv run pytest` followed by any arguments");
+    expect(prompt).toContain("- `make check` exactly");
+    expect(prompt).toContain("- `git status` exactly");
+    expect(prompt.indexOf("make check")).toBeLessThan(prompt.indexOf("<task>"));
+  });
+
+  it("runs the setup commands in the worktree before the agent", async () => {
+    const { api, fake } = await startDaemon(tempHome(), "edit");
+    const created = await api<RunView>("POST", "/api/v1/runs", {
+      repo_path: makeRepo(),
+      prompt: "add hello.txt",
+      setup_commands: ["test -f README.md && echo ready"],
+    });
+    const run = await waitFor(
+      () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
+      (r) => r.body.status === "done",
+    );
+    const events = (await api<VectrEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    const setup = events.find((e) => e.type === "sandbox.setup");
+    expect(setup?.payload).toMatchObject({ command: "test -f README.md && echo ready", exit_code: 0 });
+    const order = events.map((e) => e.type);
+    expect(order.indexOf("sandbox.setup")).toBeLessThan(order.indexOf("task.progress"));
+    expect(fake.calls()).toHaveLength(1);
+    expect(run.body.tasks[0]?.status).toBe("succeeded");
+  });
+
+  it("fails the task without starting the agent when a setup command fails", async () => {
+    const { api, fake } = await startDaemon(tempHome(), "edit");
+    const created = await api<RunView>("POST", "/api/v1/runs", {
+      repo_path: makeRepo(),
+      prompt: "add hello.txt",
+      setup_commands: ["echo cannot install >&2; exit 3"],
+    });
+    const run = await waitFor(
+      () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
+      (r) => r.body.status === "failed",
+    );
+    expect(run.body.tasks[0]?.error).toContain("setup command failed");
+    expect(run.body.tasks[0]?.error).toContain("cannot install");
+    expect(run.body.tasks[0]?.attempt).toBe(1);
+    expect(fake.calls()).toEqual([]);
+  });
+
   it("rejects requests without the local token", async () => {
     const { daemon } = await startDaemon(tempHome(), "edit");
     expect((await fetch(`${daemon.url}/api/v1/runs`)).status).toBe(401);
@@ -117,6 +172,28 @@ describe("vectrd", () => {
       .filter((e) => e.type === "task.status_changed")
       .map((e) => `${(e.payload as { from: string }).from}->${(e.payload as { to: string }).to}`);
     expect(transitions).toEqual(["pending->ready", "ready->running", "running->interrupted", "interrupted->ready", "ready->running", "running->succeeded"]);
+  });
+
+  it("after a restart, dispatches interrupted tasks before tasks that never started", async () => {
+    const repo = makeRepo();
+    const home = tempHome();
+    const fake = fakeClaude("slow");
+    const first = await startDaemon(home, "slow", fake, 1);
+
+    const interrupted = await first.api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "long job" });
+    await waitFor(async () => existsSync(join(fake.stateDir, "started")), (v) => v);
+    const queued = await first.api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "queued job" });
+    await first.daemon.stop();
+    daemons.splice(daemons.indexOf(first.daemon), 1);
+
+    const second = await startDaemon(home, "slow", fake, 1);
+    await waitFor(async () => fake.calls().length, (n) => n >= 2);
+    const afterRestart = fake.calls()[1];
+    expect(afterRestart?.args).toContain("--resume");
+    const run = await second.api<RunDetail>("GET", `/api/v1/runs/${interrupted.body.id}`);
+    expect(run.body.tasks[0]?.attempt).toBe(2);
+    // The queued task runs the 60 s "slow" scenario; do not wait for it.
+    await second.api("POST", `/api/v1/runs/${queued.body.id}/cancel`);
   });
 
   it("cancels a running run", async () => {

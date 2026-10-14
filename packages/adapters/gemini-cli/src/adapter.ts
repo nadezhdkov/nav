@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CliProcesses,
@@ -17,6 +17,7 @@ import type {
   AgentAdapter,
   HealthStatus,
   TaskContext,
+  TaskError,
   TaskResult,
   ToolGrant,
   UsageRecord,
@@ -26,6 +27,11 @@ import { parseGeminiLine } from "./stream.ts";
 /**
  * Runs Gemini CLI headless (`gemini -p … --output-format stream-json`) in the sandbox.
  * The grant becomes a Gemini policy file (TOML) passed with `--policy`. Decision: ADR 0004.
+ *
+ * Each task gets its own Gemini home (`GEMINI_CLI_HOME`) whose settings select API-key auth,
+ * because Google no longer accepts Google-account login from the CLI and the user's own
+ * `~/.gemini/settings.json` may still select it. The home links the user's `~/.gemini/.env`
+ * (the key is never copied) and keeps the session for resume.
  */
 
 export type GeminiCliOptions = {
@@ -33,7 +39,13 @@ export type GeminiCliOptions = {
   commandArgs?: string[];
   scrubEnv?: string[];
   killGraceMs?: number;
+  /** Where per-task Gemini homes are kept (default: a directory under the OS temp dir). */
+  homeRoot?: string;
+  /** Home holding the user's `.gemini/.env` with `GEMINI_API_KEY` (default: the OS home). */
+  userHome?: string;
 };
+
+const API_KEY_SETTINGS = { security: { auth: { selectedType: "gemini-api-key" } } };
 
 const ALLOW_PRIORITY = 500;
 const DENY_PRIORITY = 999;
@@ -81,6 +93,8 @@ export class GeminiCliAdapter implements AgentAdapter {
       commandArgs: options.commandArgs ?? [],
       scrubEnv: options.scrubEnv ?? DEFAULT_SCRUB_ENV,
       killGraceMs: options.killGraceMs ?? 5_000,
+      homeRoot: options.homeRoot ?? join(tmpdir(), "vectr-gemini"),
+      userHome: options.userHome ?? homedir(),
     };
     this.processes = new CliProcesses(this.options.killGraceMs);
   }
@@ -94,21 +108,40 @@ export class GeminiCliAdapter implements AgentAdapter {
   }
 
   async run(ctx: TaskContext, io: AdapterIO): Promise<TaskResult> {
-    const dir = mkdtempSync(join(tmpdir(), "vectr-gemini-"));
-    const policyFile = join(dir, "vectr-policy.toml");
+    const userEnv = join(this.options.userHome, ".gemini", ".env");
+    if (!process.env.GEMINI_API_KEY && !existsSync(userEnv)) {
+      return missingKey(`gemini-cli needs an AI Studio key: set GEMINI_API_KEY for vectrd or put it in ${userEnv}. Google-account login is no longer accepted.`);
+    }
+    const home = this.taskHome(ctx);
+    const geminiDir = join(home, ".gemini");
+    mkdirSync(geminiDir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(geminiDir, "settings.json"), JSON.stringify(API_KEY_SETTINGS, null, 2), { mode: 0o600 });
+    const linkedEnv = join(geminiDir, ".env");
+    if (existsSync(userEnv) && !existsSync(linkedEnv)) symlinkSync(userEnv, linkedEnv);
+    const policyFile = join(home, "vectr-policy.toml");
     writeFileSync(policyFile, geminiPolicy(ctx.tools), { mode: 0o600 });
-    try {
-      if (ctx.resumeToken) {
-        const result = await this.attempt(ctx, io, policyFile, { resume: ctx.resumeToken });
-        if (!isMissingSession(result)) return result;
+
+    let result: TaskResult | undefined;
+    if (ctx.resumeToken) {
+      result = await this.attempt(ctx, io, home, policyFile, { resume: ctx.resumeToken });
+      if (isMissingSession(result)) {
         io.emit({ kind: "progress", message: "previous session not found, starting a new one" });
+        result = undefined;
       }
+    }
+    if (!result) {
       const sessionId = randomUUID();
       io.emit({ kind: "resume_token", token: sessionId });
-      return await this.attempt(ctx, io, policyFile, { sessionId });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
+      result = await this.attempt(ctx, io, home, policyFile, { sessionId });
     }
+    // Keep the home after a failure so a retry can resume the session.
+    if (result.status === "succeeded" || result.error?.kind === "cancelled") rmSync(home, { recursive: true, force: true });
+    return result;
+  }
+
+  private taskHome(ctx: TaskContext): string {
+    const safe = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, "_");
+    return join(this.options.homeRoot, `${safe(ctx.runId)}-${safe(ctx.taskId)}`);
   }
 
   cancel(taskId: string): Promise<void> {
@@ -122,6 +155,7 @@ export class GeminiCliAdapter implements AgentAdapter {
   private async attempt(
     ctx: TaskContext,
     io: AdapterIO,
+    home: string,
     policyFile: string,
     session: { resume?: string; sessionId?: string },
   ): Promise<TaskResult> {
@@ -161,7 +195,7 @@ export class GeminiCliAdapter implements AgentAdapter {
       command: this.options.command,
       args,
       cwd: ctx.sandbox.path,
-      env: scrubbedEnv(this.options.scrubEnv),
+      env: scrubbedEnv(this.options.scrubEnv, { GEMINI_CLI_HOME: home }),
       timeoutMs: ctx.budget.timeoutMs,
       onLine: (line) => {
         io.emit({ kind: "log", line });
@@ -212,3 +246,8 @@ export class GeminiCliAdapter implements AgentAdapter {
 
 export const RESUME_PROMPT =
   "You were interrupted. Continue the same task from where you stopped, then finish with a short summary.";
+
+function missingKey(message: string): TaskResult {
+  const error: TaskError = { kind: "fatal", message };
+  return { status: "failed", summary: "", artifacts: [], claims: [], usage: [], error };
+}

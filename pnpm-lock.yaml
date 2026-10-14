@@ -280,6 +280,9 @@ importers:
 
   packages/agent-runtime:
     dependencies:
+      '@vectr/adapter-kit':
+        specifier: workspace:*
+        version: link:../adapters/kit
       '@vectr/contracts':
         specifier: workspace:*
         version: link:../contracts

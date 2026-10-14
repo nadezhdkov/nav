@@ -1,11 +1,32 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { collect, fakeCli, taskContext } from "../../kit/test/fake-cli.ts";
 import { GeminiCliAdapter, geminiPolicy } from "../src/index.ts";
 
 const script = fileURLToPath(new URL("./fixtures/fake-gemini.mjs", import.meta.url));
+
+/** A user home with an AI Studio key in `~/.gemini/.env`, and a root for per-task Gemini homes. */
+function homes(withKey = true) {
+  const userHome = mkdtempSync(join(tmpdir(), "vectr-user-"));
+  if (withKey) {
+    mkdirSync(join(userHome, ".gemini"));
+    writeFileSync(join(userHome, ".gemini", ".env"), "GEMINI_API_KEY=test-key\n");
+  }
+  return { userHome, homeRoot: mkdtempSync(join(tmpdir(), "vectr-gemini-homes-")) };
+}
+
+/** Fake CLI options plus hermetic homes. */
+function options(scenario: string, withKey = true) {
+  const fake = fakeCli(script, scenario);
+  return { fake, options: { ...fake.options, ...homes(withKey) } };
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
 
 describe("geminiPolicy", () => {
   it("denies push and network, allows only the listed commands", () => {
@@ -19,10 +40,10 @@ describe("geminiPolicy", () => {
 
 describe("GeminiCliAdapter (contract, fake CLI)", () => {
   it("runs headless in the sandbox with the policy file and normalizes the stream", async () => {
-    const fake = fakeCli(script, "edit");
+    const { fake, options: opts } = options("edit");
     const ctx = taskContext();
     const { events, io } = collect();
-    const result = await new GeminiCliAdapter(fake.options).run(ctx, io);
+    const result = await new GeminiCliAdapter(opts).run(ctx, io);
 
     expect(result).toMatchObject({ status: "succeeded", summary: "Created notes.md." });
     expect(result.usage).toEqual([{ model: "gemini-flash", tokens_in: 100, tokens_out: 30, cached_tokens: 10, cost: 0 }]);
@@ -39,9 +60,9 @@ describe("GeminiCliAdapter (contract, fake CLI)", () => {
   });
 
   it("resumes by session id and falls back to a new session when it is gone", async () => {
-    const fake = fakeCli(script, "missing-session");
+    const { fake, options: opts } = options("missing-session");
     const { events, io } = collect();
-    const result = await new GeminiCliAdapter(fake.options).run(taskContext({ resumeToken: "old-session" }), io);
+    const result = await new GeminiCliAdapter(opts).run(taskContext({ resumeToken: "old-session" }), io);
     expect(result.status).toBe("succeeded");
     const [first, second] = fake.calls();
     expect(first?.args).toEqual(expect.arrayContaining(["--resume", "old-session"]));
@@ -49,14 +70,45 @@ describe("GeminiCliAdapter (contract, fake CLI)", () => {
     expect(events.some((e) => e.kind === "progress" && e.message.includes("previous session not found"))).toBe(true);
   });
 
+  it("selects API-key auth in a per-task Gemini home, whatever the user's own auth choice", async () => {
+    const { fake, options: opts } = options("edit");
+    await new GeminiCliAdapter(opts).run(taskContext(), collect().io);
+    const [call] = fake.calls() as { geminiHome?: string; settings?: unknown; envFile?: string }[];
+    expect(call?.geminiHome?.startsWith(opts.homeRoot)).toBe(true);
+    expect(call?.settings).toEqual({ security: { auth: { selectedType: "gemini-api-key" } } });
+    expect(call?.envFile).toBe("GEMINI_API_KEY=test-key\n");
+  });
+
+  it("fails without starting the CLI when no API key is available", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "");
+    const { fake, options: opts } = options("edit", false);
+    const result = await new GeminiCliAdapter(opts).run(taskContext(), collect().io);
+    expect(result).toMatchObject({ status: "failed", error: { kind: "fatal" } });
+    expect(result.error?.message).toContain("GEMINI_API_KEY");
+    expect(fake.calls()).toEqual([]);
+  });
+
+  it("keeps the task home after a failure so a retry resumes, and removes it after success", async () => {
+    const failing = options("quota");
+    const ctx = taskContext();
+    await new GeminiCliAdapter(failing.options).run(ctx, collect().io);
+    const [failed] = failing.fake.calls() as { geminiHome?: string }[];
+    expect(existsSync(failed?.geminiHome ?? "")).toBe(true);
+
+    const passing = options("edit");
+    await new GeminiCliAdapter(passing.options).run(ctx, collect().io);
+    const [passed] = passing.fake.calls() as { geminiHome?: string }[];
+    expect(existsSync(passed?.geminiHome ?? "")).toBe(false);
+  });
+
   it("classifies an exhausted free quota as rate limited", async () => {
-    const result = await new GeminiCliAdapter(fakeCli(script, "quota").options).run(taskContext(), collect().io);
+    const result = await new GeminiCliAdapter(options("quota").options).run(taskContext(), collect().io);
     expect(result).toMatchObject({ status: "failed", error: { kind: "rate_limited" } });
   });
 
   it("cancels a running task", async () => {
-    const fake = fakeCli(script, "slow");
-    const adapter = new GeminiCliAdapter(fake.options);
+    const { fake, options: opts } = options("slow");
+    const adapter = new GeminiCliAdapter(opts);
     const running = adapter.run(taskContext(), collect().io);
     while (!existsSync(join(fake.stateDir, "started"))) await new Promise((r) => setTimeout(r, 20));
     await adapter.cancel("task_1");

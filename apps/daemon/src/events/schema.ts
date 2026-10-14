@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS runs (
   adapter TEXT NOT NULL,
   profile TEXT NOT NULL,
   allow_commands TEXT NOT NULL,
+  setup_commands TEXT NOT NULL DEFAULT '[]',
   model TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
