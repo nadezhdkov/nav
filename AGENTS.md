@@ -1,6 +1,6 @@
 # AGENTS.md — VECTR
 
-Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.5, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
+Instructions for AI agents working in this repository. Product source of truth: [`docs/vectr-especificacao.md`](docs/vectr-especificacao.md) (v0.6, written in Portuguese). If this file and the spec conflict, the spec wins unless a newer ADR in `docs/adr/` says otherwise; update this file afterwards.
 
 ## What it is
 
@@ -117,6 +117,15 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
 
 - Project skills live in **`.claude/skills/`** (Claude Code) and **`.agents/skills/`** (other agents). Keep both in sync: same skill, same content; prefer one real copy and a symlink for the other.
 - Each skill is a directory with a `SKILL.md` (frontmatter `name`, `description`) and optional supporting files. Create one only for a repeated workflow; do not duplicate what this file already says.
+- `.agents/skills` is a symlink to `../.claude/skills`, so there is one real copy.
+- Current skills, adapted from mattpocock/skills (MIT, notice in `.claude/skills/THIRD_PARTY.md`); the Phase 1 agent profiles follow the same rules (spec §6.3.3):
+
+| Skill | Use it to |
+|---|---|
+| `tdd` | build or fix test-first, one red → green slice at a time, at agreed seams, with fakes only at system boundaries |
+| `agent-brief` | write the contract an unattended agent works from (the prompt of a `vectr run`, a ready-for-agent issue) |
+| `review-two-axis` | review a branch on Standards (AGENTS.md, ADRs) and Spec (spec section, ADR, brief) separately |
+| `domain-modeling` | sharpen terms against the spec glossary (§4) and decide whether something deserves an ADR |
 
 ### Makefile
 
