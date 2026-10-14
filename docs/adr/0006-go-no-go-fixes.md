@@ -26,6 +26,7 @@ The Phase 0 go/no-go ran 10 real tasks. The tasks themselves went well, but the 
   - Each command emits `sandbox.setup` (command, exit code, duration), and its output goes to the task log.
   - A marker in the run's log directory makes setup run once per sandbox, across retries and restarts.
   - A failing command fails the task as fatal and the agent is not started.
+  - Cancelling the task or stopping the daemon kills the running command and its process group; the agent is not started. The Scheduler gives each task an `AbortSignal`, so a cancel or stop also reaches a task between dispatch and the agent's process.
   - Setup is opt-in, never auto-detected: an implicit `npm ci` would run third-party install scripts (T2) without anyone having asked.
 - **Already-attempted tasks are dispatched first.** The Scheduler orders ready tasks so that those with `attempt > 0` go first, keeping FIFO order within each group.
 - `vectr run list` shows one line per run: the brief's `**Summary:**` line or the first line of the prompt. Multi-line reasons in `vectr logs` are folded onto one line.

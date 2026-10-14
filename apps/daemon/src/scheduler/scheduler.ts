@@ -34,6 +34,8 @@ export class Scheduler {
   private readonly cancelHook: CancelHook;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
+  /** One per active task; aborting ends its setup or agent whatever stage it is in. */
+  private readonly aborts = new Map<string, AbortController>();
   private stopping = false;
   private pumping = false;
   private wakeTimer: NodeJS.Timeout | undefined;
@@ -99,6 +101,7 @@ export class Scheduler {
 
   requestCancel(taskId: string): void {
     this.cancelRequested.add(taskId);
+    this.aborts.get(taskId)?.abort();
     void this.cancelHook(taskId);
   }
 
@@ -106,6 +109,7 @@ export class Scheduler {
   async stop(killAll: () => Promise<void>): Promise<void> {
     this.stopping = true;
     clearTimeout(this.wakeTimer);
+    for (const abort of this.aborts.values()) abort.abort();
     await killAll();
     await Promise.allSettled([...this.active.values()]);
   }
@@ -143,6 +147,8 @@ export class Scheduler {
     this.store.append(events);
 
     const tools = this.policy.taskGrant(run.allow_commands);
+    const abort = new AbortController();
+    this.aborts.set(task.id, abort);
     const work = this.runtime
       .execute({
         runId: run.id,
@@ -164,6 +170,7 @@ export class Scheduler {
         },
         ...(task.resume_token ? { resumeToken: task.resume_token } : {}),
         ...(task.sandbox_id ? { sandboxId: task.sandbox_id } : {}),
+        signal: abort.signal,
       })
       .then(
         (outcome) => this.finish(task, attempt, outcome),
@@ -184,6 +191,7 @@ export class Scheduler {
       })
       .finally(() => {
         this.active.delete(task.id);
+        this.aborts.delete(task.id);
         this.cancelRequested.delete(task.id);
         this.pump();
       });

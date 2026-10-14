@@ -98,6 +98,49 @@ describe("vectrd", () => {
     expect(fake.calls()).toEqual([]);
   });
 
+  it("cancels a task during setup without starting the agent", async () => {
+    const marker = join(tempHome(), "setup-started");
+    const { api, fake } = await startDaemon(tempHome(), "edit");
+    const created = await api<RunView>("POST", "/api/v1/runs", {
+      repo_path: makeRepo(),
+      prompt: "add hello.txt",
+      setup_commands: [`touch '${marker}'; sleep 30; echo done`],
+    });
+    await waitFor(async () => existsSync(marker), (v) => v);
+
+    await api("POST", `/api/v1/runs/${created.body.id}/cancel`);
+    const run = await waitFor(
+      () => api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`),
+      (r) => r.body.tasks[0]?.status === "cancelled",
+      5_000,
+    );
+    expect(run.body.status).toBe("cancelled");
+    expect(fake.calls()).toEqual([]);
+  });
+
+  it("stops promptly while a setup command runs, and the task starts again on restart", async () => {
+    const marker = join(tempHome(), "setup-started");
+    const home = tempHome();
+    const first = await startDaemon(home, "edit");
+    const created = await first.api<RunView>("POST", "/api/v1/runs", {
+      repo_path: makeRepo(),
+      prompt: "add hello.txt",
+      setup_commands: [`touch '${marker}'; sleep 30; echo done`],
+    });
+    await waitFor(async () => existsSync(marker), (v) => v);
+
+    const started = Date.now();
+    await first.daemon.stop();
+    daemons.splice(daemons.indexOf(first.daemon), 1);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(first.fake.calls()).toEqual([]);
+
+    const second = await startDaemon(home, "edit");
+    const run = await second.api<RunDetail>("GET", `/api/v1/runs/${created.body.id}`);
+    expect(run.body.status).not.toBe("cancelled");
+    await second.api("POST", `/api/v1/runs/${created.body.id}/cancel`);
+  });
+
   it("rejects requests without the local token", async () => {
     const { daemon } = await startDaemon(tempHome(), "edit");
     expect((await fetch(`${daemon.url}/api/v1/runs`)).status).toBe(401);

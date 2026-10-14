@@ -46,6 +46,8 @@ export type TaskSpec = {
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   resumeToken?: string;
   sandboxId?: string;
+  /** Aborted when the task is cancelled or the daemon stops; ends setup and the agent at any stage. */
+  signal?: AbortSignal;
 };
 
 export type TaskOutcome = TaskResult & { durationMs: number; cost: number };
@@ -63,15 +65,27 @@ export class AgentRuntime {
     const actor: Actor = { kind: "agent", profile: spec.profile.id, adapter: adapter.id, model: spec.model };
     const started = Date.now();
 
+    const failed = (kind: "fatal" | "cancelled", message: string): TaskOutcome => ({
+      status: "failed",
+      summary: "",
+      artifacts: [],
+      claims: [],
+      usage: [],
+      error: { kind, message },
+      cost: 0,
+      durationMs: Date.now() - started,
+    });
     const sandbox = await this.prepareSandbox(spec);
     const log = await this.openLog(spec);
+    // Cancel or stop can arrive before the agent process exists; the adapter can only kill what it started.
+    const stopAgent = () => void adapter.cancel(spec.taskId);
     try {
+      if (spec.signal?.aborted) return failed("cancelled", "cancelled before setup");
       const setupError = await this.runSetup(spec, sandbox, log);
-      if (setupError) {
-        const error = { kind: "fatal" as const, message: setupError };
-        return { status: "failed", summary: "", artifacts: [], claims: [], usage: [], error, cost: 0, durationMs: Date.now() - started };
-      }
-      const result = await adapter.run(
+      if (spec.signal?.aborted) return failed("cancelled", "cancelled during setup");
+      if (setupError) return failed("fatal", setupError);
+      // Adapters start their process synchronously in run(), so the listener below can always reach it.
+      const running = adapter.run(
         {
           taskId: spec.taskId,
           runId: spec.runId,
@@ -115,6 +129,8 @@ export class AgentRuntime {
           },
         },
       );
+      spec.signal?.addEventListener("abort", stopAgent, { once: true });
+      const result = await running;
 
       for (const usage of result.usage) this.publish(spec, actor, "model.call.completed", usage);
       const artifacts = [...result.artifacts];
@@ -125,6 +141,7 @@ export class AgentRuntime {
       const cost = result.usage.reduce((sum, u) => sum + u.cost, 0);
       return { ...result, summary: redact(result.summary), artifacts, cost, durationMs: Date.now() - started };
     } finally {
+      spec.signal?.removeEventListener("abort", stopAgent);
       await new Promise<void>((resolve) => log.end(resolve));
     }
   }
@@ -168,7 +185,9 @@ export class AgentRuntime {
         env: scrubbedEnv(DEFAULT_SCRUB_ENV),
         timeoutMs: spec.budget.timeoutMs,
         onOutput: (chunk) => log.write(redact(chunk)),
+        ...(spec.signal ? { signal: spec.signal } : {}),
       });
+      if (spec.signal?.aborted) return undefined;
       this.publish(spec, runner, "sandbox.setup", { command, exit_code: code, duration_ms: Date.now() - started });
       if (code !== 0) {
         const how = code === null ? "timed out" : `exited with ${code}`;
