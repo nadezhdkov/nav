@@ -3,21 +3,28 @@ import { mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isTerminalRun, type RunDetail, type RunView, type VectrEvent } from "@vectr/contracts";
+import { isTerminalRun, type ApprovalView, type RunDetail, type RunView, type VectrEvent } from "@vectr/contracts";
 import { vectrHome } from "@vectr/daemon/config";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatEvent, formatRunDetail, formatRunList } from "./format.ts";
+import { formatApprovals, formatEvent, formatRunDetail, formatRunList } from "./format.ts";
 
-const USAGE = `vectr — VECTR command line (Phase 0)
+const USAGE = `vectr — VECTR command line
 
 Usage:
   vectr daemon start|stop|status
   vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt...>
+  vectr run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
+                                         implement a GitHub issue, verify it, then open a draft PR
   vectr run list
   vectr run show <run-id>
   vectr run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
   vectr logs <run-id> [-f|--follow] [--raw]
   vectr cancel <run-id>
+  vectr approvals [--all]                pending approvals (e.g. opening a PR below autonomy level 3)
+  vectr approve <approval-id> [--reason <text>]
+  vectr reject <approval-id> [--reason <text>]
+  vectr secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
+  vectr secret status <name>
 
 Adapters: claude-code (default), gemini-cli, antigravity, codex, native.
   native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
@@ -46,6 +53,9 @@ async function main(argv: string[]): Promise<number> {
       adapter: { type: "string", short: "a" },
       follow: { type: "boolean", short: "f", default: false },
       raw: { type: "boolean", default: false },
+      issue: { type: "string" },
+      reason: { type: "string" },
+      all: { type: "boolean", default: false },
     },
   });
   const [command, ...rest] = positionals;
@@ -69,13 +79,14 @@ async function main(argv: string[]): Promise<number> {
         return values.follow ? follow(api, run.id, json) : EXIT.ok;
       }
       const prompt = rest.join(" ").trim();
-      if (!prompt) throw new CliError("missing prompt", EXIT.usage);
+      if (!prompt && !values.issue) throw new CliError("missing prompt (or --issue owner/repo#N)", EXIT.usage);
       const budget = values.budget !== undefined ? Number(values.budget) : undefined;
       if (budget !== undefined && !(budget > 0)) throw new CliError("--budget must be a positive number", EXIT.usage);
       const api = new ApiClient(home);
       const run = await api.request<RunView>("POST", "/api/v1/runs", {
         repo_path: values.repo ?? process.cwd(),
-        prompt,
+        ...(prompt ? { prompt } : {}),
+        ...(values.issue ? { issue: values.issue } : {}),
         ...(budget !== undefined ? { budget } : {}),
         ...(values.allow?.length ? { allow_commands: values.allow } : {}),
         ...(values.setup?.length ? { setup_commands: values.setup } : {}),
@@ -98,6 +109,34 @@ async function main(argv: string[]): Promise<number> {
     case "cancel": {
       const run = await new ApiClient(home).request<RunView>("POST", `/api/v1/runs/${required(rest[0], "run id")}/cancel`);
       return print(json ? run : `run ${run.id} ${run.status}`, json);
+    }
+    case "approvals": {
+      const path = values.all ? "/api/v1/approvals" : "/api/v1/approvals?status=pending";
+      const approvals = await new ApiClient(home).request<ApprovalView[]>("GET", path);
+      return print(json ? approvals : formatApprovals(approvals), json);
+    }
+    case "approve":
+    case "reject": {
+      const id = required(rest[0], "approval id");
+      const decided = await new ApiClient(home).request<ApprovalView>("POST", `/api/v1/approvals/${id}`, {
+        decision: command,
+        ...(values.reason ? { reason: values.reason } : {}),
+      });
+      return print(json ? decided : `${decided.id} ${decided.status} (run ${decided.run_id})`, json);
+    }
+    case "secret": {
+      const name = required(rest[1], "secret name");
+      const api = new ApiClient(home);
+      const path = `/api/v1/secrets/${encodeURIComponent(name)}`;
+      if (rest[0] === "status") {
+        const status = await api.request<{ name: string; set: boolean }>("GET", path);
+        return print(json ? status : `${status.name}: ${status.set ? "set" : "not set"}`, json);
+      }
+      if (rest[0] !== "set") throw new CliError("usage: vectr secret set|status <name>", EXIT.usage);
+      const value = await readSecret(`value for ${name} (input hidden): `);
+      if (!value) throw new CliError("empty value; nothing stored", EXIT.usage);
+      await api.request("PUT", path, { value });
+      return print(json ? { name, set: true } : `${name} stored in the keychain`, json);
     }
     default:
       throw new CliError(`unknown command: ${command}\n\n${USAGE}`, EXIT.usage);
@@ -160,6 +199,16 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
         return;
       }
       const run = await api.request<RunView>("GET", `/api/v1/runs/${id}`);
+      if (run.status === "ready_for_pr") {
+        const pending = (await api.request<ApprovalView[]>("GET", "/api/v1/approvals?status=pending")).find((x) => x.run_id === id);
+        if (pending) {
+          // Following ends here: the run waits for a human, which may take hours.
+          ws.close();
+          if (!json) console.log(`\nwaiting for approval: vectr approve ${pending.id}  (or vectr reject ${pending.id})`);
+          resolve(EXIT.ok);
+          return;
+        }
+      }
       if (isTerminalRun(run.status) || run.status === "budget_exceeded") {
         ws.close();
         resolve(run.status === "done" ? EXIT.ok : EXIT.runFailed);
@@ -220,6 +269,37 @@ function isAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+/** Reads a secret from piped stdin, or from the terminal without echoing it. */
+async function readSecret(prompt: string): Promise<string> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    let data = "";
+    for await (const chunk of stdin) data += chunk;
+    return data.trim();
+  }
+  process.stderr.write(prompt);
+  stdin.setRawMode(true);
+  stdin.resume();
+  stdin.setEncoding("utf8");
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      let value = "";
+      stdin.on("data", (chunk: string) => {
+        for (const ch of chunk) {
+          if (ch === "\r" || ch === "\n") return resolve(value.trim());
+          if (ch === "\u0003") return reject(new CliError("cancelled", EXIT.usage));
+          if (ch === "\u007f" || ch === "\b") value = value.slice(0, -1);
+          else value += ch;
+        }
+      });
+    });
+  } finally {
+    stdin.setRawMode(false);
+    stdin.pause();
+    process.stderr.write("\n");
   }
 }
 

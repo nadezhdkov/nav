@@ -74,3 +74,37 @@ export async function changedFiles(sandbox: SandboxHandle): Promise<string[]> {
 export async function removeWorktree(repoPath: string, sandbox: SandboxHandle): Promise<void> {
   await git(repoPath, ["worktree", "remove", "--force", sandbox.path]);
 }
+
+/** A file's content at a commit, or undefined when it does not exist there. */
+export async function readFileAtCommit(repoPath: string, commit: string, path: string): Promise<string | undefined> {
+  const spec = `${commit}:${path}`;
+  const exists = await git(repoPath, ["cat-file", "-e", spec]).then(
+    () => true,
+    () => false,
+  );
+  return exists ? git(repoPath, ["show", spec]) : undefined;
+}
+
+export async function remoteUrl(repoPath: string, name = "origin"): Promise<string | undefined> {
+  return git(repoPath, ["remote", "get-url", name]).then(
+    (out) => out.trim() || undefined,
+    () => undefined,
+  );
+}
+
+/**
+ * Commits whatever the agent left uncommitted in the sandbox, as VECTR, and returns HEAD.
+ * Repository hooks are skipped (`--no-verify`): they are repository code and would run as the operator.
+ */
+export async function commitAll(sandbox: SandboxHandle, message: string): Promise<string> {
+  await git(sandbox.path, ["add", "--all"]);
+  const dirty = await git(sandbox.path, ["diff", "--cached", "--quiet"]).then(
+    () => false,
+    () => true,
+  );
+  if (dirty) {
+    const who = { GIT_AUTHOR_NAME: "VECTR", GIT_AUTHOR_EMAIL: "vectr@localhost", GIT_COMMITTER_NAME: "VECTR", GIT_COMMITTER_EMAIL: "vectr@localhost" };
+    await git(sandbox.path, ["commit", "--no-verify", "-q", "-m", message], who);
+  }
+  return (await git(sandbox.path, ["rev-parse", "HEAD"])).trim();
+}

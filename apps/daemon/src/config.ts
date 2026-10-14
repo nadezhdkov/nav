@@ -47,6 +47,14 @@ export const Config = z.object({
     })
     .prefault({}),
   autonomy_level: z.number().int().min(0).max(4).default(2),
+  /** GitHub Integration (spec §6.7). The token is `secret://github/token` in the Vault (ADR 0007), never here. */
+  github: z
+    .object({
+      api_url: z.string().url().default("https://api.github.com"),
+      /** Base for push URLs (`<git_url>/<owner>/<name>.git`); tests use a local directory of bare repositories. */
+      git_url: z.string().default("https://github.com"),
+    })
+    .prefault({}),
   allow_commands: z.array(z.string()).default([]),
   /** Adapter used when a run does not choose one. */
   default_adapter: AdapterId.default("claude-code"),

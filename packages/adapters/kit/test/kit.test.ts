@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText } from "../src/index.ts";
+import { classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText, scrubbedEnv } from "../src/index.ts";
 
 describe("command patterns", () => {
   it("matches exact commands and prefix wildcards on word boundaries", () => {
@@ -63,5 +63,23 @@ describe("cliOutcome", () => {
   it("leaves other failures alone", () => {
     const result = cliOutcome("gemini", exit, { ok: false, error: "boom, retry in 30s", summary: "", usage: [] }, "");
     expect(result.error).toEqual({ kind: "fatal", message: "boom, retry in 30s" });
+  });
+});
+
+describe("scrubbedEnv", () => {
+  it("never passes VECTR_SECRET_* or the listed tokens to agents and commands", () => {
+    process.env.VECTR_SECRET_GITHUB_TOKEN = "github_pat_must_not_leak_123";
+    process.env.VECTR_SECRET_ANTHROPIC_API_KEY = "sk-must-not-leak";
+    process.env.GH_TOKEN = "gho_must_not_leak";
+    try {
+      const env = scrubbedEnv();
+      expect(Object.keys(env).filter((k) => k.startsWith("VECTR_SECRET_") || k === "GH_TOKEN")).toEqual([]);
+      expect(scrubbedEnv([], { VECTR_SECRET_X: "y" }).VECTR_SECRET_X).toBeUndefined();
+      expect(env.PATH).toBe(process.env.PATH);
+    } finally {
+      delete process.env.VECTR_SECRET_GITHUB_TOKEN;
+      delete process.env.VECTR_SECRET_ANTHROPIC_API_KEY;
+      delete process.env.GH_TOKEN;
+    }
   });
 });

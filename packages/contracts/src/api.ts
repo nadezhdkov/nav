@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EventType } from "./events.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
+import { ISSUE_REF, WorkItemRef } from "./work.ts";
 
 /** Core API contracts, spec §9.1. */
 
@@ -8,17 +9,22 @@ import { RunStatus, TaskStatus } from "./status.ts";
 export const AdapterId = z.enum(["claude-code", "gemini-cli", "antigravity", "codex", "native"]);
 export type AdapterId = z.infer<typeof AdapterId>;
 
-export const CreateRunRequest = z.object({
-  repo_path: z.string().min(1),
-  prompt: z.string().min(1),
-  /** Defaults to the daemon's `default_adapter`. */
-  adapter: AdapterId.optional(),
-  budget: z.number().positive().optional(),
-  allow_commands: z.array(z.string()).optional(),
-  /** Commands the Runner runs in the worktree before the agent's first attempt (e.g. `npm ci`). */
-  setup_commands: z.array(z.string().min(1)).optional(),
-  model: z.string().optional(),
-});
+export const CreateRunRequest = z
+  .object({
+    repo_path: z.string().min(1),
+    /** What to do; with `issue`, extra instructions added after the issue. */
+    prompt: z.string().min(1).optional(),
+    /** `owner/repo#N`: the run implements this GitHub issue; the repository's origin must match. */
+    issue: z.string().regex(ISSUE_REF, "expected owner/repo#number").optional(),
+    /** Defaults to the daemon's `default_adapter`. */
+    adapter: AdapterId.optional(),
+    budget: z.number().positive().optional(),
+    allow_commands: z.array(z.string()).optional(),
+    /** Commands the Runner runs in the worktree before the agent's first attempt (e.g. `npm ci`). */
+    setup_commands: z.array(z.string().min(1)).optional(),
+    model: z.string().optional(),
+  })
+  .refine((r) => r.prompt || r.issue, { message: "a run needs a prompt or an issue" });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
 
 export const TaskView = z.object({
@@ -53,6 +59,8 @@ export const RunView = z.object({
   created_at: z.string(),
   updated_at: z.string(),
   ended_at: z.string().nullable(),
+  work_item: WorkItemRef.nullable(),
+  pr_url: z.string().nullable(),
 });
 export type RunView = z.infer<typeof RunView>;
 
@@ -63,6 +71,32 @@ export const RunDetail = RunView.extend({
   ),
 });
 export type RunDetail = z.infer<typeof RunDetail>;
+
+export const ApprovalStatus = z.enum(["pending", "approved", "rejected", "cancelled"]);
+export type ApprovalStatus = z.infer<typeof ApprovalStatus>;
+
+/** A decision the Policy Engine left to a human (spec §6.10.3, §9.1 `/approvals`). */
+export const ApprovalView = z.object({
+  id: z.string(),
+  run_id: z.string(),
+  task_id: z.string(),
+  action: z.string(),
+  resource: z.string(),
+  reason: z.string(),
+  summary: z.string(),
+  /** `cancelled` when the run ended before anyone decided. */
+  status: ApprovalStatus,
+  decision_reason: z.string().nullable(),
+  created_at: z.string(),
+  decided_at: z.string().nullable(),
+});
+export type ApprovalView = z.infer<typeof ApprovalView>;
+
+export const DecideApprovalRequest = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().optional(),
+});
+export type DecideApprovalRequest = z.infer<typeof DecideApprovalRequest>;
 
 export const ApiError = z.object({ error: z.string(), message: z.string() });
 export type ApiError = z.infer<typeof ApiError>;

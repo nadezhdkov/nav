@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { RunStatus, TaskStatus } from "./status.ts";
+import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
 /** Who caused an event (spec §9.2 `actor`). */
 export const Actor = z.discriminatedUnion("kind", [
@@ -71,6 +72,11 @@ export const EventPayloads = {
     /** Absent in runs created before setup commands existed. */
     setup_commands: z.array(z.string()).optional(),
     model: z.string().optional(),
+    /** The issue the run works on; absent for runs started from a prompt. */
+    work_item: WorkItemRef.optional(),
+    /** From `.vectr/project.yaml` at `base_commit`; absent in runs created before verification existed. */
+    verify: z.array(VerifyCommand).optional(),
+    protected_paths: z.array(z.string()).optional(),
   }),
   "run.status_changed": z.object({ from: RunStatus, to: RunStatus, reason: z.string().optional() }),
   "task.created": z.object({
@@ -127,6 +133,33 @@ export const EventPayloads = {
   "run.message": z.object({ text: z.string() }),
   /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
   "quota.observed": QuotaObservation,
+  /** The GitHub Integration read a work item (spec §7.1); recorded before the run that uses it. */
+  "workitem.received": WorkItem,
+  /** The Runner checked a task's worktree with the project's verify commands (spec §6.6). */
+  "verification.completed": VerificationReport.extend({ artifact_id: z.string() }),
+  /** The GitHub Integration pushed a run branch. Only `vectr/*` branches, never forced. */
+  "github.push": z.object({ repo: z.string(), branch: z.string(), commit: z.string() }),
+  "github.pr.opened": z.object({
+    repo: z.string(),
+    number: z.number().int().positive(),
+    url: z.string().url(),
+    branch: z.string(),
+    draft: z.boolean(),
+  }),
+  /** The Policy Engine asked a human before a side effect (spec §6.10.3); the task waits. */
+  "approval.requested": z.object({
+    approval_id: z.string(),
+    action: z.string(),
+    resource: z.string(),
+    reason: z.string(),
+    /** What will happen, shown to whoever decides. */
+    summary: z.string(),
+  }),
+  "approval.decided": z.object({
+    approval_id: z.string(),
+    decision: z.enum(["approved", "rejected"]),
+    reason: z.string().optional(),
+  }),
   "policy.denied": z.object({
     action: z.string(),
     resource: z.string(),
