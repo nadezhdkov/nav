@@ -1,8 +1,12 @@
-# Navarch
+<h1 align="center">Navarch</h1>
+
+<p align="center">
+  <img src="docs/assets/navar_bunny_mascot.png" alt="Navarch mascot: a blocky green-haired character in a bunny hood, waving" width="280">
+</p>
 
 A *navarch* commanded a fleet. Navarch is a local-first coordination layer that runs coding agents (Claude Code, Gemini CLI, Codex, or local and remote models through its own agent loop) in isolated git worktrees, records everything as events, and lets you follow and control the work from a CLI, `navarch` or its short alias `nav` (Web UI and mobile come later). Formerly VECTR (ADR 0008).
 
-Status: **Phase 0** plus multiple adapters. Each run is one task executed by the chosen agent in its own worktree. See [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) for the full spec (Portuguese) and [`docs/adr/`](docs/adr) for decisions.
+Status: **Phase 1** in progress. A run can start from a GitHub issue and end in a verified draft PR (`navarch run --issue owner/repo#N`), with the agent working in its own worktree. See [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) for the full spec (Portuguese) and [`docs/adr/`](docs/adr) for decisions.
 
 ## Requirements
 
