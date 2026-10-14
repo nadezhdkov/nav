@@ -2,7 +2,7 @@
 # Targets are thin wrappers over pnpm; Node >= 22.18 runs the TypeScript sources directly.
 
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck test verify daemon cli doctor clean
+.PHONY: help install typecheck test verify audit secrets lint-workflows ci daemon cli doctor clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  make %-10s %s\n", $$1, $$2}'
@@ -16,7 +16,18 @@ typecheck: ## Type-check every package (tsc, no emit)
 test: ## Run the test suite (Vitest)
 	pnpm test
 
-verify: typecheck test ## Typecheck + tests (what CI runs)
+verify: typecheck test ## Typecheck + tests, the check before committing
+
+audit: ## Fail on known high or critical vulnerabilities in dependencies
+	pnpm audit --audit-level high
+
+secrets: ## Scan the git history for committed secrets (needs gitleaks)
+	gitleaks git --redact --no-banner .
+
+lint-workflows: ## Lint the GitHub Actions workflows (needs actionlint)
+	actionlint
+
+ci: verify audit secrets lint-workflows ## Every quality gate the CI pipelines run
 
 daemon: ## Run vectrd in the foreground (VECTR_HOME defaults to ~/.vectr)
 	node apps/daemon/src/main.ts
