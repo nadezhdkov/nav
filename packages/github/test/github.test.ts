@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -101,6 +101,7 @@ describe("repoFromRemote", () => {
     expect(repoFromRemote("ssh://git@github.com/acme/widgets.git")).toBe("acme/widgets");
     expect(repoFromRemote("https://gitlab.com/acme/widgets.git")).toBeUndefined();
     expect(repoFromRemote("/tmp/somewhere")).toBeUndefined();
+    expect(repoFromRemote("https://github.com/../widgets.git")).toBeUndefined();
   });
 });
 
@@ -113,11 +114,15 @@ describe("pushBranch", () => {
     git(repo, "add", ".");
     git(repo, "commit", "-q", "-m", "fix");
     const head = git(repo, "rev-parse", "HEAD");
+    // The token travels in git's environment: repository hooks must not run and see it.
+    const hookRan = join(repo, "hook-ran");
+    writeFileSync(join(repo, ".git", "hooks", "pre-push"), `#!/bin/sh\nenv > '${hookRan}'\n`, { mode: 0o755 });
 
     const commit = await pushBranch({ repoPath: repo, repo: "acme/widgets", branch: "vectr/run_1/implement", token: "github_pat_secret", gitUrl });
     expect(commit).toBe(head);
     expect(git(bare, "rev-parse", "refs/heads/vectr/run_1/implement")).toBe(head);
     expect(readFileSync(join(repo, ".git", "config"), "utf8")).not.toContain("github_pat_secret");
+    expect(existsSync(hookRan)).toBe(false);
   });
 
   it("never pushes outside vectr/* and never forces", async () => {

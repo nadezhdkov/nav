@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { EventType } from "./events.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
-import { WorkItemRef } from "./work.ts";
+import { ISSUE_REF, WorkItemRef } from "./work.ts";
 
 /** Core API contracts, spec §9.1. */
 
@@ -15,7 +15,7 @@ export const CreateRunRequest = z
     /** What to do; with `issue`, extra instructions added after the issue. */
     prompt: z.string().min(1).optional(),
     /** `owner/repo#N`: the run implements this GitHub issue; the repository's origin must match. */
-    issue: z.string().regex(/^[\w.-]+\/[\w.-]+#\d+$/, "expected owner/repo#number").optional(),
+    issue: z.string().regex(ISSUE_REF, "expected owner/repo#number").optional(),
     /** Defaults to the daemon's `default_adapter`. */
     adapter: AdapterId.optional(),
     budget: z.number().positive().optional(),

@@ -69,7 +69,7 @@ describe("work items", () => {
   it("parses owner/repo#N issue references", () => {
     expect(parseIssueRef("nadezhdkov/game-asset-finder#12")).toEqual({ repo: "nadezhdkov/game-asset-finder", number: 12 });
     expect(parseIssueRef(" a.b/c_d-e#1 ")).toEqual({ repo: "a.b/c_d-e", number: 1 });
-    for (const bad of ["repo#1", "o/r#0", "o/r#", "o/r/x#1", "o/r#1; rm -rf /", "https://github.com/o/r/issues/1"]) {
+    for (const bad of ["repo#1", "o/r#0", "o/r#", "o/r/x#1", "o/r#1; rm -rf /", "https://github.com/o/r/issues/1", "../x#1", "o/..#1", "./r#1"]) {
       expect(parseIssueRef(bad), bad).toBeUndefined();
     }
   });
@@ -79,6 +79,7 @@ describe("work items", () => {
     expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "o/r#3" }).success).toBe(true);
     expect(CreateRunRequest.safeParse({ repo_path: "/r", prompt: "x" }).success).toBe(true);
     expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "o/r#3 && echo" }).success).toBe(false);
+    expect(CreateRunRequest.safeParse({ repo_path: "/r", issue: "../r#3" }).success).toBe(false);
   });
 
   it("validates the new event payloads", () => {

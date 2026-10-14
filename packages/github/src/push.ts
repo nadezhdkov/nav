@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { join } from "node:path";
-import { redact } from "@vectr/contracts";
+import { REPO_PATTERN, redact } from "@vectr/contracts";
 
 /** Branches VECTR may write (spec §6.7.4): `vectr/` plus safe path segments, nothing else. */
 const VECTR_BRANCH = /^vectr(\/[A-Za-z0-9_][A-Za-z0-9._-]*)+$/;
@@ -11,8 +11,8 @@ export function isVectrBranch(branch: string): boolean {
 
 /** `owner/name` of a GitHub remote URL (https, ssh or scp form), or undefined for anything else. */
 export function repoFromRemote(url: string): string | undefined {
-  const m = /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url.trim());
-  return m?.[1];
+  const m = /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)(.+?)(?:\.git)?\/?$/.exec(url.trim());
+  return m?.[1] && new RegExp(`^${REPO_PATTERN}$`).test(m[1]) ? m[1] : undefined;
 }
 
 export type PushSpec = {
@@ -35,15 +35,19 @@ export type PushSpec = {
 export async function pushBranch(spec: PushSpec): Promise<string> {
   if (!isVectrBranch(spec.branch)) throw new Error(`refusing to push ${JSON.stringify(spec.branch)}: only vectr/* branches`);
   const base = spec.gitUrl ?? "https://github.com";
-  const url = /^https?:\/\//.test(base) ? `${base.replace(/\/$/, "")}/${spec.repo}.git` : join(base, `${spec.repo}.git`);
+  if (!new RegExp(`^${REPO_PATTERN}$`).test(spec.repo)) throw new Error(`invalid repository name ${JSON.stringify(spec.repo)}`);
+  const web = /^https?:\/\//.test(base) ? base.replace(/\/$/, "") : undefined;
+  const url = web ? `${web}/${spec.repo}.git` : join(base, `${spec.repo}.git`);
   const ref = `refs/heads/${spec.branch}`;
   const commit = (await git(spec.repoPath, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
   const basic = Buffer.from(`x-access-token:${spec.token}`).toString("base64");
   try {
-    await git(spec.repoPath, ["push", "--porcelain", url, `${ref}:${ref}`], {
+    // --no-verify: repository hooks would run as the operator and see the token in the environment.
+    await git(spec.repoPath, ["push", "--no-verify", "--porcelain", url, `${ref}:${ref}`], {
       GIT_TERMINAL_PROMPT: "0",
       GIT_CONFIG_COUNT: "2",
-      GIT_CONFIG_KEY_0: "http.extraheader",
+      // Scoped to the GitHub URL, so the header is not sent to any other host.
+      GIT_CONFIG_KEY_0: web ? `http.${web}/.extraheader` : "http.extraheader",
       GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
       GIT_CONFIG_KEY_1: "credential.helper",
       GIT_CONFIG_VALUE_1: "",

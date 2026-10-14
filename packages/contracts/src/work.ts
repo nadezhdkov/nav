@@ -1,10 +1,16 @@
 import { z } from "zod";
 
+/** One `owner` or `name` segment of a GitHub repository: word characters, dots and dashes, but never `.` or `..`. */
+const SEGMENT = String.raw`(?!\.\.?(?![\w.-]))[\w.-]+`;
+/** `owner/name`, as a regular expression source (anchor it yourself). */
+export const REPO_PATTERN = `${SEGMENT}/${SEGMENT}`;
+export const ISSUE_REF = new RegExp(`^(${REPO_PATTERN})#(\\d+)$`);
+
 /** Where a run's work came from (spec §4 WorkItem, §6.7). Phase 1 has GitHub issues only. */
 export const WorkItemRef = z.object({
   source: z.literal("github"),
   /** `owner/name`. */
-  repo: z.string().regex(/^[\w.-]+\/[\w.-]+$/),
+  repo: z.string().regex(new RegExp(`^${REPO_PATTERN}$`)),
   number: z.number().int().positive(),
   url: z.string().url(),
 });
@@ -21,7 +27,7 @@ export type WorkItem = z.infer<typeof WorkItem>;
 
 /** `owner/repo#42` → its parts, or undefined when the text is not an issue reference. */
 export function parseIssueRef(text: string): { repo: string; number: number } | undefined {
-  const m = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(text.trim());
+  const m = ISSUE_REF.exec(text.trim());
   if (!m || Number(m[2]) < 1) return undefined;
   return { repo: m[1]!, number: Number(m[2]) };
 }
