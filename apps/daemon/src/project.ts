@@ -9,6 +9,8 @@ import { z } from "zod";
  * change the commands that verify its own work.
  */
 export const ProjectConfig = z.object({
+  /** Spec §11; overrides the daemon's `autonomy_level` for runs on this repository. */
+  autonomy_level: z.number().int().min(0).max(4).optional(),
   setup: z.array(z.string().min(1)).default([]),
   verify: z.array(VerifyCommand).default([]),
   allowlist: z.array(z.string().min(1)).default([]),

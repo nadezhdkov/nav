@@ -21,6 +21,7 @@
     "@navarch/adapter-native": "workspace:*",
     "@navarch/agent-runtime": "workspace:*",
     "@navarch/contracts": "workspace:*",
+    "@navarch/flow-engine": "workspace:*",
     "@navarch/github": "workspace:*",
     "@navarch/runner": "workspace:*",
     "@navarch/verification": "workspace:*",

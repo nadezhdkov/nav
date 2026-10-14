@@ -79,6 +79,7 @@ export class Daemon {
         await Promise.all([...adapters.values()].map((a) => a.cancel(taskId)));
       },
       actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
+      onSucceeded: (runId) => this.orchestrator.advance(runId),
     });
     this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github);
   }

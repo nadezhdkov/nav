@@ -39,6 +39,24 @@ out({ type: "system", subtype: "init", session_id: sessionId, model: "fake-model
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 switch (scenario) {
+  case "flow": {
+    // Answers as the profile named at the top of the prompt; the implementer gets it right only
+    // once it is shown the previous verification's failures.
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1] ?? "unknown";
+    if (profile === "implementer") {
+      const fixing = prompt.includes('<input name="previous_failures">');
+      writeFileSync(fixing ? "hello.txt" : "wrong.txt", "hello from fake claude\n");
+      result(true, fixing ? "Fixed: created hello.txt as the check expects." : "Created wrong.txt.");
+    } else {
+      const answers = {
+        triager: "Kind: feature. Complexity 1: one new file.",
+        planner: "Plan: add hello.txt with a greeting. Acceptance: hello.txt exists.",
+        reviewer: "Verdict: approve. Standards: nothing to report. Spec: matches the plan.",
+      };
+      result(true, answers[profile] ?? `no answer for ${profile}`);
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });

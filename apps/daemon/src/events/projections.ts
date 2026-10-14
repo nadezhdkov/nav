@@ -20,8 +20,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "run.created": {
       const p = (event as NavarchEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, created_at, updated_at)
-         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, created_at, updated_at)
+         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.repo_path,
@@ -36,6 +36,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.work_item ? JSON.stringify(p.work_item) : null,
         JSON.stringify(p.verify ?? []),
         JSON.stringify(p.protected_paths ?? []),
+        p.flow ? JSON.stringify(p.flow) : null,
+        p.autonomy_level ?? null,
         ts,
         ts,
       );
@@ -63,9 +65,22 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       const run = db.prepare("SELECT profile FROM runs WHERE id = ?").get(event.run_id);
       if (!run) throw new ProjectionError(`unknown run ${event.run_id}`);
       db.prepare(
-        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
-      ).run(event.task_id, event.run_id, p.node_id, p.type, p.max_attempts, p.profile, p.adapter, ts);
+        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, iteration, stage, uses, inputs, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        event.task_id,
+        event.run_id,
+        p.node_id,
+        p.type,
+        p.max_attempts,
+        p.profile,
+        p.adapter,
+        p.iteration ?? 1,
+        p.stage ?? null,
+        p.uses ?? null,
+        p.inputs ? JSON.stringify(p.inputs) : null,
+        ts,
+      );
       return;
     }
     case "task.status_changed": {
@@ -110,7 +125,12 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     }
     case "task.completed": {
       const p = (event as NavarchEvent<"task.completed">).payload;
-      db.prepare("UPDATE tasks SET summary = ?, updated_at = ? WHERE id = ?").run(p.summary, ts, event.task_id);
+      db.prepare("UPDATE tasks SET summary = ?, outputs = ?, updated_at = ? WHERE id = ?").run(
+        p.summary,
+        p.outputs ? JSON.stringify(p.outputs) : null,
+        ts,
+        event.task_id,
+      );
       return;
     }
     case "model.call.completed": {
@@ -154,6 +174,11 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "github.pr.opened": {
       const p = (event as NavarchEvent<"github.pr.opened">).payload;
       db.prepare("UPDATE runs SET pr_url = ?, updated_at = ? WHERE id = ?").run(p.url, ts, event.run_id);
+      return;
+    }
+    case "flow.node.skipped": {
+      const p = (event as NavarchEvent<"flow.node.skipped">).payload;
+      db.prepare("INSERT OR REPLACE INTO skipped_nodes (run_id, node_id, reason) VALUES (?, ?, ?)").run(event.run_id, p.node_id, p.reason);
       return;
     }
     case "task.progress":

@@ -69,7 +69,8 @@ const runTerminal: readonly RunStatus[] = ["done", "failed", "cancelled"];
 const runSideExits: readonly RunStatus[] = ["failed", "cancelled", "paused", "budget_exceeded"];
 
 /**
- * A run moves forward along the main sequence (a Flow may skip stages it does not have),
+ * A run moves forward along the main sequence (a Flow may skip stages it does not have; a fix
+ * loop returns from `verifying` to `executing`),
  * may leave it through a side exit from any non-terminal state, and returns from
  * `paused`/`budget_exceeded` to a main-sequence state.
  */
@@ -79,6 +80,8 @@ export function canTransitionRun(from: RunStatus, to: RunStatus): boolean {
     return runSequence.includes(to) || to === "failed" || to === "cancelled";
   }
   if (runSideExits.includes(to)) return true;
+  // A fix loop goes back from verification to implementation (spec §8.4).
+  if (from === "verifying" && to === "executing") return true;
   const i = runSequence.indexOf(from);
   const j = runSequence.indexOf(to);
   return i >= 0 && j > i;

@@ -33,6 +33,8 @@ export type TaskSpec = {
   runId: string;
   taskId: string;
   nodeId: string;
+  /** Names the run's worktree and branch (`navarch/<run>/<slug>`); every agent of a run shares it. Defaults to `nodeId`. */
+  sandboxSlug?: string;
   attempt: number;
   repoPath: string;
   baseCommit: string;
@@ -41,8 +43,10 @@ export type TaskSpec = {
   instructions: string;
   model?: string;
   tools: ToolGrant;
-  /** Run by the Runner in the sandbox before the agent's first attempt; not part of the agent's grant. */
+  /** Run by the Runner in the sandbox, once per sandbox, before the agent; not part of the agent's grant. */
   setupCommands?: string[];
+  /** Also saves the agent's summary as an artifact of this kind (the planner's plan). */
+  summaryArtifact?: "plan";
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   resumeToken?: string;
   sandboxId?: string;
@@ -134,12 +138,16 @@ export class AgentRuntime {
 
       for (const usage of result.usage) this.publish(spec, actor, "model.call.completed", usage);
       const artifacts = [...result.artifacts];
+      if (spec.summaryArtifact && result.status === "succeeded" && result.summary.trim()) {
+        artifacts.push(await this.saveArtifact(spec, spec.summaryArtifact, "md", redact(result.summary), result.summary.split("\n")[0]!.slice(0, 120)));
+      }
       if (result.error?.kind !== "cancelled") {
         const diffId = await this.saveDiff(spec, sandbox);
         if (diffId) artifacts.push(diffId);
       }
       const cost = result.usage.reduce((sum, u) => sum + u.cost, 0);
-      return { ...result, summary: redact(result.summary), artifacts, cost, durationMs: Date.now() - started };
+      const summary = redact(result.summary);
+      return { ...result, summary, outputs: { ...result.outputs, summary }, artifacts, cost, durationMs: Date.now() - started };
     } finally {
       spec.signal?.removeEventListener("abort", stopAgent);
       await new Promise<void>((resolve) => log.end(resolve));
@@ -152,7 +160,7 @@ export class AgentRuntime {
       sandboxId,
       repoPath: spec.repoPath,
       runId: spec.runId,
-      taskSlug: spec.nodeId,
+      taskSlug: spec.sandboxSlug ?? spec.nodeId,
       baseCommit: spec.baseCommit,
       home: this.deps.home,
     });
@@ -174,7 +182,8 @@ export class AgentRuntime {
    */
   private async runSetup(spec: TaskSpec, sandbox: SandboxHandle, log: WriteStream): Promise<string | undefined> {
     const commands = spec.setupCommands ?? [];
-    const marker = join(this.deps.home, "logs", spec.runId, `${spec.taskId}.setup-done`);
+    // One marker per sandbox: later tasks of the run (fix iterations) reuse the prepared worktree.
+    const marker = join(this.deps.home, "logs", spec.runId, `${spec.sandboxSlug ?? spec.taskId}.setup-done`);
     if (!commands.length || existsSync(marker)) return undefined;
     const runner: Actor = { kind: "system", component: "runner" };
     for (const command of commands) {
@@ -204,6 +213,22 @@ export class AgentRuntime {
     const stream = createWriteStream(join(dir, `${spec.taskId}.log`), { flags: "a" });
     stream.write(`--- attempt ${spec.attempt} ${new Date().toISOString()} ---\n`);
     return stream;
+  }
+
+  private async saveArtifact(spec: TaskSpec, kind: "plan", ext: string, content: string, summary: string): Promise<string> {
+    const id = newId("art");
+    const dir = join(this.deps.home, "artifacts", spec.runId);
+    await mkdir(dir, { recursive: true });
+    const uri = join(dir, `${id}.${ext}`);
+    await writeFile(uri, content);
+    this.publish(spec, { kind: "system", component: "runner" }, "artifact.created", {
+      artifact_id: id,
+      kind,
+      uri,
+      sha256: createHash("sha256").update(content).digest("hex"),
+      summary,
+    });
+    return id;
   }
 
   private async saveDiff(spec: TaskSpec, sandbox: SandboxHandle): Promise<string | undefined> {

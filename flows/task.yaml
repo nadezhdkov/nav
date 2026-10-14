@@ -1,0 +1,26 @@
+# A run started from a prompt instead of an issue: implement in a worktree, verify, fix. No PR.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: task
+  description: Implement a prompt in an isolated worktree, then verify and fix until the checks pass.
+params:
+  max_fix_iterations: { type: int, default: 3 }
+
+nodes:
+  - id: implement_loop
+    type: loop
+    max_iterations: ${{ params.max_fix_iterations }}
+    until: ${{ nodes.verify.outputs.passed }}
+    body:
+      - id: implement
+        type: agent
+        profile: implementer
+        inputs:
+          previous_failures: ${{ nodes.verify.outputs.blocking_failures }}
+      - id: verify
+        type: action
+        uses: verification.run
+
+edges:
+  - implement_loop

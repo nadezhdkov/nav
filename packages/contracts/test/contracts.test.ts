@@ -30,7 +30,10 @@ describe("run state machine (spec §8.4)", () => {
   it("moves forward, may skip stages, and never backwards", () => {
     expect(canTransitionRun("created", "executing")).toBe(true);
     expect(canTransitionRun("executing", "done")).toBe(true);
-    expect(canTransitionRun("verifying", "executing")).toBe(false);
+    // The only way back: a fix loop returns from verification to implementation.
+    expect(canTransitionRun("verifying", "executing")).toBe(true);
+    expect(canTransitionRun("reviewing", "executing")).toBe(false);
+    expect(canTransitionRun("ready_for_pr", "verifying")).toBe(false);
   });
 
   it("allows side exits and returns from paused", () => {

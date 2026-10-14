@@ -12,9 +12,11 @@ const USAGE = `navarch — Navarch command line
 
 Usage:
   navarch daemon start|stop|status
-  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt...>
+  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt...>
+                                         flow \`task\`: implement, then verify and fix until the checks pass
   navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
-                                         implement a GitHub issue, verify it, then open a draft PR
+                                         flow \`fix-issue\`: triage, plan (approved below level 3), implement,
+                                         verify and fix, review, then open a draft PR
   navarch run list
   navarch run show <run-id>
   navarch run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
@@ -54,6 +56,7 @@ async function main(argv: string[]): Promise<number> {
       follow: { type: "boolean", short: "f", default: false },
       raw: { type: "boolean", default: false },
       issue: { type: "string" },
+      flow: { type: "string" },
       reason: { type: "string" },
       all: { type: "boolean", default: false },
     },
@@ -92,6 +95,7 @@ async function main(argv: string[]): Promise<number> {
         ...(values.setup?.length ? { setup_commands: values.setup } : {}),
         ...(values.model ? { model: values.model } : {}),
         ...(values.adapter ? { adapter: values.adapter } : {}),
+        ...(values.flow ? { flow: values.flow } : {}),
       });
       if (json && !values.follow) return print(run, json);
       if (!json) console.log(`run ${run.id} created (${run.status})`);
@@ -122,7 +126,8 @@ async function main(argv: string[]): Promise<number> {
         decision: command,
         ...(values.reason ? { reason: values.reason } : {}),
       });
-      return print(json ? decided : `${decided.id} ${decided.status} (run ${decided.run_id})`, json);
+      const next = decided.status === "approved" ? `; follow it with: navarch logs ${decided.run_id} -f` : "";
+      return print(json ? decided : `${decided.id} ${decided.status} (run ${decided.run_id})${next}`, json);
     }
     case "secret": {
       const name = required(rest[1], "secret name");
@@ -199,7 +204,8 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
         return;
       }
       const run = await api.request<RunView>("GET", `/api/v1/runs/${id}`);
-      if (run.status === "ready_for_pr") {
+      // A run can wait for a human at any node (plan, editing at level 1, PR): check on connect and on each request.
+      if (!isTerminalRun(run.status) && (data.kind === "subscribed" || data.event?.type === "approval.requested")) {
         const pending = (await api.request<ApprovalView[]>("GET", "/api/v1/approvals?status=pending")).find((x) => x.run_id === id);
         if (pending) {
           // Following ends here: the run waits for a human, which may take hours.

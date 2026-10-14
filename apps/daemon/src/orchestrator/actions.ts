@@ -27,12 +27,28 @@ type Deps = { home: string; config: Config; store: EventStore; github: GitHubInt
 const runner: Actor = { kind: "system", component: "runner" };
 const github: Actor = { kind: "system", component: "github" };
 
-/** The `verify` and `open_pr` nodes of a run (spec §6.6, §6.7, §7.1). */
+/** Executors for the non-agent nodes a Flow can use, keyed by `uses` (spec §6.6, §6.7, §7.1). */
 export function buildActions(deps: Deps): Map<string, ActionExecutor> {
   return new Map([
-    ["verify", verifyNode(deps)],
-    ["open_pr", openPrNode(deps)],
+    ["verification.run", verifyNode(deps)],
+    ["pr.create", openPrNode(deps)],
+    ["approval", approvalNode()],
   ]);
+}
+
+/** A human gate (spec §6.2.1 `approval`): the policy always asks; once approved there is nothing left to do. */
+function approvalNode(): ActionExecutor {
+  return {
+    action: "flow.approval",
+    describe: (_run, task) => {
+      const shown = Object.entries(task.inputs);
+      if (!shown.length) return `Continue the run past "${task.node_id}".`;
+      return [`Continue the run past "${task.node_id}" after reviewing:`, ...shown.map(([path, text]) => `\n--- ${path} ---\n${text}`)].join("\n");
+    },
+    async execute() {
+      return { status: "succeeded", summary: "approved", artifacts: [], claims: [], usage: [], outputs: { approved: true }, cost: 0, durationMs: 0 };
+    },
+  };
 }
 
 function verifyNode(deps: Deps): ActionExecutor {
@@ -58,8 +74,22 @@ function verifyNode(deps: Deps): ActionExecutor {
         if (signal.aborted) return failed("cancelled", "verification cancelled", started);
         const artifactId = await saveArtifact(deps, run.id, task.id, "report", JSON.stringify(report, null, 2), summarise(report));
         publish(deps.store, run.id, task.id, runner, "verification.completed", { ...report, artifact_id: artifactId });
-        if (!report.passed) return failed("fatal", `verification failed: ${report.blocking_failures.join("; ")}`, started, [artifactId]);
-        return { status: "succeeded", summary: summarise(report), artifacts: [artifactId], claims: [], usage: [], cost: 0, durationMs: Date.now() - started };
+        // The check ran: the task succeeds and the Flow decides (fix loop, or fail the run).
+        // Runs created before Flows have no loop, so a failed report still fails them.
+        if (!report.passed && !run.flow_definition) {
+          return failed("fatal", `verification failed: ${report.blocking_failures.join("; ")}`, started, [artifactId]);
+        }
+        const summary = report.passed ? summarise(report) : `verification failed: ${report.blocking_failures.join("; ")}`;
+        return {
+          status: "succeeded",
+          summary,
+          artifacts: [artifactId],
+          claims: [],
+          usage: [],
+          outputs: { passed: report.passed, blocking_failures: report.blocking_failures, warnings: report.warnings },
+          cost: 0,
+          durationMs: Date.now() - started,
+        };
       } finally {
         await new Promise<void>((resolve) => log.end(resolve));
       }
@@ -94,6 +124,9 @@ function openPrNode(deps: Deps): ActionExecutor {
             prBody({
               item,
               summary: impl.summary ?? "",
+              plan: latestSummary(deps.store, run.id, "planner"),
+              review: latestSummary(deps.store, run.id, "reviewer"),
+              iterations: impl.iteration,
               changedFiles: await changedFiles({ ...sandbox }),
               report: latestReport(deps.store, run.id),
               cost: run.cost_total,
@@ -114,11 +147,18 @@ function openPrNode(deps: Deps): ActionExecutor {
   };
 }
 
+/** The latest implementer task, which holds the run's worktree and the change's summary. */
 function implementTask(store: EventStore, run: RunRecord): TaskRecord {
-  const view = store.tasksOfRun(run.id).find((t) => t.node_id === "implement");
-  const task = view && store.getTask(view.id);
-  if (!task?.sandbox_path || !task.branch) throw new Error(`run ${run.id} has no implement worktree`);
-  return task;
+  const tasks = store.taskRecordsOfRun(run.id);
+  const task = tasks.filter((t) => t.profile === "implementer" && t.status === "succeeded").at(-1) ?? tasks.find((t) => t.node_id === "implement");
+  const sandbox = tasks.find((t) => t.sandbox_path && t.branch);
+  if (!task || !sandbox) throw new Error(`run ${run.id} has no implement worktree`);
+  return { ...task, sandbox_id: sandbox.sandbox_id, sandbox_path: sandbox.sandbox_path, branch: sandbox.branch };
+}
+
+function latestSummary(store: EventStore, runId: string, profile: string): string | undefined {
+  const task = store.taskRecordsOfRun(runId).filter((t) => t.profile === profile && t.status === "succeeded").at(-1);
+  return task?.summary ?? undefined;
 }
 
 function implementSandbox(store: EventStore, run: RunRecord): SandboxHandle {
