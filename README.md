@@ -47,3 +47,7 @@ If an agent runs out of quota mid-task, Navarch waits for the reset time the age
 By default the agent may read and edit files and run a few read-only git commands. To let it run other commands, pass each one with `--allow`, for example `--allow "npm test" --allow "npm run *"`.
 
 Runtime state lives in `~/.navarch`. Set `NAVARCH_HOME` to use another directory. A `~/.vectr` home from before the rename keeps working in place (ADR 0008). Optional settings go in `~/.navarch/config.yaml`; see `apps/daemon/src/config.ts`.
+
+## License
+
+[MIT](LICENSE): use, change and redistribute it as you like. The skills in `.claude/skills/` are adapted from mattpocock/skills, also MIT (`.claude/skills/THIRD_PARTY.md`).
