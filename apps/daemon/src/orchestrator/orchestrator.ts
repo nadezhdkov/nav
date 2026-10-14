@@ -78,6 +78,7 @@ export class Orchestrator {
           adapter,
           profile: implementer.id,
           allow_commands: [...this.config.allow_commands, ...(req.allow_commands ?? [])],
+          setup_commands: req.setup_commands ?? [],
           ...(model ? { model } : {}),
         },
       },

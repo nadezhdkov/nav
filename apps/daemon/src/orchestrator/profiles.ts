@@ -1,4 +1,4 @@
-import type { AgentProfile } from "@vectr/contracts";
+import type { AgentProfile, ToolGrant } from "@vectr/contracts";
 
 /** Phase 0 ships a single built-in profile; `profiles/` YAML files arrive with Flows (Phase 1). */
 export const implementer: AgentProfile = {
@@ -15,6 +15,23 @@ export const implementer: AgentProfile = {
   ].join("\n"),
 };
 
-export function buildInstructions(profile: AgentProfile, prompt: string): string {
-  return `${profile.instructions}\n\n<task>\n${prompt}\n</task>\n`;
+/** Profile rules, the commands the grant allows, then the task. */
+export function buildInstructions(profile: AgentProfile, prompt: string, grant: ToolGrant): string {
+  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${prompt}\n</task>\n`;
+}
+
+/**
+ * The allowlist spelled out for the agent. Without it agents guess near-misses
+ * (`uv run --frozen python -m pytest` for `uv run pytest *`) that the policy denies.
+ */
+function commandsSection(grant: ToolGrant): string {
+  if (!grant.allowCommands.length) return "You may not run shell commands in this task.";
+  const lines = grant.allowCommands.map((pattern) =>
+    pattern.endsWith(" *") ? `- \`${pattern.slice(0, -2)}\` followed by any arguments` : `- \`${pattern}\` exactly`,
+  );
+  return [
+    "Commands you may run (everything else is denied). Use them as written: no wrappers, extra flags or",
+    "pipes in front of them, and no chaining with && or ;.",
+    ...lines,
+  ].join("\n");
 }

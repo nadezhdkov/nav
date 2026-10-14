@@ -20,8 +20,8 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
     case "run.created": {
       const p = (event as VectrEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, model, created_at, updated_at)
-         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, created_at, updated_at)
+         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.repo_path,
@@ -31,6 +31,7 @@ export function applyEvent(db: DatabaseSync, event: VectrEvent): void {
         p.adapter,
         p.profile,
         JSON.stringify(p.allow_commands),
+        JSON.stringify(p.setup_commands ?? []),
         p.model ?? null,
         ts,
         ts,

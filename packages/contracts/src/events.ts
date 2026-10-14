@@ -68,6 +68,8 @@ export const EventPayloads = {
     adapter: z.string(),
     profile: z.string(),
     allow_commands: z.array(z.string()),
+    /** Absent in runs created before setup commands existed. */
+    setup_commands: z.array(z.string()).optional(),
     model: z.string().optional(),
   }),
   "run.status_changed": z.object({ from: RunStatus, to: RunStatus, reason: z.string().optional() }),
@@ -107,6 +109,12 @@ export const EventPayloads = {
     branch: z.string(),
     base_commit: z.string(),
     reused: z.boolean(),
+  }),
+  /** One setup command the Runner ran in the sandbox before the agent (output goes to the task log). */
+  "sandbox.setup": z.object({
+    command: z.string(),
+    exit_code: z.number().int().nullable(),
+    duration_ms: z.number().int().nonnegative(),
   }),
   "artifact.created": z.object({
     artifact_id: z.string(),

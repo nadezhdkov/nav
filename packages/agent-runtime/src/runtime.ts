@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createWriteStream, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -13,7 +13,8 @@ import {
   type TaskResult,
   type ToolGrant,
 } from "@vectr/contracts";
-import { changedFiles, createWorktree, worktreeDiff } from "@vectr/runner";
+import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@vectr/adapter-kit";
+import { changedFiles, createWorktree, runShell, worktreeDiff } from "@vectr/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -40,9 +41,13 @@ export type TaskSpec = {
   instructions: string;
   model?: string;
   tools: ToolGrant;
+  /** Run by the Runner in the sandbox before the agent's first attempt; not part of the agent's grant. */
+  setupCommands?: string[];
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   resumeToken?: string;
   sandboxId?: string;
+  /** Aborted when the task is cancelled or the daemon stops; ends setup and the agent at any stage. */
+  signal?: AbortSignal;
 };
 
 export type TaskOutcome = TaskResult & { durationMs: number; cost: number };
@@ -60,10 +65,27 @@ export class AgentRuntime {
     const actor: Actor = { kind: "agent", profile: spec.profile.id, adapter: adapter.id, model: spec.model };
     const started = Date.now();
 
+    const failed = (kind: "fatal" | "cancelled", message: string): TaskOutcome => ({
+      status: "failed",
+      summary: "",
+      artifacts: [],
+      claims: [],
+      usage: [],
+      error: { kind, message },
+      cost: 0,
+      durationMs: Date.now() - started,
+    });
     const sandbox = await this.prepareSandbox(spec);
     const log = await this.openLog(spec);
+    // Cancel or stop can arrive before the agent process exists; the adapter can only kill what it started.
+    const stopAgent = () => void adapter.cancel(spec.taskId);
     try {
-      const result = await adapter.run(
+      if (spec.signal?.aborted) return failed("cancelled", "cancelled before setup");
+      const setupError = await this.runSetup(spec, sandbox, log);
+      if (spec.signal?.aborted) return failed("cancelled", "cancelled during setup");
+      if (setupError) return failed("fatal", setupError);
+      // Adapters start their process synchronously in run(), so the listener below can always reach it.
+      const running = adapter.run(
         {
           taskId: spec.taskId,
           runId: spec.runId,
@@ -107,6 +129,8 @@ export class AgentRuntime {
           },
         },
       );
+      spec.signal?.addEventListener("abort", stopAgent, { once: true });
+      const result = await running;
 
       for (const usage of result.usage) this.publish(spec, actor, "model.call.completed", usage);
       const artifacts = [...result.artifacts];
@@ -117,6 +141,7 @@ export class AgentRuntime {
       const cost = result.usage.reduce((sum, u) => sum + u.cost, 0);
       return { ...result, summary: redact(result.summary), artifacts, cost, durationMs: Date.now() - started };
     } finally {
+      spec.signal?.removeEventListener("abort", stopAgent);
       await new Promise<void>((resolve) => log.end(resolve));
     }
   }
@@ -140,6 +165,37 @@ export class AgentRuntime {
       reused: handle.reused,
     });
     return handle;
+  }
+
+  /**
+   * Runs the run's setup commands once per sandbox (a marker survives retries and restarts).
+   * They are the operator's own commands, so they run through the shell with network, outside
+   * the agent's grant; their output goes to the task log. Returns an error message on failure.
+   */
+  private async runSetup(spec: TaskSpec, sandbox: SandboxHandle, log: WriteStream): Promise<string | undefined> {
+    const commands = spec.setupCommands ?? [];
+    const marker = join(this.deps.home, "logs", spec.runId, `${spec.taskId}.setup-done`);
+    if (!commands.length || existsSync(marker)) return undefined;
+    const runner: Actor = { kind: "system", component: "runner" };
+    for (const command of commands) {
+      log.write(`--- setup: ${command}\n`);
+      const started = Date.now();
+      const { code, tail } = await runShell(command, {
+        cwd: sandbox.path,
+        env: scrubbedEnv(DEFAULT_SCRUB_ENV),
+        timeoutMs: spec.budget.timeoutMs,
+        onOutput: (chunk) => log.write(redact(chunk)),
+        ...(spec.signal ? { signal: spec.signal } : {}),
+      });
+      if (spec.signal?.aborted) return undefined;
+      this.publish(spec, runner, "sandbox.setup", { command, exit_code: code, duration_ms: Date.now() - started });
+      if (code !== 0) {
+        const how = code === null ? "timed out" : `exited with ${code}`;
+        return redact(`setup command failed: \`${command}\` ${how}${tail ? `: ${tail}` : ""}`);
+      }
+    }
+    await writeFile(marker, new Date().toISOString());
+    return undefined;
   }
 
   private async openLog(spec: TaskSpec): Promise<WriteStream> {

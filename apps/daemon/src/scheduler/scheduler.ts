@@ -11,12 +11,19 @@ const RETRYABLE = new Set(["transient", "interrupted"]);
 const RESET_MARGIN_MS = 5_000;
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
+/** Ready tasks in dispatch order: already-attempted tasks first, FIFO within each group. */
+function dispatchOrder(tasks: TaskRecord[]): TaskRecord[] {
+  const started = tasks.filter((t) => t.attempt > 0);
+  return [...started, ...tasks.filter((t) => t.attempt === 0)];
+}
+
 export type CancelHook = (taskId: string) => Promise<void>;
 
 /**
  * Scheduler (spec §6.1.2): picks `ready` tasks, asks the Policy Engine, dispatches them to the
  * Agent Runtime within the concurrency limit, and records the outcome. Phase 0: one global
- * limit, FIFO order, immediate retry for transient errors. A rate-limited task waits for its
+ * limit, FIFO order except that tasks already attempted (interrupted or retried, often with a
+ * live agent conversation) go first, immediate retry for transient errors. A rate-limited task waits for its
  * quota to reset (`not_before`), or the run is paused when the reset is too far away (ADR 0005).
  */
 export class Scheduler {
@@ -27,6 +34,8 @@ export class Scheduler {
   private readonly cancelHook: CancelHook;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
+  /** One per active task; aborting ends its setup or agent whatever stage it is in. */
+  private readonly aborts = new Map<string, AbortController>();
   private stopping = false;
   private pumping = false;
   private wakeTimer: NodeJS.Timeout | undefined;
@@ -57,7 +66,7 @@ export class Scheduler {
     const now = Date.now();
     let nextWake = Infinity;
     try {
-      for (const task of this.store.tasksWithStatus("ready")) {
+      for (const task of dispatchOrder(this.store.tasksWithStatus("ready"))) {
         if (this.active.has(task.id)) continue;
         const notBefore = task.not_before ? Date.parse(task.not_before) : 0;
         if (notBefore > now) {
@@ -92,6 +101,7 @@ export class Scheduler {
 
   requestCancel(taskId: string): void {
     this.cancelRequested.add(taskId);
+    this.aborts.get(taskId)?.abort();
     void this.cancelHook(taskId);
   }
 
@@ -99,6 +109,7 @@ export class Scheduler {
   async stop(killAll: () => Promise<void>): Promise<void> {
     this.stopping = true;
     clearTimeout(this.wakeTimer);
+    for (const abort of this.aborts.values()) abort.abort();
     await killAll();
     await Promise.allSettled([...this.active.values()]);
   }
@@ -135,6 +146,9 @@ export class Scheduler {
     if (run.status === "created") events.push(runStatus(run.id, "created", "executing", "task dispatched"));
     this.store.append(events);
 
+    const tools = this.policy.taskGrant(run.allow_commands);
+    const abort = new AbortController();
+    this.aborts.set(task.id, abort);
     const work = this.runtime
       .execute({
         runId: run.id,
@@ -145,9 +159,10 @@ export class Scheduler {
         baseCommit: run.base_commit,
         adapter: task.adapter,
         profile: implementer,
-        instructions: buildInstructions(implementer, run.prompt),
+        instructions: buildInstructions(implementer, run.prompt, tools),
         ...(run.model ? { model: run.model } : {}),
-        tools: this.policy.taskGrant(run.allow_commands),
+        tools,
+        setupCommands: run.setup_commands,
         budget: {
           maxCost: Math.max(run.budget - run.cost_total, 0),
           maxTurns: 0,
@@ -155,6 +170,7 @@ export class Scheduler {
         },
         ...(task.resume_token ? { resumeToken: task.resume_token } : {}),
         ...(task.sandbox_id ? { sandboxId: task.sandbox_id } : {}),
+        signal: abort.signal,
       })
       .then(
         (outcome) => this.finish(task, attempt, outcome),
@@ -175,6 +191,7 @@ export class Scheduler {
       })
       .finally(() => {
         this.active.delete(task.id);
+        this.aborts.delete(task.id);
         this.cancelRequested.delete(task.id);
         this.pump();
       });

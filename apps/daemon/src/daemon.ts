@@ -119,9 +119,19 @@ export function buildAdapters(
     [
       "claude-code",
       a["claude-code"].enabled,
-      () => new ClaudeCodeAdapter({ command: a["claude-code"].command, permissionMode: a["claude-code"].permission_mode, ...overrides["claude-code"] }),
+      () =>
+        new ClaudeCodeAdapter({
+          command: a["claude-code"].command,
+          permissionMode: a["claude-code"].permission_mode,
+          settingSources: a["claude-code"].setting_sources,
+          ...overrides["claude-code"],
+        }),
     ],
-    ["gemini-cli", a["gemini-cli"].enabled, () => new GeminiCliAdapter({ command: a["gemini-cli"].command, ...overrides["gemini-cli"] })],
+    [
+      "gemini-cli",
+      a["gemini-cli"].enabled,
+      () => new GeminiCliAdapter({ command: a["gemini-cli"].command, homeRoot: join(home, "agents", "gemini-cli"), ...overrides["gemini-cli"] }),
+    ],
     [
       "antigravity",
       a.antigravity.enabled,

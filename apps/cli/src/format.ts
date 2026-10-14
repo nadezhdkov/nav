@@ -5,7 +5,7 @@ const time = (iso: string) => iso.slice(11, 19);
 
 export function formatRunList(runs: RunView[]): string {
   if (!runs.length) return "no runs yet";
-  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(r.prompt, 50)]);
+  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(promptTitle(r.prompt), 50)]);
   return table(["RUN", "STATUS", "COST", "CREATED", "PROMPT"], rows);
 }
 
@@ -15,7 +15,7 @@ export function formatRunDetail(run: RunDetail): string {
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
     `cost     ${usd(run.cost_total)} of ${usd(run.budget)}`,
-    `prompt   ${truncate(run.prompt, 200)}`,
+    `prompt   ${truncate(oneLine(run.prompt), 200)}`,
     "",
     "tasks:",
   ];
@@ -40,7 +40,7 @@ export function formatEvent(e: VectrEvent): string {
   switch (e.type) {
     case "run.status_changed":
     case "task.status_changed":
-      detail = `${p.from} → ${p.to}${p.reason ? ` (${p.reason})` : ""}`;
+      detail = `${p.from} → ${p.to}${p.reason ? ` (${truncate(oneLine(String(p.reason)), 200)})` : ""}`;
       break;
     case "task.progress":
       detail = truncate(String(p.message).replace(/\s+/g, " "), 160);
@@ -53,6 +53,9 @@ export function formatEvent(e: VectrEvent): string {
       break;
     case "sandbox.created":
       detail = `${p.branch} at ${p.path}${p.reused ? " (reused)" : ""}`;
+      break;
+    case "sandbox.setup":
+      detail = `${p.command} → ${p.exit_code === null ? "timed out" : `exit ${p.exit_code}`} in ${Math.round(Number(p.duration_ms) / 1000)}s`;
       break;
     case "artifact.created":
       detail = `${p.kind} ${p.artifact_id}: ${p.summary}`;
@@ -67,6 +70,18 @@ export function formatEvent(e: VectrEvent): string {
       detail = "";
   }
   return `${time(e.ts)}  ${e.type.padEnd(20)} ${detail}`;
+}
+
+/** One line naming the run: an Agent Brief's Summary, else the first non-empty line. */
+function promptTitle(prompt: string): string {
+  const summary = /^\*\*Summary:\*\*\s*(.+)$/m.exec(prompt)?.[1];
+  if (summary) return summary.trim();
+  const first = prompt.split("\n").find((l) => l.trim()) ?? "";
+  return first.replace(/^#+\s*/, "").trim();
+}
+
+function oneLine(s: string): string {
+  return s.replace(/\s+/g, " ").trim();
 }
 
 function truncate(s: string, n: number): string {

@@ -12,7 +12,7 @@ const USAGE = `vectr — VECTR command line (Phase 0)
 
 Usage:
   vectr daemon start|stop|status
-  vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--follow] <prompt...>
+  vectr run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--follow] <prompt...>
   vectr run list
   vectr run show <run-id>
   vectr run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
@@ -41,6 +41,7 @@ async function main(argv: string[]): Promise<number> {
       repo: { type: "string" },
       budget: { type: "string" },
       allow: { type: "string", multiple: true },
+      setup: { type: "string", multiple: true },
       model: { type: "string" },
       adapter: { type: "string", short: "a" },
       follow: { type: "boolean", short: "f", default: false },
@@ -77,6 +78,7 @@ async function main(argv: string[]): Promise<number> {
         prompt,
         ...(budget !== undefined ? { budget } : {}),
         ...(values.allow?.length ? { allow_commands: values.allow } : {}),
+        ...(values.setup?.length ? { setup_commands: values.setup } : {}),
         ...(values.model ? { model: values.model } : {}),
         ...(values.adapter ? { adapter: values.adapter } : {}),
       });

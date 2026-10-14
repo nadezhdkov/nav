@@ -15,6 +15,8 @@ export const CreateRunRequest = z.object({
   adapter: AdapterId.optional(),
   budget: z.number().positive().optional(),
   allow_commands: z.array(z.string()).optional(),
+  /** Commands the Runner runs in the worktree before the agent's first attempt (e.g. `npm ci`). */
+  setup_commands: z.array(z.string().min(1)).optional(),
   model: z.string().optional(),
 });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;

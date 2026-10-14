@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **VECTR** — *Verified Engineering Coordination for Tasks and Repos* (ver [§19.1](#191-nome-do-produto)) |
-| Versão do documento | 0.6 (regras de trabalho dos perfis em §6.3.3; arquivos de instrução do repositório-alvo em T1, §10.2). 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -940,7 +940,7 @@ Especificação formal em OpenAPI 3.1 gerada a partir do código.
 }
 ```
 
-Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `run.message`, `task.created`, `task.status_changed` (substitui `task.ready`/`task.started`/`task.failed`: toda mudança de estado da Task é um único tipo com `from`/`to`), `task.progress`, `task.resume_token`, `task.completed`, `artifact.created`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
+Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `run.message`, `task.created`, `task.status_changed` (substitui `task.ready`/`task.started`/`task.failed`: toda mudança de estado da Task é um único tipo com `from`/`to`), `task.progress`, `task.resume_token`, `task.completed`, `artifact.created`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `sandbox.setup` (um comando de preparo da worktree: comando, código de saída, duração), `quota.observed` (janela de cota informada pelo agente, ADR 0005), `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
 
 ### 9.3 Interface de Agent Adapter
 
@@ -1088,7 +1088,7 @@ O VECTR expõe ferramentas aos agentes por um servidor MCP interno e também pod
 
 | # | Ameaça | Vetor | Controles |
 |---|---|---|---|
-| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. Também os arquivos de instrução do repositório-alvo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/skills/`, `.agents/skills/`, `.claude/settings.json`, hooks), que os CLIs de agente carregam sozinhos: num PR de terceiro ou num repositório não confiável, eles são escritos pelo atacante. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. Arquivos de instrução e skills do repositório-alvo são dados não confiáveis: a concessão de ferramentas vem só da Policy Engine, nunca deles; um diff que os altera é tratado como caminho protegido (revisão humana); em Runs sobre código de terceiros, o adaptador roda sem carregar a configuração do projeto quando o CLI permitir, ou a Task exige aprovação. |
+| T1 | **Prompt injection** | Texto de issue/PR/comentário instrui o agente a vazar segredos, executar comandos ou alterar arquivos fora do escopo. Também os arquivos de instrução do repositório-alvo (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `.claude/skills/`, `.agents/skills/`, `.claude/settings.json`, hooks), que os CLIs de agente carregam sozinhos: num PR de terceiro ou num repositório não confiável, eles são escritos pelo atacante. | Conteúdo externo envolvido em delimitadores e marcado como dado não confiável; ferramentas limitadas por política e não por instrução; itens de autores não confiáveis exigem aprovação; sandbox L3; nenhum segredo no ambiente do agente além do estritamente necessário. Os agentes rodam com a configuração do VECTR, não a do operador (Claude Code sem as configurações de usuário; Gemini com home própria por tarefa; ADR 0006), e o prompt da tarefa lista os comandos permitidos. Arquivos de instrução e skills do repositório-alvo são dados não confiáveis: a concessão de ferramentas vem só da Policy Engine, nunca deles; um diff que os altera é tratado como caminho protegido (revisão humana); em Runs sobre código de terceiros, o adaptador roda sem carregar a configuração do projeto quando o CLI permitir, ou a Task exige aprovação. |
 | T2 | **Execução de código malicioso** | Testes ou scripts de build de PRs de terceiros. | Isolamento L2/L3, rede bloqueada, usuário não-root, limites de recursos. |
 | T3 | **Exfiltração de dados** | Agente envia código a domínios externos. | Egress allowlist no container; modelos permitidos por projeto; tag `confidential` restringe a modelos locais. |
 | T4 | **Escrita destrutiva no repositório** | Agente força push, apaga branches. | Somente branches `vectr/*`; `git push` só pelo GitHub Integration; nunca `--force` em branches de terceiros. |
@@ -1298,6 +1298,10 @@ security:
 autonomy_level: 2
 tags: []                         # ex.: [confidential]
 isolation: worktree
+
+setup:                           # rodados pelo Runner na worktree antes da 1ª tentativa do agente,
+  - npm ci                       # com rede e fora da concessão do agente (ADR 0006); nunca detectados
+                                 # automaticamente (T2). Na Fase 0: `vectr run --setup <cmd>`.
 
 verify:
   - name: lint
