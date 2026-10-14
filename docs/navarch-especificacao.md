@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -1495,7 +1495,7 @@ Registrar cada uma como ADR em `docs/adr/` quando decidida.
 
 Justificativa: o *navarca* comandava uma frota na Grécia antiga. O Navarch coordena uma frota de agentes sem ser um deles, como descrito em §1.2. O comando de linha é `navarch`, com o atalho `nav`.
 
-**Verificado em 2026-10-14:** livre no npm e no PyPI; domínio `navarch.dev` livre (`.com` e `.io` ocupados); no GitHub, só projetos pequenos de outros nichos (o maior é um gerenciador de GPUs com 8 estrelas); nenhum software com esse nome em buscas na web. **Pendente antes de publicar:** busca formal de marca no INPI, USPTO e WIPO (classes 9 e 42).
+**Verificado em 2026-10-14:** livre no npm e no PyPI; domínio `navarch.dev` livre (`.com` e `.io` ocupados); no GitHub, só projetos pequenos de outros nichos (o maior é um gerenciador de GPUs com 8 estrelas); nenhum software com esse nome em buscas na web. Busca de marca feita pelo usuário em 2026-10-14: nenhum registro com esse nome encontrado.
 
 ### 19.2 Linguagem do Core
 **Decidido (Fase 0):** TypeScript, executado direto pelo Node ≥ 22.18 (type stripping, sem build), `node:sqlite` no event store; Drizzle e turbo adiados. Ver `docs/adr/0002-phase-0-toolchain.md`.
@@ -1519,7 +1519,7 @@ O Knowledge Engine usa o SCA como biblioteca, como serviço separado, ou o SCA e
 **Decidido (v0.4):** auto-merge existe como opt-in por repositório, desligado por padrão, habilitável só pelo usuário com confirmação explícita ([§11.1](#111-auto-merge-opcional)). Registrar em ADR ao implementar.
 
 ### 19.9 Licença e distribuição
-Projeto pessoal fechado, open source (MIT/Apache-2.0) ou open core?
+**Decidido (ADR 0009):** open source sob a licença **MIT**, no repositório público `nadezhdkov/nav`. Qualquer pessoa pode clonar, modificar e redistribuir. Open core fica fora por ora.
 
 ---
 
