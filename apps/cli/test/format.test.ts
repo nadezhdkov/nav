@@ -1,6 +1,6 @@
-import type { ApprovalView, DeviceView, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, DeviceView, InboxView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatDevices, formatEvent, formatRemote, formatRunList } from "../src/format.ts";
+import { formatApprovals, formatDevices, formatEvent, formatInbox, formatRemote, formatRunList, formatSync } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -102,5 +102,43 @@ describe("remote and devices (ADR 0020)", () => {
     expect(formatDevices([d])).toBe("dev_1  Pixel  paired 2026-10-15  last seen never  push on");
     expect(formatDevices([{ ...d, revoked_at: "2026-10-16T08:30:00Z", push: false }])).toContain("revoked 2026-10-16 08:30");
     expect(formatDevices([])).toContain("no paired devices");
+  });
+});
+
+describe("formatInbox", () => {
+  const view: InboxView = {
+    triage: { available: false, reason: "no API model for triage", used_today: { items: 0, usd: 0 }, cap: { items: 50, usd: 0.5 } },
+    items: [
+      {
+        id: "wi_github_acme~w_1",
+        project_id: "prj_1",
+        source: "github",
+        repo: "acme/w",
+        number: 1,
+        url: "https://github.com/acme/w/issues/1",
+        title: "Crash\non empty input",
+        labels: [],
+        author: "a",
+        status: "triaged",
+        triage: { kind: "bug", complexity: 2, area: "cli", duplicate_of: 4, suggested_action: "duplicate", reason: "r" },
+        triage_model: "m",
+        estimate: { usd: 0.42, runs: 5 },
+        runs: [],
+        updated_at: "2026-10-15T00:00:00Z",
+      },
+    ],
+  };
+
+  it("puts each item on one line with its triage and estimate, and says why triage is off", () => {
+    const out = formatInbox(view);
+    expect(out).toContain("triage: no API model for triage");
+    const row = out.split("\n").find((l) => l.startsWith("wi_github_acme~w_1"))!;
+    expect(row).toMatch(/acme\/w#1\s+triaged\s+bug\s+2\s+cli\s+duplicate of #4\s+\$0.4200\s+Crash on empty input/);
+  });
+
+  it("reports each project's sync", () => {
+    expect(formatSync([{ project_id: "p", new: 2, changed: 1, closed: 0, not_modified: false }, { project_id: "q", new: 0, changed: 0, closed: 0, not_modified: false, error: "rate limit" }])).toBe(
+      "p: 2 new, 1 changed, 0 closed\nq: failed: rate limit",
+    );
   });
 });

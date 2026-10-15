@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, openSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -14,11 +14,16 @@ import {
   type RunView,
   type NavarchEvent,
   type StopResult,
+  type InboxItemDetail,
+  type InboxView,
+  type ProjectView,
+  type StartInboxResult,
+  type SyncInboxResult,
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatDevices, formatEvent, formatRemote, formatRunDetail, formatRunList } from "./format.ts";
+import { formatApprovals, formatDevices, formatEvent, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -52,6 +57,15 @@ Usage:
   navarch remote status                    Tailscale and the phone's URL (\`tailscale serve\` must proxy to the daemon)
   navarch devices                          paired phones (pair one from the Web UI: Settings → Devices)
   navarch devices revoke <device-id>       sign a phone out
+  navarch project add <clone> [--github <owner/name>] [--name <name>]
+                                         watch a repository's issues in the Inbox (origin read from the clone)
+  navarch project list | remove <project-id>
+  navarch sync [--project <project-id>]    read new and changed issues now (also polled every 15 min)
+  navarch inbox [--all] [--project <project-id>]
+                                         triaged issues: kind, complexity, area, duplicate, action, estimate
+  navarch inbox start <item-id>... [--flow <name>] [--budget <usd>]
+                                         start one issue run per item in its project's clone
+  navarch inbox dismiss <item-id> [--reason <text>] | restore <item-id>
 
 Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
@@ -88,6 +102,9 @@ async function main(argv: string[]): Promise<number> {
       print: { type: "boolean", default: false },
       task: { type: "string" },
       now: { type: "boolean", default: false },
+      github: { type: "string" },
+      name: { type: "string" },
+      project: { type: "string" },
     },
   });
   const [command, ...rest] = positionals;
@@ -195,6 +212,61 @@ async function main(argv: string[]): Promise<number> {
       if (rest[0] !== undefined) throw new CliError("usage: navarch devices [revoke <device-id>]", EXIT.usage);
       const devices = await api.request<DeviceView[]>("GET", "/api/v1/devices");
       return print(json ? devices : formatDevices(devices), json);
+    }
+    case "project": {
+      const api = new ApiClient(home);
+      if (rest[0] === "add") {
+        const project = await api.request<ProjectView>("POST", "/api/v1/projects", {
+          path: resolvePath(required(rest[1], "path of a clone")),
+          ...(values.github ? { github: values.github } : {}),
+          ...(values.name ? { name: values.name } : {}),
+        });
+        return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); sync now with: navarch sync`, json);
+      }
+      if (rest[0] === "remove") {
+        const id = required(rest[1], "project id");
+        await api.request("DELETE", `/api/v1/projects/${encodeURIComponent(id)}`);
+        return print(json ? { id, removed: true } : `project ${id} removed; its runs stay`, json);
+      }
+      if (rest[0] !== "list" && rest[0] !== undefined) throw new CliError("usage: navarch project add|list|remove", EXIT.usage);
+      const projects = await api.request<ProjectView[]>("GET", "/api/v1/projects");
+      return print(json ? projects : formatProjects(projects), json);
+    }
+    case "sync": {
+      const result = await new ApiClient(home).request<SyncInboxResult>("POST", "/api/v1/inbox/sync", values.project ? { project_id: values.project } : {});
+      print(json ? result : formatSync(result.results), json);
+      return result.results.some((r) => r.error) ? EXIT.error : EXIT.ok;
+    }
+    case "inbox": {
+      const api = new ApiClient(home);
+      if (rest[0] === "start") {
+        const ids = rest.slice(1);
+        if (!ids.length) throw new CliError("usage: navarch inbox start <item-id>...", EXIT.usage);
+        const budget = values.budget === undefined ? undefined : Number(values.budget);
+        const result = await api.request<StartInboxResult>("POST", "/api/v1/inbox/start", {
+          item_ids: ids,
+          ...(values.flow ? { flow: values.flow } : {}),
+          ...(budget ? { budget } : {}),
+        });
+        const text = [
+          ...result.runs.map((r) => `${r.item_id}: run ${r.run_id} started; follow it with: navarch logs ${r.run_id} -f`),
+          ...result.errors.map((e) => `${e.item_id}: not started: ${e.message}`),
+        ].join("\n");
+        print(json ? result : text, json);
+        return result.errors.length ? EXIT.error : EXIT.ok;
+      }
+      if (rest[0] === "dismiss" || rest[0] === "restore") {
+        const id = required(rest[1], "item id");
+        const body = rest[0] === "dismiss" && values.reason ? { reason: values.reason } : {};
+        const item = await api.request<InboxItemDetail>("POST", `/api/v1/inbox/${encodeURIComponent(id)}/${rest[0]}`, body);
+        return print(json ? item : `${item.id} ${item.status}`, json);
+      }
+      if (rest[0] !== undefined) throw new CliError("usage: navarch inbox [start|dismiss|restore]", EXIT.usage);
+      const query = new URLSearchParams();
+      if (!values.all) query.set("status", "new,triaged");
+      if (values.project) query.set("project", values.project);
+      const view = await api.request<InboxView>("GET", `/api/v1/inbox${query.size ? `?${query}` : ""}`);
+      return print(json ? view : formatInbox(view), json);
     }
     case "say": {
       const id = required(rest[0], "run id");

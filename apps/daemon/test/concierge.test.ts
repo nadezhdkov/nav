@@ -62,7 +62,7 @@ describe("concierge API", () => {
     expect(turn).toMatchObject({ status: 200, body: { reply: "Nothing has run yet.", proposals: [], model: "fake/concierge-1" } });
     expect(server.requests[0]?.model).toBe("concierge-1");
     expect(server.requests[0]?.tools?.map((t) => t.function.name)).toEqual(
-      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_approvals", "start_run", "cancel_run", "send_instruction", "resume_run", "approve", "reject"]),
+      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_inbox", "list_approvals", "start_run", "cancel_run", "send_instruction", "resume_run", "approve", "reject"]),
     );
     expect(server.requests[1]?.messages.at(-1)).toMatchObject({ role: "tool", content: "[]" });
   });

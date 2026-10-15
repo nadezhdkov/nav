@@ -26,6 +26,12 @@ import {
   type NavarchEvent,
   FleetWindow,
   SendRunMessage,
+  CreateProjectRequest,
+  DismissItemRequest,
+  StartInboxRequest,
+  SyncInboxRequest,
+  WorkItemStatus,
+  type SyncInboxResult,
 } from "@navarch/contracts";
 import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
@@ -33,6 +39,7 @@ import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 import { ConciergeError } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
+import { InboxError } from "../inbox/service.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
@@ -68,6 +75,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof ConciergeError) {
       const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
+    }
+    if (err instanceof InboxError) {
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     if (err instanceof DeviceError) {
@@ -174,6 +185,54 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.get("/api/v1/repos", async () => daemon.store.listRepos());
 
+  // Projects and the Inbox (ADR 0021).
+  app.get("/api/v1/projects", async () => daemon.inbox.listProjects());
+
+  app.post("/api/v1/projects", async (req, reply) => {
+    const parsed = CreateProjectRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(await daemon.inbox.addProject(parsed.data, actorOf(req)));
+  });
+
+  app.delete("/api/v1/projects/:id", async (req, reply) => {
+    daemon.inbox.removeProject((req.params as { id: string }).id, actorOf(req));
+    return reply.code(204).send();
+  });
+
+  app.get("/api/v1/inbox", async (req, reply) => {
+    const q = req.query as { project?: string; status?: string };
+    const status = q.status ? z.array(WorkItemStatus).safeParse(q.status.split(",")) : undefined;
+    if (status && !status.success) return badRequest(reply, "status must be a comma-separated list of new, triaged, in_run, done, dismissed, closed");
+    return daemon.inbox.list({ ...(q.project ? { projectId: q.project } : {}), ...(status?.data ? { status: status.data } : {}) });
+  });
+
+  app.get("/api/v1/inbox/:id", async (req) => daemon.inbox.get((req.params as { id: string }).id));
+
+  app.post("/api/v1/inbox/sync", async (req, reply) => {
+    const parsed = SyncInboxRequest.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const result: SyncInboxResult = { results: await daemon.inbox.sync(parsed.data.project_id, actorOf(req)) };
+    return result;
+  });
+
+  app.post("/api/v1/inbox/start", async (req, reply) => {
+    const parsed = StartInboxRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    // A phone starts runs with the daemon's defaults, as for prompt runs (ADR 0020, 0021).
+    if (callerOf(req).kind === "device" && (parsed.data.flow || parsed.data.budget)) return forbidden(reply, "a paired device cannot set flow or budget");
+    return daemon.inbox.startRuns(parsed.data, actorOf(req));
+  });
+
+  app.post("/api/v1/inbox/:id/dismiss", async (req, reply) => {
+    const parsed = DismissItemRequest.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.inbox.dismiss((req.params as { id: string }).id, parsed.data.reason, actorOf(req));
+  });
+
+  app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
+
+  app.get("/api/v1/quotas", async () => daemon.store.quotas());
+
   app.get("/api/v1/health", async () => ({
     ok: true,
     running_tasks: daemon.scheduler.runningCount,
@@ -193,8 +252,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       // commands, setup steps, adapters or budgets it could widen (ADR 0020).
       const extra = Object.keys(parsed.data).filter((k) => k !== "repo_path" && k !== "prompt");
       if (extra.length || parsed.data.issue) return forbidden(reply, `a paired device cannot set ${extra.join(", ") || "issue"}`);
-      if (!daemon.store.listRepos().some((r) => r.path === parsed.data.repo_path)) {
-        return forbidden(reply, "a paired device can start runs only in repositories of earlier runs");
+      const known = [...daemon.store.listRepos().map((r) => r.path), ...daemon.store.listProjects().map((p) => p.path)];
+      if (!known.includes(parsed.data.repo_path)) {
+        return forbidden(reply, "a paired device can start runs only in registered projects or repositories of earlier runs");
       }
     }
     const run = await daemon.orchestrator.startRun(parsed.data, actorOf(req));
@@ -407,6 +467,14 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/artifacts/:id",
   "GET /api/v1/stream",
   "GET /api/v1/repos",
+  "GET /api/v1/projects",
+  "GET /api/v1/inbox",
+  "GET /api/v1/inbox/:id",
+  "POST /api/v1/inbox/sync",
+  "POST /api/v1/inbox/start",
+  "POST /api/v1/inbox/:id/dismiss",
+  "POST /api/v1/inbox/:id/restore",
+  "GET /api/v1/quotas",
   "POST /api/v1/stop",
   "GET /api/v1/devices/me",
   "DELETE /api/v1/devices/:id",

@@ -1,4 +1,4 @@
-import type { ApprovalView, DeviceView, RemoteStatus, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, DeviceView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -167,4 +167,62 @@ export function formatDevices(devices: DeviceView[]): string {
       return `${d.id}  ${d.name}  paired ${d.paired_at.slice(0, 10)}  ${state}  push ${d.push ? "on" : "off"}`;
     })
     .join("\n");
+}
+
+/** `navarch project list` (ADR 0021). */
+export function formatProjects(projects: ProjectView[]): string {
+  if (!projects.length) return "no projects; add one with: navarch project add <clone>";
+  return table(
+    ["ID", "NAME", "REPOSITORY", "ACTIVE", "INBOX", "SYNCED", "PATH"],
+    projects.map((p) => [
+      p.id,
+      p.name,
+      p.repo,
+      String(p.active_runs),
+      `${p.inbox.new} new, ${p.inbox.triaged} triaged`,
+      p.synced_at ? p.synced_at.slice(0, 16).replace("T", " ") : "never",
+      p.path,
+    ]),
+  );
+}
+
+export function formatSync(results: ProjectSyncResult[]): string {
+  if (!results.length) return "no projects to sync; add one with: navarch project add <clone>";
+  return results
+    .map((r) =>
+      r.error
+        ? `${r.project_id}: failed: ${r.error}`
+        : r.not_modified
+          ? `${r.project_id}: no changes`
+          : `${r.project_id}: ${r.new} new, ${r.changed} changed, ${r.closed} closed`,
+    )
+    .join("\n");
+}
+
+/** `navarch inbox`: one line per item; titles are untrusted text, kept on one line. */
+export function formatInbox(view: InboxView): string {
+  const lines: string[] = [];
+  if (!view.triage.available && view.triage.reason) lines.push(`triage: ${view.triage.reason}`, "");
+  if (!view.items.length) {
+    lines.push("the Inbox is empty; sync with: navarch sync");
+    return lines.join("\n");
+  }
+  lines.push(
+    table(
+      ["ITEM", "ISSUE", "STATUS", "KIND", "CPLX", "AREA", "ACTION", "EST.", "TITLE"],
+      view.items.map((i) => [
+        i.id,
+        `${i.repo}#${i.number}`,
+        i.status,
+        i.triage?.kind ?? "—",
+        i.triage ? String(i.triage.complexity) : "—",
+        i.triage?.area || "—",
+        i.triage ? (i.triage.duplicate_of ? `duplicate of #${i.triage.duplicate_of}` : i.triage.suggested_action.replace("_", " ")) : "—",
+        i.estimate ? usd(i.estimate.usd) : "—",
+        truncate(oneLine(i.title), 60),
+      ]),
+    ),
+  );
+  lines.push("", "start runs: navarch inbox start <item>... · dismiss: navarch inbox dismiss <item>");
+  return lines.join("\n");
 }

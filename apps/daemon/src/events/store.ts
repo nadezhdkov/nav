@@ -19,7 +19,9 @@ import {
   type TaskView,
   type NavarchEvent,
   type QuotaObservation,
+  type QuotaView,
   type VerifyCommand,
+  type WorkItemTriage,
 } from "@navarch/contracts";
 import { applyEvent } from "./projections.ts";
 import { credentialTables, dropProjections, eventsTable, projectionTables } from "./schema.ts";
@@ -43,7 +45,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id")) {
       this.rebuildProjections();
     }
   }
@@ -318,6 +320,78 @@ export class EventStore {
     return { generated_at: nowIso, counts, runs: out };
   }
 
+  /** Registered projects (ADR 0021), oldest first; removed ones only with `withRemoved`. */
+  listProjects(withRemoved = false): ProjectRecord[] {
+    return (this.db.prepare(`SELECT * FROM projects ${withRemoved ? "" : "WHERE removed_at IS NULL"} ORDER BY added_at, rowid`).all() as Row[]).map(toProjectRecord);
+  }
+
+  getProject(id: string): ProjectRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Row | undefined;
+    return row ? toProjectRecord(row) : undefined;
+  }
+
+  /** Inbox items of active projects, with their runs (newest first). */
+  workItems(filter: { projectId?: string; id?: string } = {}): WorkItemRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT w.* FROM work_items w JOIN projects p ON p.id = w.project_id
+         WHERE p.removed_at IS NULL AND (? IS NULL OR w.project_id = ?) AND (? IS NULL OR w.id = ?) ORDER BY w.updated_at DESC, w.rowid DESC`,
+      )
+      .all(filter.projectId ?? null, filter.projectId ?? null, filter.id ?? null, filter.id ?? null) as Row[];
+    const runsOf = this.db.prepare("SELECT id, status FROM runs WHERE work_item_id = ? ORDER BY created_at DESC, id DESC");
+    return rows.map((row) => toWorkItemRecord(row, runsOf.all(String(row.id)) as { id: string; status: RunView["status"] }[]));
+  }
+
+  /** Runs whose repository is this path and that have not ended. */
+  activeRunsIn(path: string): number {
+    const rows = this.db.prepare("SELECT status FROM runs WHERE repo_path = ?").all(path) as { status: RunView["status"] }[];
+    return rows.filter((r) => !isTerminalRun(r.status)).length;
+  }
+
+  /** Inbox triage spending since `since` (ISO 8601): items triaged or attempted, and dollars. */
+  triageUsage(since: string): { items: number; usd: number } {
+    const rows = this.db
+      .prepare("SELECT type, payload FROM events WHERE type IN ('workitem.triaged', 'workitem.triage_failed') AND ts >= ?")
+      .all(since) as { type: string; payload: string }[];
+    let usd = 0;
+    for (const r of rows) if (r.type === "workitem.triaged") usd += Number((JSON.parse(r.payload) as { cost_usd: number }).cost_usd) || 0;
+    return { items: rows.length, usd };
+  }
+
+  /**
+   * Finished `fix-issue` runs (a PR opened, or done) with their cost and their triage task's
+   * summary, newest first: what Inbox estimates are made from.
+   */
+  finishedIssueRuns(limit = 500): { cost: number; triage: string | null }[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT r.cost_total AS cost, (SELECT t.summary FROM tasks t WHERE t.run_id = r.id AND t.node_id = 'triage' ORDER BY t.rowid DESC LIMIT 1) AS triage
+           FROM runs r WHERE r.status IN ('pr_opened', 'done') AND r.work_item IS NOT NULL ORDER BY r.created_at DESC LIMIT ?`,
+        )
+        .all(limit) as { cost: number; triage: string | null }[]
+    ).map((r) => ({ cost: Number(r.cost), triage: r.triage ?? null }));
+  }
+
+  /** The latest observation of every quota window, by adapter (Home, ADR 0021). */
+  quotas(now = Date.now()): QuotaView[] {
+    const latest = new Map<string, QuotaView>();
+    for (const row of this.db.prepare("SELECT ts, payload FROM events WHERE type = 'quota.observed' ORDER BY seq").all() as { ts: string; payload: string }[]) {
+      const q = JSON.parse(row.payload) as QuotaObservation;
+      const reset = q.resets_at ? Date.parse(q.resets_at) : undefined;
+      latest.set(JSON.stringify([q.adapter, q.model_prefix ?? "", q.window]), {
+        adapter: q.adapter,
+        window: q.window,
+        utilization: q.utilization ?? null,
+        resets_at: q.resets_at ?? null,
+        exhausted: Boolean(q.exhausted) && (reset === undefined || reset > now),
+        model_prefix: q.model_prefix ?? null,
+        observed_at: row.ts,
+      });
+    }
+    return [...latest.values()].sort((a, b) => a.adapter.localeCompare(b.adapter) || a.window.localeCompare(b.window));
+  }
+
   getArtifact(id: string): { id: string; run_id: string; kind: string; uri: string; summary: string } | undefined {
     const row = this.db.prepare("SELECT id, run_id, kind, uri, summary FROM artifacts WHERE id = ?").get(id) as
       | { id: string; run_id: string; kind: string; uri: string; summary: string }
@@ -326,6 +400,40 @@ export class EventStore {
   }
 }
 
+
+export type ProjectRecord = {
+  id: string;
+  name: string;
+  repo: string;
+  path: string;
+  added_at: string;
+  removed_at: string | null;
+  sync_cursor: string | null;
+  synced_at: string | null;
+};
+
+export type WorkItemRecord = {
+  id: string;
+  project_id: string;
+  repo: string;
+  number: number;
+  url: string;
+  title: string;
+  body: string;
+  labels: string[];
+  author: string;
+  closed: boolean;
+  dismissed: boolean;
+  version: number;
+  triage: WorkItemTriage | null;
+  triage_model: string | null;
+  /** The version the triage is for; older than `version` when the issue changed since. */
+  triage_version: number | null;
+  triage_failures: number;
+  triaged_at: string | null;
+  updated_at: string;
+  runs: { id: string; status: RunView["status"] }[];
+};
 
 export type RunRecord = RunView & {
   adapter: string;
@@ -452,6 +560,43 @@ function toTaskRecord(row: Row): TaskRecord {
     outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
     model_id: (row.model_id as string | null) ?? null,
     routing: row.routing === "auto" ? "auto" : null,
+  };
+}
+
+function toProjectRecord(row: Row): ProjectRecord {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    repo: String(row.repo),
+    path: String(row.path),
+    added_at: String(row.added_at),
+    removed_at: (row.removed_at as string | null) ?? null,
+    sync_cursor: (row.sync_cursor as string | null) ?? null,
+    synced_at: (row.synced_at as string | null) ?? null,
+  };
+}
+
+function toWorkItemRecord(row: Row, runs: WorkItemRecord["runs"]): WorkItemRecord {
+  return {
+    id: String(row.id),
+    project_id: String(row.project_id),
+    repo: String(row.repo),
+    number: Number(row.number),
+    url: String(row.url),
+    title: String(row.title),
+    body: String(row.body),
+    labels: JSON.parse(String(row.labels)) as string[],
+    author: String(row.author),
+    closed: Number(row.closed) === 1,
+    dismissed: Number(row.dismissed) === 1,
+    version: Number(row.version),
+    triage: row.triage ? (JSON.parse(String(row.triage)) as WorkItemTriage) : null,
+    triage_model: (row.triage_model as string | null) ?? null,
+    triage_version: row.triage_version === null || row.triage_version === undefined ? null : Number(row.triage_version),
+    triage_failures: Number(row.triage_failures),
+    triaged_at: (row.triaged_at as string | null) ?? null,
+    updated_at: String(row.updated_at),
+    runs: runs.map((r) => ({ id: String(r.id), status: r.status })),
   };
 }
 

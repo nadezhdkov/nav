@@ -6,6 +6,7 @@ export const routes = [
   { path: "/runs", name: "runs", component: () => import("./views/RunsView.vue") },
   { path: "/runs/:id", name: "run", component: () => import("./views/RunDetailView.vue"), props: true },
   { path: "/new", name: "new", component: () => import("./views/NewRunView.vue") },
+  { path: "/inbox", name: "inbox", component: () => import("./views/InboxView.vue") },
   { path: "/fleet", name: "fleet", component: () => import("./views/FleetView.vue") },
   { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
   { path: "/device", name: "device", component: () => import("./views/DeviceView.vue") },

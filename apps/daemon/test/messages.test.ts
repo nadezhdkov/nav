@@ -15,11 +15,11 @@ afterEach(async () => {
 
 const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" };
 
-/** A repository whose `.navarch/project.yaml` sets the autonomy level and a check for hello.txt. */
-function repo(autonomy: number): string {
+/** A repository whose `.navarch/project.yaml` sets the autonomy level and a check that `file` exists. */
+function repo(autonomy: number, file = "hello.txt"): string {
   const dir = makeRepo();
   mkdirSync(join(dir, ".navarch"));
-  writeFileSync(join(dir, ".navarch", "project.yaml"), `autonomy_level: ${autonomy}\nverify:\n  - name: greeting\n    run: test -f hello.txt\n`);
+  writeFileSync(join(dir, ".navarch", "project.yaml"), `autonomy_level: ${autonomy}\nverify:\n  - name: greeting\n    run: test -f ${file}\n`);
   execFileSync("git", ["add", "."], { cwd: dir, env: gitEnv });
   execFileSync("git", ["commit", "-q", "-m", "cfg"], { cwd: dir, env: gitEnv });
   return dir;
@@ -89,13 +89,14 @@ describe("instructions to a run (ADR 0019)", () => {
 
   it("interrupts a running agent and resumes its session with the instruction, without using an attempt", async () => {
     const { api, fake, daemon } = await start("slow", { scheduler: { max_attempts: 1 } });
-    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo(3), prompt: "slow work" })).body;
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo(3, "resumed.txt"), prompt: "slow work" })).body;
     await waitFor(() => existsSync(join(fake.stateDir, "started")), Boolean);
     const task = (await api<RunDetail>("GET", `/api/v1/runs/${run.id}`)).body.tasks.find((t) => t.status === "running")!;
 
     const sent = await api<RunMessage>("POST", `/api/v1/runs/${run.id}/messages`, { text: "Also add a README line.", task_id: task.id, delivery: "now" });
     expect(sent.status).toBe(201);
-    await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => r.body.tasks.some((t) => t.id === task.id && t.status === "succeeded"));
+    // The resumed session writes resumed.txt, so verification passes and no fix iteration starts another agent.
+    await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => r.body.status === "done");
 
     const calls = fake.calls();
     expect(calls).toHaveLength(2);

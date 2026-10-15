@@ -1,4 +1,4 @@
-import type { ApprovalView, FleetView, FleetWindow, NavarchEvent, RunDetail, RunView } from "@navarch/contracts";
+import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -156,4 +156,51 @@ export const useFleetStore = defineStore("fleet", () => {
   }
 
   return { view, span, error, running, load, setSpan, apply };
+});
+
+/** The Inbox (ADR 0021): every item the API returns; the view filters them. */
+export const useInboxStore = defineStore("inbox", () => {
+  const view = ref<InboxView | null>(null);
+  const error = ref<string | null>(null);
+  /** Items that need a decision: new or triaged. */
+  const open = computed(() => (view.value?.items ?? []).filter((i) => i.status === "new" || i.status === "triaged"));
+
+  async function load() {
+    try {
+      view.value = await api.inbox();
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^(workitem|inbox|project)\./.test(event.type) || event.type === "run.created" || event.type === "run.status_changed") refetch();
+  }
+
+  return { view, open, error, load, apply };
+});
+
+/** Registered projects and agents' quota windows, for the sidebar and Home. */
+export const useProjectsStore = defineStore("projects", () => {
+  const projects = ref<ProjectView[]>([]);
+  const quotas = ref<QuotaView[]>([]);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      [projects.value, quotas.value] = await Promise.all([api.projects(), api.quotas()]);
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^(project|inbox|workitem)\./.test(event.type) || event.type === "quota.observed" || event.type === "run.created" || event.type === "run.status_changed") refetch();
+  }
+
+  return { projects, quotas, error, load, apply };
 });

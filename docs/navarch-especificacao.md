@@ -845,7 +845,7 @@ erDiagram
 |---|---|
 | `Project` | id, name, autonomy_level, tags (ex.: confidential), budget_daily, default_flows |
 | `Repository` | id, project_id, local_path, remote (owner/repo), default_branch, verify_pipeline, command_allowlist, isolation_level |
-| `WorkItem` | id, source, external_id, kind (issue/pr/ci_failure/manual), title, body_ref, author, author_trust, labels, triage (json), status |
+| `WorkItem` | id, source, external_id, kind (issue/pr/ci_failure/manual), title, body_ref, author, author_trust, labels, triage (json), status (`new`, `triaged`, `in_run`, `done`, `dismissed`, `closed`; ADR 0021) |
 | `Flow` / `FlowVersion` | id, name, version, yaml, status (draft/published), checksum |
 | `Run` | id, flow_version_id, work_item_id, status, base_commit, budget, cost_total, started_at, ended_at |
 | `Task` | id, run_id, node_id, type, status, attempt, agent_profile, model_id, sandbox_id, inputs, outputs, error |
@@ -1543,6 +1543,8 @@ O Knowledge Engine usa o SCA como biblioteca, como serviço separado, ou o SCA e
 11. **Refatoração segura**: Flows de melhoria interna que exigem testes de caracterização antes de qualquer mudança.
 12. **Voz no celular**: ditar instruções para uma Run (reaproveitando trabalho de STT local).
 13. **Modo offline**: operar apenas com modelos locais quando sem internet, com fila de sincronização com o GitHub.
+14. **Conversa ao vivo com o agente de uma Run** (inspirado no Orca): evoluir `navarch say --now` (ADR 0019) para um chat no painel do agente.
+15. **Mesmo prompt para N agentes** (inspirado no Orca): cada um em sua worktree, com comparação e escolha do melhor resultado; base para o Modo Compete da Fase 2.
 
 ---
 

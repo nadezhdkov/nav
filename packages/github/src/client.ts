@@ -11,10 +11,13 @@ export type GitHubClientOptions = {
 
 export class GitHubError extends Error {
   readonly status: number;
+  /** On a rate limit: when it resets (ISO 8601), if GitHub said so. */
+  readonly resetAt?: string;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, resetAt?: string) {
     super(message);
     this.status = status;
+    if (resetAt) this.resetAt = resetAt;
   }
 }
 
@@ -53,6 +56,47 @@ export class GitHubClient {
     };
   }
 
+  /**
+   * Issues of a repository, pull requests left out, newest update first (spec §6.7.3 polling).
+   * Without `since`, the open ones; with it, every issue updated since then, open or closed. The
+   * first page is a conditional request on `etag`: `notModified` costs no rate limit.
+   */
+  async listIssues(
+    repo: string,
+    options: { since?: string; etag?: string; maxPages?: number } = {},
+  ): Promise<{ notModified: true } | { notModified: false; etag?: string; issues: IssueListing[] }> {
+    const query = new URLSearchParams({ state: options.since ? "all" : "open", sort: "updated", direction: "desc", per_page: "100" });
+    if (options.since) query.set("since", options.since);
+    const issues: IssueListing[] = [];
+    let etag: string | undefined;
+    for (let page = 1; page <= (options.maxPages ?? 5); page++) {
+      query.set("page", String(page));
+      const res = await this.send("GET", `/repos/${repo}/issues?${query}`, undefined, page === 1 && options.etag ? { "if-none-match": options.etag } : {});
+      if (res.status === 304) return { notModified: true };
+      const json = await readJson(res);
+      if (!res.ok) throw failure(res, repo, json);
+      if (page === 1) etag = res.headers.get("etag") ?? undefined;
+      const rows = json as RawIssue[];
+      for (const raw of rows) {
+        if (raw.pull_request) continue;
+        issues.push({
+          source: "github",
+          repo,
+          number: raw.number,
+          url: raw.html_url,
+          title: raw.title,
+          body: raw.body ?? "",
+          labels: raw.labels.map((l) => (typeof l === "string" ? l : (l.name ?? ""))).filter(Boolean),
+          author: raw.user?.login ?? "ghost",
+          state: raw.state === "closed" ? "closed" : "open",
+          updated_at: raw.updated_at,
+        });
+      }
+      if (rows.length < 100) break;
+    }
+    return { notModified: false, ...(etag ? { etag } : {}), issues };
+  }
+
   async defaultBranch(repo: string): Promise<string> {
     return (await this.request<{ default_branch: string }>("GET", `/repos/${repo}`, undefined, repo)).default_branch;
   }
@@ -80,7 +124,14 @@ export class GitHubClient {
   }
 
   private async request<T>(method: string, path: string, body: unknown, what: string): Promise<T> {
-    const res = await fetch(this.apiUrl + path, {
+    const res = await this.send(method, path, body);
+    const json = await readJson(res);
+    if (res.ok) return json as T;
+    throw failure(res, what, json);
+  }
+
+  private async send(method: string, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+    return fetch(this.apiUrl + path, {
       method,
       headers: {
         accept: "application/vnd.github+json",
@@ -88,15 +139,47 @@ export class GitHubClient {
         "x-github-api-version": "2022-11-28",
         "user-agent": "navarch",
         ...(body ? { "content-type": "application/json" } : {}),
+        ...headers,
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(30_000),
     });
-    const text = await res.text();
-    const json = text ? (JSON.parse(text) as Record<string, unknown>) : {};
-    if (res.ok) return json as T;
-    throw new GitHubError(res.status, describe(res.status, what, json));
   }
+}
+
+/** An issue from a listing, with what a sync needs to tell new, changed and closed apart. */
+export type IssueListing = WorkItem & { state: "open" | "closed"; updated_at: string };
+
+type RawIssue = {
+  number: number;
+  html_url: string;
+  title: string;
+  body: string | null;
+  labels: (string | { name?: string })[];
+  user: { login: string } | null;
+  state: string;
+  updated_at: string;
+  pull_request?: unknown;
+};
+
+async function readJson(res: Response): Promise<unknown> {
+  const text = await res.text();
+  return text ? JSON.parse(text) : {};
+}
+
+function failure(res: Response, what: string, json: unknown): GitHubError {
+  const body = (json && typeof json === "object" && !Array.isArray(json) ? json : {}) as Record<string, unknown>;
+  const reset = res.status === 403 || res.status === 429 ? rateLimitReset(res.headers) : undefined;
+  if (reset) return new GitHubError(res.status, `GitHub rate limit reached for ${what}; it resets at ${reset}`, reset);
+  return new GitHubError(res.status, describe(res.status, what, body));
+}
+
+/** When a GitHub rate limit resets: `x-ratelimit-reset` (epoch seconds) or `retry-after` (seconds). */
+export function rateLimitReset(headers: Headers, now = Date.now()): string | undefined {
+  const reset = Number(headers.get("x-ratelimit-reset"));
+  if (headers.get("x-ratelimit-remaining") === "0" && reset > 0) return new Date(reset * 1000).toISOString();
+  const after = Number(headers.get("retry-after"));
+  return after > 0 ? new Date(now + after * 1000).toISOString() : undefined;
 }
 
 function describe(status: number, what: string, json: Record<string, unknown>): string {

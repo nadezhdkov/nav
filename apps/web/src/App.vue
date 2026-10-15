@@ -1,39 +1,33 @@
 <script setup lang="ts">
-import { Hand, House, Languages, ListChecks, Settings, Ship, Smartphone, Wifi, WifiOff } from "@lucide/vue";
+import { Hand, House, Inbox, Languages, ListChecks, Settings, Ship, Smartphone, Wifi, WifiOff } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair } from "./api/client.ts";
 import KillSwitch from "./components/KillSwitch.vue";
+import ProjectsTree from "./components/ProjectsTree.vue";
 import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useFleetStore, useRunsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
 const approvals = useApprovalsStore();
 const fleet = useFleetStore();
+const inbox = useInboxStore();
+const projects = useProjectsStore();
+const stores = [runs, approvals, fleet, inbox, projects];
 
 const offs: (() => void)[] = [];
 function start() {
   if (offs.length) return;
   offs.push(
     subscribe("runs"),
-    onEvent((e) => {
-      runs.apply(e);
-      approvals.apply(e);
-      fleet.apply(e);
-    }),
-    onReconnect(() => {
-      void runs.load();
-      void approvals.load();
-      void fleet.load();
-    }),
+    onEvent((e) => stores.forEach((s) => s.apply(e))),
+    onReconnect(() => stores.forEach((s) => void s.load())),
   );
-  void runs.load();
-  void approvals.load();
-  void fleet.load();
+  stores.forEach((s) => void s.load());
 }
 
 onMounted(() => {
@@ -52,10 +46,10 @@ const items = computed(() => {
   const runsItem = { to: "/runs", label: t("nav.runs"), icon: ListChecks, badge: 0, tone: "neutral" };
   const fleetItem = { to: "/fleet", label: t("nav.fleet"), icon: Ship, badge: fleet.running, tone: "info" };
   const approvalsItem = { to: "/approvals", label: t("nav.approvals"), icon: Hand, badge: approvals.pending.length, tone: "warning" };
-  const last = mobile.value
-    ? { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }
-    : { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" };
-  return [home, approvalsItem, runsItem, fleetItem, last];
+  if (mobile.value) return [home, approvalsItem, runsItem, fleetItem, { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }];
+  // The Inbox is a desktop tab; phones reach it from Home.
+  const inboxItem = { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: inbox.open.length, tone: "info" };
+  return [home, inboxItem, approvalsItem, runsItem, fleetItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
 });
 </script>
 
@@ -84,6 +78,7 @@ const items = computed(() => {
           style="background: var(--tone); color: var(--bg)"
         >{{ item.badge }}</span>
       </RouterLink>
+      <ProjectsTree class="min-h-0 overflow-auto" />
       <KillSwitch compact class="mx-2 mt-auto" />
       <label class="relative mx-2 mt-2 flex min-h-10 items-center gap-3 rounded-md px-3 text-muted focus-within:outline-2 focus-within:outline-accent hover:bg-surface-2 hover:text-fg">
         <Languages :size="18" aria-hidden="true" />
