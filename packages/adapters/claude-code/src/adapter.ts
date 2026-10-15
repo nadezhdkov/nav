@@ -133,7 +133,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       args: this.buildArgs(ctx, session),
       cwd: ctx.sandbox.path,
       env: scrubbedEnv(this.options.scrubEnv),
-      stdin: session.resume ? RESUME_PROMPT : ctx.instructions,
+      stdin: session.resume ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions,
       timeoutMs: ctx.budget.timeoutMs,
       onLine: (line) => {
         io.emit({ kind: "log", line });

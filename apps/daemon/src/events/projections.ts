@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   canTransitionRun,
   canTransitionTask,
+  INSTRUCTION_INTERRUPT,
   isTerminalRun,
   type RunStatus,
   type TaskStatus,
@@ -101,13 +102,14 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       }
       db.prepare(
         `UPDATE tasks SET status = ?, attempt = ?, error = ?, not_before = ?,
-           rate_limit_waits = rate_limit_waits + ?, updated_at = ? WHERE id = ?`,
+           rate_limit_waits = rate_limit_waits + ?, instruction_interrupts = instruction_interrupts + ?, updated_at = ? WHERE id = ?`,
       ).run(
         p.to,
         p.attempt,
         p.error ? `${p.error.kind}: ${p.error.message}` : null,
         p.not_before ?? null,
         p.not_before ? 1 : 0,
+        p.from === "interrupted" && p.to === "ready" && p.reason === INSTRUCTION_INTERRUPT ? 1 : 0,
         ts,
         event.task_id,
       );
@@ -199,8 +201,33 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       db.prepare("INSERT OR REPLACE INTO skipped_nodes (run_id, node_id, reason) VALUES (?, ?, ?)").run(event.run_id, p.node_id, p.reason);
       return;
     }
-    case "task.progress":
-    case "run.message":
+    case "task.progress": {
+      const p = (event as NavarchEvent<"task.progress">).payload;
+      const activity = JSON.stringify({ text: p.message, ...(p.tool ? { tool: p.tool } : {}), ts });
+      db.prepare("UPDATE tasks SET last_activity = ? WHERE id = ?").run(activity, event.task_id);
+      return;
+    }
+    case "run.message": {
+      const p = (event as NavarchEvent<"run.message">).payload;
+      db.prepare("INSERT INTO run_messages (id, run_id, task_id, text, delivery, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+        p.message_id,
+        event.run_id,
+        p.task_id ?? null,
+        p.text,
+        p.delivery,
+        ts,
+      );
+      touchRun(db, event.run_id, ts);
+      return;
+    }
+    case "run.message.delivered": {
+      const p = (event as NavarchEvent<"run.message.delivered">).payload;
+      const res = db
+        .prepare("UPDATE run_messages SET delivered_task_id = ?, delivered_attempt = ?, delivered_at = ? WHERE id = ? AND delivered_at IS NULL")
+        .run(p.task_id, p.attempt, ts, p.message_id);
+      if (res.changes !== 1) throw new ProjectionError(`message ${p.message_id} is unknown or already delivered`);
+      return;
+    }
     case "workitem.received":
     case "verification.completed":
     case "github.push":

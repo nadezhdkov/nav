@@ -79,6 +79,11 @@ export type TaskContext = {
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   /** Opaque token from an earlier attempt, letting the adapter continue where it stopped. */
   resumeToken?: string;
+  /**
+   * The new turn to send when resuming with `resumeToken`; adapters fall back to their own
+   * "continue where you stopped" prompt. Carries the user's instructions (ADR 0019).
+   */
+  resumePrompt?: string;
 };
 
 export type AdapterEvent =

@@ -1,7 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
 import {
+  isTerminalRun,
+  isTerminalTask,
   newId,
   parsePayload,
+  type FleetAgent,
+  type FleetView,
+  type FleetWindow,
+  type RunMessage,
   type ApprovalStatus,
   type RunFlow,
   type ApprovalView,
@@ -34,7 +40,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts")) {
       this.rebuildProjections();
     }
   }
@@ -230,6 +236,62 @@ export class EventStore {
     return Boolean(this.db.prepare("SELECT 1 FROM approvals WHERE task_id = ? AND status = 'approved'").get(taskId));
   }
 
+  /** Instructions sent to a run (ADR 0019), oldest first. */
+  listMessages(runId: string): RunMessage[] {
+    return this.db.prepare("SELECT * FROM run_messages WHERE run_id = ? ORDER BY created_at, rowid").all(runId).map(toRunMessage);
+  }
+
+  /** Undelivered instructions an attempt of this task should receive: those for the whole run or for the task. */
+  pendingMessagesFor(task: { id: string; run_id: string }): RunMessage[] {
+    return this.db
+      .prepare("SELECT * FROM run_messages WHERE run_id = ? AND delivered_at IS NULL AND (task_id IS NULL OR task_id = ?) ORDER BY created_at, rowid")
+      .all(task.run_id, task.id)
+      .map(toRunMessage);
+  }
+
+  /**
+   * The Fleet view (ADR 0019): runs not ended (plus those that ended in the last 24 hours with
+   * `24h`), newest first, each with the latest task of every agent node in Flow order.
+   */
+  fleet(window: FleetWindow, resumable: (adapter: string) => boolean, now = Date.now()): FleetView {
+    const since = new Date(now - 86_400_000).toISOString();
+    const runs = this.listRuns(500).filter((r) => !isTerminalRun(r.status) || (window === "24h" && (r.ended_at ?? r.updated_at) >= since));
+    const counts = { running: 0, waiting: 0, failed: 0, done: 0 };
+    const nowIso = new Date(now).toISOString();
+    const out = runs.map((run) => {
+      const rows = this.db.prepare("SELECT * FROM tasks WHERE run_id = ? AND type = 'agent' ORDER BY rowid").all(run.id) as TaskRow[];
+      const latest = new Map<string, TaskRow>();
+      for (const row of rows) latest.set(String(row.node_id), row);
+      const pending = this.db
+        .prepare("SELECT task_id FROM run_messages WHERE run_id = ? AND delivered_at IS NULL")
+        .all(run.id) as { task_id: string | null }[];
+      const agents = [...latest.values()].map((row): FleetAgent => {
+        const task = toTaskView(row);
+        const activity = row.last_activity ? (JSON.parse(String(row.last_activity)) as FleetAgent["last_activity"]) : null;
+        const fallback = task.error ?? task.summary;
+        const waiting: FleetAgent["waiting"] =
+          task.status === "waiting_approval"
+            ? { kind: "approval" }
+            : task.status === "ready" && task.not_before && task.not_before > nowIso
+              ? { kind: "quota", until: task.not_before }
+              : null;
+        if (task.status === "running") counts.running++;
+        else if (waiting) counts.waiting++;
+        else if (task.status === "failed" || task.status === "blocked") counts.failed++;
+        else if (task.status === "succeeded") counts.done++;
+        return {
+          ...task,
+          last_activity: activity ?? (fallback ? { text: firstLine(fallback), ts: task.updated_at } : null),
+          waiting,
+          resumable: resumable(task.adapter),
+          pending_messages: pending.filter((m) => m.task_id === task.id || (m.task_id === null && !isTerminalTask(task.status))).length,
+        };
+      });
+      return { ...run, agents };
+    });
+    return { generated_at: nowIso, counts, runs: out };
+  }
+
   getArtifact(id: string): { id: string; run_id: string; kind: string; uri: string; summary: string } | undefined {
     const row = this.db.prepare("SELECT id, run_id, kind, uri, summary FROM artifacts WHERE id = ?").get(id) as
       | { id: string; run_id: string; kind: string; uri: string; summary: string }
@@ -254,6 +316,8 @@ export type TaskRecord = TaskView & {
   sandbox_id: string | null;
   resume_token: string | null;
   rate_limit_waits: number;
+  /** Attempts stopped by the user to give an instruction; they do not count toward `max_attempts`. */
+  instruction_interrupts: number;
   stage: RunView["status"] | null;
   uses: string | null;
   inputs: Record<string, string>;
@@ -355,6 +419,7 @@ function toTaskRecord(row: Row): TaskRecord {
     sandbox_id: (row.sandbox_id as string | null) ?? null,
     resume_token: (row.resume_token as string | null) ?? null,
     rate_limit_waits: Number(row.rate_limit_waits ?? 0),
+    instruction_interrupts: Number(row.instruction_interrupts ?? 0),
     stage: (row.stage as RunView["status"] | null) ?? null,
     uses: (row.uses as string | null) ?? null,
     inputs: row.inputs ? (JSON.parse(String(row.inputs)) as Record<string, string>) : {},
@@ -362,4 +427,22 @@ function toTaskRecord(row: Row): TaskRecord {
     model_id: (row.model_id as string | null) ?? null,
     routing: row.routing === "auto" ? "auto" : null,
   };
+}
+
+function toRunMessage(row: Row): RunMessage {
+  return {
+    id: String(row.id),
+    run_id: String(row.run_id),
+    text: String(row.text),
+    task_id: (row.task_id as string | null) ?? null,
+    delivery: row.delivery === "now" ? "now" : "next",
+    created_at: String(row.created_at),
+    delivered: row.delivered_at
+      ? { task_id: String(row.delivered_task_id), attempt: Number(row.delivered_attempt), at: String(row.delivered_at) }
+      : null,
+  };
+}
+
+function firstLine(text: string): string {
+  return text.split("\n").find((l) => l.trim())?.trim() ?? "";
 }

@@ -159,7 +159,7 @@ export class GeminiCliAdapter implements AgentAdapter {
     policyFile: string,
     session: { resume?: string; sessionId?: string },
   ): Promise<TaskResult> {
-    const prompt = session.resume ? RESUME_PROMPT : ctx.instructions;
+    const prompt = session.resume ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions;
     const args = [
       ...this.options.commandArgs,
       "--prompt",

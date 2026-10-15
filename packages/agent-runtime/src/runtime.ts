@@ -53,6 +53,8 @@ export type TaskSpec = {
   summaryArtifact?: "plan";
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
   resumeToken?: string;
+  /** The new turn of a resumed session, carrying the user's instructions (ADR 0019). */
+  resumePrompt?: string;
   sandboxId?: string;
   /** Aborted when the task is cancelled or the daemon stops; ends setup and the agent at any stage. */
   signal?: AbortSignal;
@@ -115,6 +117,7 @@ export class AgentRuntime {
           tools: spec.tools,
           budget: spec.budget,
           resumeToken: spec.resumeToken,
+          ...(spec.resumePrompt ? { resumePrompt: spec.resumePrompt } : {}),
         },
         {
           emit: (event) => {

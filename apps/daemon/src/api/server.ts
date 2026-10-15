@@ -17,6 +17,8 @@ import {
   type WebCode,
   type WebExchangeResponse,
   type NavarchEvent,
+  FleetWindow,
+  SendRunMessage,
 } from "@navarch/contracts";
 import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
@@ -46,7 +48,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     if (err instanceof OrchestratorError) {
-      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "github_error" ? 502 : 400;
+      const status =
+        err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : err.code === "github_error" ? 502 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
@@ -112,6 +115,26 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/runs/:id/resume", async (req) => {
     const id = (req.params as { id: string }).id;
     return daemon.orchestrator.resumeRun(id, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  app.get("/api/v1/runs/:id/messages", async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    if (!daemon.store.getRun(id)) return notFound(reply, "run");
+    return daemon.store.listMessages(id);
+  });
+
+  app.post("/api/v1/runs/:id/messages", async (req, reply) => {
+    const parsed = SendRunMessage.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const id = (req.params as { id: string }).id;
+    const message = daemon.sendRunMessage(id, parsed.data, { kind: "user", via: viaOf(req.headers) });
+    return reply.code(201).send(message);
+  });
+
+  app.get("/api/v1/fleet", async (req, reply) => {
+    const parsed = FleetWindow.safeParse((req.query as { window?: string }).window ?? "active");
+    if (!parsed.success) return badRequest(reply, "window must be active or 24h");
+    return daemon.store.fleet(parsed.data, (adapter) => daemon.resumable(adapter));
   });
 
   app.get("/api/v1/approvals", async (req, reply) => {
@@ -183,7 +206,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!daemon.store.getRun(id)) return notFound(reply, "run");
     const dir = join(daemon.home, "logs", id);
     if (!existsSync(dir)) return reply.type("text/plain").send("");
-    const files = (await readdir(dir)).filter((f) => f.endsWith(".log")).sort();
+    const taskId = (req.query as { task?: string }).task;
+    if (taskId !== undefined && daemon.store.getTask(taskId)?.run_id !== id) return notFound(reply, "task");
+    const files = (await readdir(dir)).filter((f) => (taskId === undefined ? f.endsWith(".log") : f === `${taskId}.log`)).sort();
     const parts = await Promise.all(files.map((f) => readFile(join(dir, f), "utf8")));
     return reply.type("text/plain").send(parts.join(""));
   });

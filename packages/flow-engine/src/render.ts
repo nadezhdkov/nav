@@ -39,5 +39,10 @@ export function inputsSection(inputs: Record<string, string>): string {
 }
 
 function neutralise(text: string): string {
-  return text.replace(/<(\/?)input/gi, "<$1input​");
+  return neutraliseOperator(text.replace(/<(\/?)input/gi, "<$1input​"));
+}
+
+/** Breaks `<operator_instruction>` tags in text that did not come from the user (ADR 0019, T1). */
+export function neutraliseOperator(text: string): string {
+  return text.replace(/<(\/?)operator_instruction/gi, "<$1operator_instruction​");
 }

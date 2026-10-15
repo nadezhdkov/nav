@@ -94,7 +94,7 @@ export class AntigravityAdapter implements AgentAdapter {
       io.emit({ kind: "progress", message: "previous conversation not found, starting a new one" });
       conversation = undefined;
     }
-    let prompt = conversation ? RESUME_PROMPT : ctx.instructions;
+    let prompt = conversation ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions;
     // agy reports usage cumulatively per conversation; record each turn's share.
     let seen: UsageRecord | undefined;
     const usage: UsageRecord[] = [];

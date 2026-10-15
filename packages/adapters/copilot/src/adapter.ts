@@ -112,7 +112,7 @@ export class CopilotAdapter implements AgentAdapter {
     return [
       ...this.options.commandArgs,
       "-p",
-      session.resume ? RESUME_PROMPT : ctx.instructions,
+      session.resume ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions,
       ...(session.resume ? ["--resume", session.resume] : ["--session-id", session.sessionId!]),
       "--output-format",
       "json",

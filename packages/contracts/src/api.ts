@@ -158,6 +158,62 @@ export type WebExchangeRequest = z.infer<typeof WebExchangeRequest>;
 export const WebExchangeResponse = z.object({ token: z.string() });
 export type WebExchangeResponse = z.infer<typeof WebExchangeResponse>;
 
+/** An instruction from the user to a run (ADR 0019, spec §9.1 `/runs/:id/messages`). */
+export const MessageDelivery = z.enum(["next", "now"]);
+export type MessageDelivery = z.infer<typeof MessageDelivery>;
+
+export const SendRunMessage = z.object({
+  text: z.string().trim().min(1).max(4_000),
+  /** Only this task receives it; required for `now`. */
+  task_id: z.string().optional(),
+  /** `next`: in the next agent attempt's prompt. `now`: interrupt the running task and resume it with the message. */
+  delivery: MessageDelivery.default("next"),
+});
+export type SendRunMessage = z.infer<typeof SendRunMessage>;
+
+export const RunMessage = z.object({
+  id: z.string(),
+  run_id: z.string(),
+  text: z.string(),
+  task_id: z.string().nullable(),
+  delivery: MessageDelivery,
+  created_at: z.string(),
+  /** The attempt whose prompt carried it; null while it waits. */
+  delivered: z.object({ task_id: z.string(), attempt: z.number().int(), at: z.string() }).nullable(),
+});
+export type RunMessage = z.infer<typeof RunMessage>;
+
+/** Fleet view (ADR 0019): every agent task of recent runs, grouped by run. */
+export const FleetAgent = TaskView.extend({
+  /** The agent's latest progress line, else its summary or error. */
+  last_activity: z.object({ text: z.string(), tool: z.string().optional(), ts: z.string() }).nullable(),
+  /** Why the task is not running when it could be. */
+  waiting: z.object({ kind: z.enum(["approval", "quota"]), until: z.string().optional() }).nullable(),
+  /** Whether its adapter can resume a session, so `now` instructions are possible. */
+  resumable: z.boolean(),
+  /** Instructions waiting for this agent (targeted at it, or at the whole run). */
+  pending_messages: z.number().int().nonnegative(),
+});
+export type FleetAgent = z.infer<typeof FleetAgent>;
+
+export const FleetRun = RunView.extend({ agents: z.array(FleetAgent) });
+export type FleetRun = z.infer<typeof FleetRun>;
+
+export const FleetWindow = z.enum(["active", "24h"]);
+export type FleetWindow = z.infer<typeof FleetWindow>;
+
+export const FleetView = z.object({
+  generated_at: z.string(),
+  counts: z.object({
+    running: z.number().int(),
+    waiting: z.number().int(),
+    failed: z.number().int(),
+    done: z.number().int(),
+  }),
+  runs: z.array(FleetRun),
+});
+export type FleetView = z.infer<typeof FleetView>;
+
 export const ApiError = z.object({ error: z.string(), message: z.string() });
 export type ApiError = z.infer<typeof ApiError>;
 

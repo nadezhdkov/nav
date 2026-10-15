@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   error TEXT,
   not_before TEXT,
   rate_limit_waits INTEGER NOT NULL DEFAULT 0,
+  instruction_interrupts INTEGER NOT NULL DEFAULT 0,
+  last_activity TEXT,
   iteration INTEGER NOT NULL DEFAULT 1,
   stage TEXT,
   uses TEXT,
@@ -96,6 +98,18 @@ CREATE TABLE IF NOT EXISTS skipped_nodes (
   reason TEXT NOT NULL,
   PRIMARY KEY (run_id, node_id)
 );
+CREATE TABLE IF NOT EXISTS run_messages (
+  id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  task_id TEXT,
+  text TEXT NOT NULL,
+  delivery TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  delivered_task_id TEXT,
+  delivered_attempt INTEGER,
+  delivered_at TEXT
+);
+CREATE INDEX IF NOT EXISTS run_messages_run ON run_messages(run_id, created_at);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -114,4 +128,5 @@ DROP TABLE IF EXISTS tasks;
 DROP TABLE IF EXISTS artifacts;
 DROP TABLE IF EXISTS approvals;
 DROP TABLE IF EXISTS skipped_nodes;
+DROP TABLE IF EXISTS run_messages;
 `;

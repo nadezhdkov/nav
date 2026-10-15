@@ -27,6 +27,12 @@ export const ErrorKind = z.enum([
 ]);
 export type ErrorKind = z.infer<typeof ErrorKind>;
 
+/**
+ * Reason of `running → interrupted → ready` when the user interrupts an agent to give it an
+ * instruction (ADR 0019). Such an attempt does not count toward `max_attempts`.
+ */
+export const INSTRUCTION_INTERRUPT = "instruction";
+
 export const TaskError = z.object({
   kind: ErrorKind,
   message: z.string(),
@@ -168,7 +174,15 @@ export const EventPayloads = {
     /** On a fallback after a rate limit: the catalog id the task left. */
     fallback_from: z.string().optional(),
   }),
-  "run.message": z.object({ text: z.string() }),
+  /** An instruction from the user to a run's agents (ADR 0019); `task_id` targets one task. */
+  "run.message": z.object({
+    message_id: z.string(),
+    text: z.string(),
+    task_id: z.string().optional(),
+    delivery: z.enum(["next", "now"]),
+  }),
+  /** An instruction reached an agent: it was in the prompt of this task's attempt. */
+  "run.message.delivered": z.object({ message_id: z.string(), task_id: z.string(), attempt: z.number().int().positive() }),
   /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
   "quota.observed": QuotaObservation,
   /** The GitHub Integration read a work item (spec §7.1); recorded before the run that uses it. */
