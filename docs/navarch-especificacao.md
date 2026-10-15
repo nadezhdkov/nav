@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.15 (retomada de Run `failed` em §8.4, ADR 0025). 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.16 (listagem e clone de repositórios do GitHub em §6.7.4, ADR 0026). 0.15 (retomada de Run `failed` em §8.4, ADR 0025). 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -521,6 +521,7 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 | **Issues** | Triagem (tipo, área, complexidade 1–5), detecção de duplicatas, agrupamento de relacionadas, plano sugerido, comentário opcional. |
 | **Pull requests** | Resumo do diff, revisão assistida, detecção de conflitos, sugestão de correção, acompanhamento de checks. |
 | **CI** | Ingestão de logs de falha, diagnóstico, PR de correção ou commit em branch `navarch/*`. |
+| **Repositórios** | Lista os repositórios que o token alcança (próprios, de colaborador e das organizações) para a Nova run; um repositório escolhido sem clone local é clonado em `~/.navarch/repos/<dono>/<nome>` e registrado como projeto, só pelo usuário (ADR 0026). |
 | **Branches** | Criação apenas com prefixo `navarch/`. Nunca escreve em branches de outros. |
 | **Comandos por comentário** | `/navarch plan`, `/navarch implement`, `/navarch review` — **somente** de usuários autorizados na configuração. |
 

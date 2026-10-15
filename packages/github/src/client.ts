@@ -1,4 +1,4 @@
-import type { WorkItem } from "@navarch/contracts";
+import type { GitHubRepoView, WorkItem } from "@navarch/contracts";
 
 /** Returns the GitHub token when a request needs it (ADR 0007: the Vault, or a GitHub App later). */
 export type TokenProvider = () => Promise<string>;
@@ -97,6 +97,33 @@ export class GitHubClient {
     return { notModified: false, ...(etag ? { etag } : {}), issues };
   }
 
+  /**
+   * Every repository the token reaches (ADR 0026): the user's own, those they collaborate on and
+   * those of their organizations, most recently pushed first. A fine-grained token lists only the
+   * repositories it was granted.
+   */
+  async listRepos(options: { maxPages?: number } = {}): Promise<GitHubRepo[]> {
+    const query = new URLSearchParams({ affiliation: "owner,collaborator,organization_member", sort: "pushed", per_page: "100" });
+    const repos: GitHubRepo[] = [];
+    for (let page = 1; page <= (options.maxPages ?? 10); page++) {
+      query.set("page", String(page));
+      const rows = await this.request<RawRepo[]>("GET", `/user/repos?${query}`, undefined, "repositories");
+      for (const r of rows) {
+        repos.push({
+          repo: r.full_name,
+          owner: r.owner?.login ?? r.full_name.split("/")[0]!,
+          private: r.private,
+          description: r.description ?? null,
+          default_branch: r.default_branch,
+          pushed_at: r.pushed_at ?? null,
+          can_push: r.permissions?.push ?? false,
+        });
+      }
+      if (rows.length < 100) break;
+    }
+    return repos;
+  }
+
   async defaultBranch(repo: string): Promise<string> {
     return (await this.request<{ default_branch: string }>("GET", `/repos/${repo}`, undefined, repo)).default_branch;
   }
@@ -146,6 +173,19 @@ export class GitHubClient {
     });
   }
 }
+
+/** A repository as GitHub lists it, before Navarch adds what it knows locally. */
+export type GitHubRepo = Omit<GitHubRepoView, "project_id" | "path">;
+
+type RawRepo = {
+  full_name: string;
+  owner?: { login: string };
+  private: boolean;
+  description: string | null;
+  default_branch: string;
+  pushed_at: string | null;
+  permissions?: { push?: boolean };
+};
 
 /** An issue from a listing, with what a sync needs to tell new, changed and closed apart. */
 export type IssueListing = WorkItem & { state: "open" | "closed"; updated_at: string };

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { join } from "node:path";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { REPO_PATTERN, redact } from "@navarch/contracts";
 
 /** Branches Navarch may write (spec §6.7.4): `navarch/` plus safe path segments, nothing else. */
@@ -34,28 +35,60 @@ export type PushSpec = {
  */
 export async function pushBranch(spec: PushSpec): Promise<string> {
   if (!isNavarchBranch(spec.branch)) throw new Error(`refusing to push ${JSON.stringify(spec.branch)}: only navarch/* branches`);
-  const base = spec.gitUrl ?? "https://github.com";
-  if (!new RegExp(`^${REPO_PATTERN}$`).test(spec.repo)) throw new Error(`invalid repository name ${JSON.stringify(spec.repo)}`);
-  const web = /^https?:\/\//.test(base) ? base.replace(/\/$/, "") : undefined;
-  const url = web ? `${web}/${spec.repo}.git` : join(base, `${spec.repo}.git`);
+  const remote = remoteFor(spec.repo, spec.gitUrl);
   const ref = `refs/heads/${spec.branch}`;
   const commit = (await git(spec.repoPath, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
-  const basic = Buffer.from(`x-access-token:${spec.token}`).toString("base64");
   try {
     // --no-verify: repository hooks would run as the operator and see the token in the environment.
-    await git(spec.repoPath, ["push", "--no-verify", "--porcelain", url, `${ref}:${ref}`], {
+    await git(spec.repoPath, ["push", "--no-verify", "--porcelain", remote.url, `${ref}:${ref}`], remote.auth(spec.token));
+  } catch (err) {
+    throw remote.failure(`push failed for ${spec.branch}`, err, spec.token);
+  }
+  return commit;
+}
+
+/**
+ * Clones a GitHub repository into `dest` for a managed project (ADR 0026), with the token for this
+ * one command as for a push. The clone's `origin` is the plain GitHub URL, with no credentials, so
+ * later reads of it (`repoOf`) work and nothing secret stays in its config. Hooks never run: a fresh
+ * clone has none, and checkout hooks come only from the operator's templates, which are disabled.
+ */
+export async function cloneRepo(spec: { repo: string; dest: string; token: string; gitUrl?: string }): Promise<void> {
+  const remote = remoteFor(spec.repo, spec.gitUrl);
+  if (existsSync(spec.dest)) throw new Error(`${spec.dest} already exists`);
+  mkdirSync(dirname(spec.dest), { recursive: true });
+  try {
+    await git(dirname(spec.dest), ["clone", "-q", "--template=", remote.url, spec.dest], remote.auth(spec.token));
+  } catch (err) {
+    rmSync(spec.dest, { recursive: true, force: true });
+    throw remote.failure(`clone of ${spec.repo} failed`, err, spec.token);
+  }
+  await git(spec.dest, ["remote", "set-url", "origin", `https://github.com/${spec.repo}.git`]);
+}
+
+/**
+ * The URL a repository is reached at (from the repository name, never from `origin`, so the
+ * operator's SSH keys and credential helpers are never used) and the `GIT_CONFIG_*` environment that
+ * hands git the token for one command (ADR 0007), scoped to the GitHub URL.
+ */
+function remoteFor(repo: string, gitUrl = "https://github.com") {
+  if (!new RegExp(`^${REPO_PATTERN}$`).test(repo)) throw new Error(`invalid repository name ${JSON.stringify(repo)}`);
+  const web = /^https?:\/\//.test(gitUrl) ? gitUrl.replace(/\/$/, "") : undefined;
+  const basic = (token: string) => Buffer.from(`x-access-token:${token}`).toString("base64");
+  return {
+    url: web ? `${web}/${repo}.git` : join(gitUrl, `${repo}.git`),
+    auth: (token: string): Record<string, string> => ({
       GIT_TERMINAL_PROMPT: "0",
       GIT_CONFIG_COUNT: "2",
       // Scoped to the GitHub URL, so the header is not sent to any other host.
       GIT_CONFIG_KEY_0: web ? `http.${web}/.extraheader` : "http.extraheader",
-      GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
+      GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic(token)}`,
       GIT_CONFIG_KEY_1: "credential.helper",
       GIT_CONFIG_VALUE_1: "",
-    });
-  } catch (err) {
-    throw new Error(redact(`push failed for ${spec.branch}: ${err instanceof Error ? err.message : String(err)}`).replaceAll(basic, "[REDACTED]"));
-  }
-  return commit;
+    }),
+    failure: (what: string, err: unknown, token: string) =>
+      new Error(redact(`${what}: ${err instanceof Error ? err.message : String(err)}`).replaceAll(basic(token), "[REDACTED]")),
+  };
 }
 
 function git(cwd: string, args: string[], env: Record<string, string> = {}): Promise<string> {

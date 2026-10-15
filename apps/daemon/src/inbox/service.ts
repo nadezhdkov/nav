@@ -1,11 +1,14 @@
-import { resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { NativeAdapter, ModelError, chat } from "@navarch/adapter-native";
 import type { AgentRuntime } from "@navarch/agent-runtime";
 import {
   newId,
   workItemId,
   type Actor,
+  type CloneRepoRequest,
   type CreateProjectRequest,
+  type GitHubRepoView,
   type InboxItemDetail,
   type InboxItemView,
   type InboxView,
@@ -17,11 +20,11 @@ import {
   type TriageState,
   type WorkItemStatus,
 } from "@navarch/contracts";
-import { GitHubError } from "@navarch/github";
+import { GitHubError, type GitHubRepo } from "@navarch/github";
 import { resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore, ProjectRecord, WorkItemRecord } from "../events/store.ts";
-import type { GitHubIntegration } from "../github/integration.ts";
+import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 import { nativeModels } from "../routing/native-models.ts";
@@ -29,7 +32,7 @@ import { estimatesByComplexity, itemStatus } from "./estimate.ts";
 import { parseTriage, triageMessages } from "./triage.ts";
 
 export class InboxError extends Error {
-  readonly code: "not_found" | "invalid_repo" | "repo_mismatch" | "conflict" | "forbidden";
+  readonly code: "not_found" | "invalid_repo" | "repo_mismatch" | "conflict" | "forbidden" | "github_error";
 
   constructor(code: InboxError["code"], message: string) {
     super(message);
@@ -38,6 +41,8 @@ export class InboxError extends Error {
 }
 
 export type InboxDeps = {
+  /** The Navarch home; managed clones live in its `repos/` (ADR 0026). */
+  home: string;
   config: Config;
   store: EventStore;
   policy: PolicyEngine;
@@ -118,6 +123,46 @@ export class InboxService {
     const name = req.name ?? origin.split("/")[1]!;
     this.deps.store.append([{ type: "project.added", run_id: null, task_id: null, actor, payload: { project_id: id, name, repo: origin, path } }]);
     return this.projectView(this.deps.store.getProject(id)!, []);
+  }
+
+  // --- GitHub repositories (ADR 0026) ---
+
+  /** The repositories the token reaches, each with its project when one is registered. */
+  async listGitHubRepos(refresh = false): Promise<GitHubRepoView[]> {
+    let repos: GitHubRepo[];
+    try {
+      repos = await this.deps.github.listRepos(refresh);
+    } catch (err) {
+      throw new InboxError("github_error", `listing GitHub repositories failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    const projects = new Map(this.deps.store.listProjects().map((p) => [p.repo.toLowerCase(), p]));
+    return repos.map((r) => {
+      const project = projects.get(r.repo.toLowerCase());
+      return { ...r, project_id: project?.id ?? null, path: project?.path ?? null };
+    });
+  }
+
+  /**
+   * The project for a GitHub repository the token lists: the registered one, or a new clone in
+   * `<home>/repos/<owner>/<name>` registered as a project. `created` says which.
+   */
+  async cloneProject(req: CloneRepoRequest, actor: Actor): Promise<{ project: ProjectView; created: boolean }> {
+    const existing = this.deps.store.listProjects().find((p) => p.repo.toLowerCase() === req.repo.toLowerCase());
+    if (existing) return { project: this.projectView(existing, this.deps.store.workItems()), created: false };
+    const listed = (await this.listGitHubRepos()).find((r) => r.repo.toLowerCase() === req.repo.toLowerCase());
+    if (!listed) throw new InboxError("not_found", `${req.repo} is not among the repositories the GitHub token reaches`);
+    const [owner, name] = listed.repo.split("/") as [string, string];
+    const dest = join(this.deps.home, "repos", owner, name);
+    // A clone left by an earlier attempt is reused when its origin is this repository; addProject checks that.
+    if (!existsSync(dest)) {
+      try {
+        await this.deps.github.clone(listed.repo, dest, actor);
+      } catch (err) {
+        if (err instanceof GitHubIntegrationError && err.code === "policy_denied") throw new InboxError("forbidden", err.message);
+        throw new InboxError("github_error", err instanceof Error ? err.message : String(err));
+      }
+    }
+    return { project: await this.addProject({ path: dest, github: listed.repo }, actor), created: true };
   }
 
   removeProject(id: string, actor: Actor): void {

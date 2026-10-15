@@ -1,4 +1,5 @@
 import type {
+  GitHubRepoView,
   ApprovalStatus,
   ApprovalView,
   DevicePairing,
@@ -153,6 +154,8 @@ export const api = {
     request<void>("PUT", "/api/v1/push/subscription", { endpoint: sub.endpoint, keys: sub.keys, locale }),
   unsubscribePush: () => request<void>("DELETE", "/api/v1/push/subscription"),
   projects: () => request<ProjectView[]>("GET", "/api/v1/projects"),
+  githubRepos: () => request<GitHubRepoView[]>("GET", "/api/v1/github/repos"),
+  cloneRepo: (repo: string) => request<ProjectView>("POST", "/api/v1/github/repos/clone", { repo }),
   inbox: (status?: WorkItemStatus[]) => request<InboxView>("GET", `/api/v1/inbox${status?.length ? `?status=${status.join(",")}` : ""}`),
   inboxItem: (id: string) => request<InboxItemDetail>("GET", `/api/v1/inbox/${encodeURIComponent(id)}`),
   syncInbox: (projectId?: string) => request<SyncInboxResult>("POST", "/api/v1/inbox/sync", projectId ? { project_id: projectId } : {}),

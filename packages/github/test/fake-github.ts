@@ -15,9 +15,14 @@ export type FakeIssue = {
   updated_at?: string;
 };
 
+/** A repository as `GET /user/repos` lists it. */
+export type FakeUserRepo = { full_name: string; private: boolean; description?: string | null; default_branch?: string; pushed_at?: string; push?: boolean };
+
 export type FakeGitHub = {
   apiUrl: string;
   token: string;
+  /** What `GET /user/repos` lists, in this order. */
+  userRepos: FakeUserRepo[];
   repos: Map<string, { default_branch: string; issues: Map<number, FakeIssue> }>;
   pulls: { repo: string; number: number; head: string; base: string; title: string; body: string; draft: boolean }[];
   requests: { method: string; path: string; authorization: string | undefined; query?: string; status?: number }[];
@@ -27,7 +32,7 @@ export type FakeGitHub = {
 };
 
 export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<FakeGitHub> {
-  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, repos: new Map(), pulls: [], requests: [] };
+  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], requests: [] };
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -43,6 +48,22 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
       if (req.headers.authorization !== `Bearer ${fake.token}`) return send(401, { message: "Bad credentials" });
       if (fake.rateLimitedUntil) {
         return send(403, { message: "API rate limit exceeded" }, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(fake.rateLimitedUntil) });
+      }
+
+      if (req.method === "GET" && path === "/user/repos") {
+        const per = Number(query.get("per_page") ?? 30);
+        const page = Number(query.get("page") ?? 1);
+        const rows = fake.userRepos.slice((page - 1) * per, page * per).map((r) => ({
+          full_name: r.full_name,
+          name: r.full_name.split("/")[1],
+          owner: { login: r.full_name.split("/")[0] },
+          private: r.private,
+          description: r.description ?? null,
+          default_branch: r.default_branch ?? "main",
+          pushed_at: r.pushed_at ?? "2026-01-01T00:00:00Z",
+          permissions: { admin: false, push: r.push ?? true, pull: true },
+        }));
+        return send(200, rows);
       }
 
       const repoMatch = /^\/repos\/([^/]+\/[^/]+)(\/.*)?$/.exec(path);

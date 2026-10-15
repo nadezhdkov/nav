@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeRepo } from "../../runner/test/helpers.ts";
-import { GitHubClient, GitHubError, pushBranch, repoFromRemote } from "../src/index.ts";
+import { cloneRepo, GitHubClient, GitHubError, pushBranch, repoFromRemote } from "../src/index.ts";
 import { fakeGitHub, type FakeGitHub } from "./fake-github.ts";
 
 const servers: FakeGitHub[] = [];
@@ -191,5 +191,49 @@ describe("GitHubClient.listIssues", () => {
     const err = await client.listIssues("acme/widgets").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(GitHubError);
     expect((err as GitHubError).resetAt).toBe(new Date(1_900_000_000_000).toISOString());
+  });
+});
+
+describe("GitHubClient.listRepos (ADR 0026)", () => {
+  it("lists every repository the token reaches, own, collaborator and organization, across pages", async () => {
+    const { gh, client } = await setup();
+    gh.userRepos = [
+      { full_name: "nadezhdkov/secret", private: true, description: "mine", push: true },
+      { full_name: "acme/widgets", private: false, push: false },
+      ...Array.from({ length: 120 }, (_, i) => ({ full_name: `org/repo-${i}`, private: true })),
+    ];
+    const repos = await client.listRepos();
+    expect(repos).toHaveLength(122);
+    expect(repos[0]).toEqual({
+      repo: "nadezhdkov/secret",
+      owner: "nadezhdkov",
+      private: true,
+      description: "mine",
+      default_branch: "main",
+      pushed_at: "2026-01-01T00:00:00Z",
+      can_push: true,
+    });
+    expect(repos[1]).toMatchObject({ repo: "acme/widgets", private: false, can_push: false });
+    const calls = gh.requests.filter((r) => r.path === "/user/repos");
+    expect(calls).toHaveLength(2);
+    expect(calls[0]!.query).toContain("affiliation=owner%2Ccollaborator%2Corganization_member");
+  });
+});
+
+describe("cloneRepo (ADR 0026)", () => {
+  it("clones over the GitHub URL with the token for that one command, and leaves a plain GitHub origin", async () => {
+    const repo = makeRepo();
+    const { gitUrl } = bareRemote(repo);
+    const dest = join(mkdtempSync(join(tmpdir(), "navarch-clones-")), "acme", "widgets");
+    await cloneRepo({ repo: "acme/widgets", dest, token: "github_pat_secret", gitUrl });
+    expect(git(dest, "rev-parse", "HEAD")).toBe(git(repo, "rev-parse", "HEAD"));
+    expect(git(dest, "remote", "get-url", "origin")).toBe("https://github.com/acme/widgets.git");
+    expect(readFileSync(join(dest, ".git", "config"), "utf8")).not.toContain("github_pat_secret");
+  });
+
+  it("refuses a bad repository name and a destination that already exists", async () => {
+    const dest = mkdtempSync(join(tmpdir(), "navarch-clones-"));
+    await expect(cloneRepo({ repo: "../etc", dest: join(dest, "x"), token: "t" })).rejects.toThrow(/invalid repository name/);
+    await expect(cloneRepo({ repo: "acme/widgets", dest, token: "t" })).rejects.toThrow(/already exists/);
   });
 });
