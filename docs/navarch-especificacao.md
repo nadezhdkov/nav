@@ -173,6 +173,7 @@ Esta seção registra o que foi ajustado em relação ao esboço inicial e por q
 | **TaskGraph** | Grafo dirigido de **Tasks** instanciado a partir de um Flow. Pode crescer dinamicamente (o Planner adiciona nós). |
 | **Task** | Nó executável do TaskGraph (ex.: "implementar", "rodar testes"). |
 | **Agent Profile** | Configuração reutilizável de um agente: papel, instruções, ferramentas permitidas, requisitos de modelo. |
+| **Lead / Team** | Num nó `team`, o agente **líder** trabalha em turnos: lê o objetivo, escreve um plano de equipe e delega partes a **membros** (agentes de qualquer adaptador, roteados), lê os resultados e decide o próximo turno. O usuário conversa com o líder (ADR 0022). |
 | **Agent Adapter** | Plugin que sabe executar um tipo de agente (Claude Code, Codex, agente nativo do Navarch, etc.). |
 | **Model Catalog** | Registro de modelos disponíveis com capacidades, custos, limites e métricas observadas. |
 | **Routing Policy** | Regras que mapeiam requisitos de uma Task para um modelo do catálogo. |
@@ -1410,6 +1411,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 - Policy Engine com níveis 0–3, allowlist, orçamentos.
 - Web UI: Inbox, lista e detalhe de Run (grafo somente leitura), aprovações.
 - PWA mobile com Tailscale: lista de Runs, aprovações, push, pausar/cancelar, instrução.
+- Modo Equipe: nó `team` com agente líder que delega a membros em turnos, um membro por vez na worktree da Run; Fleet em árvore líder → membros (ADR 0022, adiantado da Fase 2 por decisão do usuário em 2026-10-15). Paralelismo e worktree por membro continuam na Fase 2.
 
 **Go/no-go**
 - ≥ 50% dos PRs gerados em issues de complexidade ≤ 2 aceitos com no máximo ajustes pequenos.
