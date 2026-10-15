@@ -15,6 +15,7 @@ import { Daemon } from "../src/daemon.ts";
 import { Vault } from "../src/vault/vault.ts";
 
 const fakeCopilotPath = fileURLToPath(new URL("../../../packages/adapters/copilot/test/fixtures/fake-copilot.mjs", import.meta.url));
+const fakeGrokPath = fileURLToPath(new URL("../../../packages/adapters/grok/test/fixtures/fake-grok.mjs", import.meta.url));
 
 const daemons: Daemon[] = [];
 const servers: FakeGitHub[] = [];
@@ -50,7 +51,7 @@ const VERIFY_OK = `verify:
  * Starts a daemon with the fake Claude. With `copilot` (a fake Copilot scenario) the Model Router
  * is on and may pick either; without it routing is off and every agent is Claude.
  */
-async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string }) {
+async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string; grok?: string }) {
   const gh = opts.gh ?? (await fakeGitHub());
   if (!opts.gh) {
     servers.push(gh);
@@ -63,9 +64,13 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
   }
   const fake = fakeClaude(opts.scenario ?? "edit");
   const copilot = opts.copilot ? fakeCli(fakeCopilotPath, opts.copilot) : undefined;
+  // A fake Grok signed in to a fake operator home; without it, Grok is not signed in and the router skips it.
+  const grok = opts.grok ? fakeCli(fakeGrokPath, opts.grok) : undefined;
+  const grokHome = mkdtempSync(join(tmpdir(), "navarch-grok-login-"));
+  if (grok) writeFileSync(join(grokHome, "auth.json"), "{}");
   const config = Config.parse({
     daemon: { port: 0 },
-    routing: { enabled: Boolean(copilot) },
+    routing: { enabled: Boolean(copilot || grok) },
     autonomy_level: opts.autonomy ?? 2,
     github: { api_url: gh.apiUrl, git_url: opts.gitUrl },
   });
@@ -73,7 +78,11 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
   const daemon = new Daemon({
     home,
     config,
-    adapters: { "claude-code": fake.options, ...(copilot ? { copilot: copilot.options } : {}) },
+    adapters: {
+      "claude-code": fake.options,
+      ...(copilot ? { copilot: copilot.options } : {}),
+      ...(grok ? { grok: { ...grok.options, userGrokHome: grokHome } } : {}),
+    },
     vault: new Vault({ env: { NAVARCH_SECRET_GITHUB_TOKEN: gh.token } }),
   });
   await daemon.start();
@@ -109,7 +118,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     }
     return (await api<ApprovalView>("POST", `/api/v1/approvals/${list[0]!.id}`, { decision, ...(reason ? { reason } : {}) })).body;
   };
-  return { daemon, api, fake, copilot, gh, waitRun, pending, decide };
+  return { daemon, api, fake, copilot, grok, gh, waitRun, pending, decide };
 }
 
 const ISSUE_FLOW = ["triage", "plan", "approve_plan", "implement", "verify", "review", "open_pr"];
@@ -350,6 +359,29 @@ describe("Model Router (ADR 0013)", () => {
     ]);
     expect(decisions[1]!.reason).toContain("triage complexity 1 ≤ 2");
     expect(decisions[3]!.reason).toContain("provider other than the implementer's (github-copilot)");
+    // Grok leads the fast tier but is not signed in here.
+    expect(decisions[0]!.skipped).toEqual([{ id: "grok", reason: expect.stringContaining("grok login") }]);
+  });
+
+  it("sends the fast tier to Grok when it is signed in (ADR 0024)", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, fake, copilot, grok, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "flow", copilot: "flow", grok: "flow" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+
+    expect(run.status).toBe("done");
+    const agents = run.tasks.filter((t) => t.type === "agent").map((t) => [t.node_id, t.adapter]);
+    expect(agents).toEqual([
+      ["triage", "grok"],
+      ["plan", "grok"],
+      ["implement", "grok"],
+      ["review", "claude-code"],
+    ]);
+    expect(grok!.calls()).toHaveLength(3);
+    expect(copilot!.calls()).toHaveLength(0);
+    expect(fake.calls()).toHaveLength(1);
+    const decisions = routed((await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body);
+    expect(decisions[3]!.reason).toContain("provider other than the implementer's (xai)");
   });
 
   it("falls back to the next candidate on a rate limit without waiting or spending an attempt", async () => {

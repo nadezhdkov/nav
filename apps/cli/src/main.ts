@@ -75,7 +75,7 @@ Usage:
   navarch usage [--days <n>] [--profile <name>]
                                          spend today and this month, tokens, success and cost per model
 
-Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, native.
+Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, grok, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
   either option pins the whole run. native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
 

@@ -57,6 +57,7 @@ doctor: ## Check the toolchain Navarch needs
 	@codex --version || echo "codex CLI not found: the codex adapter will not work"
 	@copilot --version || echo "copilot CLI not found: the copilot adapter will not work"
 	@opencode --version || echo "opencode CLI not found on PATH: set adapters.opencode.command or the opencode adapter will not work"
+	@grok --version || echo "grok CLI not found: the grok adapter will not work"
 	@ollama --version || echo "ollama not found: native runs need another provider"
 
 clean: ## Remove installed dependencies and caches

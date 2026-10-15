@@ -208,6 +208,9 @@ importers:
       '@navarch/adapter-gemini-cli':
         specifier: workspace:*
         version: link:../../packages/adapters/gemini-cli
+      '@navarch/adapter-grok':
+        specifier: workspace:*
+        version: link:../../packages/adapters/grok
       '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapters/kit
@@ -337,6 +340,15 @@ importers:
         version: link:../../contracts
 
   packages/adapters/gemini-cli:
+    dependencies:
+      '@navarch/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/grok:
     dependencies:
       '@navarch/adapter-kit':
         specifier: workspace:*
