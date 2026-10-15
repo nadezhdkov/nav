@@ -98,6 +98,7 @@ export class Daemon {
       runtime,
       adapters,
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
+      sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
     });
   }
 

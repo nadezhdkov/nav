@@ -1,7 +1,7 @@
 import { NativeAdapter, ModelError } from "@navarch/adapter-native";
 import type { AgentRuntime } from "@navarch/agent-runtime";
 import { Conversation, NativeChatEngine, type ConciergeEngine, type ConciergeEvent, type EngineMessage, type EngineReply, type EngineToolSpec } from "@navarch/concierge";
-import { newId, type Actor, type AgentAdapter, type ProposalView } from "@navarch/contracts";
+import { newId, type Actor, type AgentAdapter, type ProposalView, type RunMessage, type SendRunMessage } from "@navarch/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
@@ -29,6 +29,7 @@ export type ConciergeDeps = {
   runtime: AgentRuntime;
   adapters: Map<string, AgentAdapter>;
   requestCancel: (taskId: string) => void;
+  sendMessage: (runId: string, req: SendRunMessage, actor: Actor) => RunMessage;
 };
 
 type Via = Extract<Actor, { kind: "user" }>["via"];
@@ -57,6 +58,7 @@ export class ConciergeService {
         store: this.deps.store,
         orchestrator: this.deps.orchestrator,
         requestCancel: this.deps.requestCancel,
+        sendMessage: this.deps.sendMessage,
         actor: () => ({ kind: "user", via: entry.via }),
         ...(cwd ? { cwd } : {}),
       }),

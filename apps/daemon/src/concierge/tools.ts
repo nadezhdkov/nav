@@ -1,5 +1,5 @@
 import type { ConciergeTool } from "@navarch/concierge";
-import { CreateRunRequest, type Actor, type NavarchEvent, type RunDetail, type RunView } from "@navarch/contracts";
+import { CreateRunRequest, SendRunMessage, type Actor, type NavarchEvent, type RunDetail, type RunMessage, type RunView } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 
@@ -13,6 +13,8 @@ export type ToolDeps = {
   store: EventStore;
   orchestrator: Orchestrator;
   requestCancel: (taskId: string) => void;
+  /** Sends an instruction to a run (ADR 0019), through the Policy Engine like the REST API. */
+  sendMessage: (runId: string, req: SendRunMessage, actor: Actor) => RunMessage;
   /** Who confirmed the action (the client that sent the decision). */
   actor: () => Actor;
   /** The operator's working directory: the default repository for `start_run`. */
@@ -174,6 +176,33 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
       summarize: (args) => `cancel run ${String(args.run_id)}`,
       run: async (args) => orchestrator.cancelRun(text(args, "run_id"), deps.actor(), deps.requestCancel),
       describe: (result) => `run ${(result as RunView).id} ${(result as RunView).status}`,
+    },
+    {
+      name: "send_instruction",
+      description:
+        "Propose sending an instruction to a run's agents. By default it reaches the next agent turn; with now=true and a running task_id, that agent is interrupted and resumes with it.",
+      parameters: obj(
+        {
+          run_id: str("Run id"),
+          text: str("The instruction, in the operator's words."),
+          task_id: str("Only this agent task receives it (required with now)."),
+          now: { type: "boolean", description: "Interrupt the running task now instead of waiting for its next turn." },
+        },
+        ["run_id", "text"],
+      ),
+      kind: "act",
+      summarize: (args) =>
+        `tell ${args.task_id ? `task ${String(args.task_id)}` : `run ${String(args.run_id)}`}${args.now === true ? " now (interrupting it)" : " in its next turn"}: ${clip(String(args.text ?? ""), 200)}`,
+      run: async (args) => {
+        const parsed = SendRunMessage.safeParse({
+          text: args.text,
+          delivery: args.now === true ? "now" : "next",
+          ...(optionalText(args, "task_id") ? { task_id: optionalText(args, "task_id") } : {}),
+        });
+        if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "request"}: ${i.message}`).join("; "));
+        return deps.sendMessage(text(args, "run_id"), parsed.data, deps.actor());
+      },
+      describe: (result) => `instruction ${(result as RunMessage).id} sent (${(result as RunMessage).delivery === "now" ? "now" : "next turn"})`,
     },
     {
       name: "resume_run",

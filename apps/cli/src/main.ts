@@ -3,7 +3,7 @@ import { mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isTerminalRun, type ApprovalView, type ConciergeTurn, type RunDetail, type RunView, type NavarchEvent } from "@navarch/contracts";
+import { isTerminalRun, type ApprovalView, type ConciergeTurn, type RunDetail, type RunMessage, type RunView, type NavarchEvent } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
@@ -28,6 +28,9 @@ Usage:
   navarch run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
   navarch logs <run-id> [-f|--follow] [--raw]
   navarch cancel <run-id>
+  navarch say <run-id> [--task <task-id>] [--now] <text...>
+                                         tell a run's agents something: in the next agent turn, or --now
+                                         interrupt that running task and resume it with your message
   navarch approvals [--all]                pending approvals (e.g. opening a PR below autonomy level 3)
   navarch approve <approval-id> [--reason <text>]
   navarch reject <approval-id> [--reason <text>]
@@ -67,6 +70,8 @@ async function main(argv: string[]): Promise<number> {
       reason: { type: "string" },
       all: { type: "boolean", default: false },
       print: { type: "boolean", default: false },
+      task: { type: "string" },
+      now: { type: "boolean", default: false },
     },
   });
   const [command, ...rest] = positionals;
@@ -147,6 +152,19 @@ async function main(argv: string[]): Promise<number> {
     case "cancel": {
       const run = await new ApiClient(home).request<RunView>("POST", `/api/v1/runs/${required(rest[0], "run id")}/cancel`);
       return print(json ? run : `run ${run.id} ${run.status}`, json);
+    }
+    case "say": {
+      const id = required(rest[0], "run id");
+      const text = rest.slice(1).join(" ").trim();
+      if (!text) throw new CliError("missing the instruction text", EXIT.usage);
+      if (values.now && !values.task) throw new CliError("--now needs --task <task-id>: the running task to interrupt", EXIT.usage);
+      const message = await new ApiClient(home).request<RunMessage>("POST", `/api/v1/runs/${id}/messages`, {
+        text,
+        delivery: values.now ? "now" : "next",
+        ...(values.task ? { task_id: values.task } : {}),
+      });
+      const when = values.now ? "now: the agent stops and resumes with it" : "in the next agent turn";
+      return print(json ? message : `${message.id} sent to ${values.task ?? `run ${id}`}, delivered ${when}`, json);
     }
     case "approvals": {
       const path = values.all ? "/api/v1/approvals" : "/api/v1/approvals?status=pending";

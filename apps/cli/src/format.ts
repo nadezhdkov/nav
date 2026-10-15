@@ -93,6 +93,12 @@ export function formatEvent(e: NavarchEvent): string {
     case "flow.node.skipped":
       detail = `${p.node_id} skipped: ${p.reason}`;
       break;
+    case "run.message":
+      detail = `${p.message_id} ${p.delivery === "now" ? "now" : "next turn"}${p.task_id ? ` → ${p.task_id}` : ""}: ${truncate(oneLine(String(p.text)), 160)}`;
+      break;
+    case "run.message.delivered":
+      detail = `${p.message_id} → ${p.task_id} attempt ${p.attempt}`;
+      break;
     case "quota.observed":
       detail = `${p.adapter} ${p.window}${p.utilization !== undefined ? ` ${Math.round(Number(p.utilization) * 100)}% used` : ""}${p.exhausted ? " (exhausted)" : ""}${p.resets_at ? `, resets ${p.resets_at}` : ""}`;
       break;
