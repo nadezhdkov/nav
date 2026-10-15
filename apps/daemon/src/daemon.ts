@@ -126,7 +126,7 @@ export class Daemon {
       listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
       usage: () => this.usage({ days: 30 }),
     });
-    this.inbox = new InboxService({ config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
+    this.inbox = new InboxService({ home: this.home, config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
   }
 
   get url(): string {

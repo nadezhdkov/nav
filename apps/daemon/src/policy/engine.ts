@@ -113,6 +113,12 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "project.add" || r.action === "project.remove", effect: "deny", reason: "only the user adds or removes projects" },
   {
+    match: (r) => r.action === "repo.clone" && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user picks a GitHub repository to work on, and Navarch clones it (ADR 0026)",
+  },
+  { match: (r) => r.action === "repo.clone", effect: "deny", reason: "only the user has repositories cloned" },
+  {
     match: (r) => r.action === "inbox.sync" && (r.actor.kind === "user" || r.actor.kind === "system"),
     effect: "allow",
     reason: "reading issues of registered projects (ADR 0021)",

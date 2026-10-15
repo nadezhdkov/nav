@@ -6,6 +6,7 @@ import { parseArgs } from "node:util";
 import {
   isTerminalRun,
   type ApprovalView,
+  type GitHubRepoView,
   type ConciergeTurn,
   type DeviceView,
   type RemoteStatus,
@@ -26,7 +27,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatGitHubRepos, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -62,7 +63,9 @@ Usage:
   navarch devices revoke <device-id>       sign a phone out
   navarch project add <clone> [--github <owner/name>] [--name <name>]
                                          watch a repository's issues in the Inbox (origin read from the clone)
+  navarch project clone <owner/name>       clone a GitHub repository the token reaches into the Navarch home and add it
   navarch project list | remove <project-id>
+  navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
   navarch sync [--project <project-id>]    read new and changed issues now (also polled every 15 min)
   navarch inbox [--all] [--project <project-id>]
                                          triaged issues: kind, complexity, area, duplicate, action, estimate
@@ -107,6 +110,7 @@ async function main(argv: string[]): Promise<number> {
       flow: { type: "string" },
       reason: { type: "string" },
       all: { type: "boolean", default: false },
+      refresh: { type: "boolean", default: false },
       print: { type: "boolean", default: false },
       task: { type: "string" },
       now: { type: "boolean", default: false },
@@ -236,14 +240,23 @@ async function main(argv: string[]): Promise<number> {
         });
         return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); sync now with: navarch sync`, json);
       }
+      if (rest[0] === "clone") {
+        const project = await api.request<ProjectView>("POST", "/api/v1/github/repos/clone", { repo: required(rest[1], "owner/name") });
+        return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); start a run with: navarch run --repo ${project.path} <prompt>`, json);
+      }
       if (rest[0] === "remove") {
         const id = required(rest[1], "project id");
         await api.request("DELETE", `/api/v1/projects/${encodeURIComponent(id)}`);
         return print(json ? { id, removed: true } : `project ${id} removed; its runs stay`, json);
       }
-      if (rest[0] !== "list" && rest[0] !== undefined) throw new CliError("usage: navarch project add|list|remove", EXIT.usage);
+      if (rest[0] !== "list" && rest[0] !== undefined) throw new CliError("usage: navarch project add|clone|list|remove", EXIT.usage);
       const projects = await api.request<ProjectView[]>("GET", "/api/v1/projects");
       return print(json ? projects : formatProjects(projects), json);
+    }
+    case "repos": {
+      const api = new ApiClient(home);
+      const repos = await api.request<GitHubRepoView[]>("GET", `/api/v1/github/repos${values.refresh ? "?refresh=1" : ""}`);
+      return print(json ? repos : formatGitHubRepos(repos), json);
     }
     case "budget": {
       const api = new ApiClient(home);

@@ -1,4 +1,4 @@
-import type { ApprovalView, BudgetView, DeviceView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { ApprovalView, BudgetView, DeviceView, GitHubRepoView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -183,6 +183,14 @@ export function formatProjects(projects: ProjectView[]): string {
       p.synced_at ? p.synced_at.slice(0, 16).replace("T", " ") : "never",
       p.path,
     ]),
+  );
+}
+
+export function formatGitHubRepos(repos: GitHubRepoView[]): string {
+  if (!repos.length) return "the GitHub token reaches no repositories; give it access to some (ADR 0026)";
+  return table(
+    ["REPOSITORY", "VISIBILITY", "PUSH", "PROJECT", "DESCRIPTION"],
+    repos.map((r) => [r.repo, r.private ? "private" : "public", r.can_push ? "yes" : "no", r.project_id ?? "-", (r.description ?? "").slice(0, 60)]),
   );
 }
 

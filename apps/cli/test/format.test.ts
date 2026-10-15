@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatInbox, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatGitHubRepos, formatInbox, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -192,5 +192,18 @@ describe("budgets and usage (ADR 0023)", () => {
     expect(text).toContain("2.5M tokens");
     expect(text).toMatch(/claude-code\s+plan\s+10\s+90 %\s+-\s+900\.0k\/40\.0k\s+80\.0k\s+\$1\.20\s+\$0\.00\s+95s/);
     expect(text).toContain("claude-code five_hour: 40 %, resets 2026-10-15 18:00");
+  });
+});
+
+describe("formatGitHubRepos", () => {
+  it("lists repositories with visibility, push access and project", () => {
+    const out = formatGitHubRepos([
+      { repo: "acme/widgets", owner: "acme", private: true, description: "Widgets", default_branch: "main", pushed_at: null, can_push: true, project_id: "prj_1", path: "/x" },
+      { repo: "me/notes", owner: "me", private: false, description: null, default_branch: "main", pushed_at: null, can_push: false, project_id: null, path: null },
+    ]);
+    expect(out).toContain("acme/widgets");
+    expect(out).toMatch(/acme\/widgets\s+private\s+yes\s+prj_1\s+Widgets/);
+    expect(out).toMatch(/me\/notes\s+public\s+no\s+-/);
+    expect(formatGitHubRepos([])).toMatch(/reaches no repositories/);
   });
 });

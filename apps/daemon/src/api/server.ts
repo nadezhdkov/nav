@@ -27,6 +27,7 @@ import {
   type NavarchEvent,
   FleetWindow,
   SendRunMessage,
+  CloneRepoRequest,
   CreateProjectRequest,
   DismissItemRequest,
   StartInboxRequest,
@@ -83,7 +84,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     }
     if (err instanceof BudgetError) return reply.code(404).send({ error: err.code, message: err.message });
     if (err instanceof InboxError) {
-      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : err.code === "github_error" ? 502 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     if (err instanceof DeviceError) {
@@ -197,6 +198,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const parsed = CreateProjectRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     return reply.code(201).send(await daemon.inbox.addProject(parsed.data, actorOf(req)));
+  });
+
+  // GitHub repositories for New run (ADR 0026): desktop only, never paired devices.
+  app.get("/api/v1/github/repos", async (req) => daemon.inbox.listGitHubRepos(Boolean((req.query as { refresh?: string }).refresh)));
+
+  app.post("/api/v1/github/repos/clone", async (req, reply) => {
+    const parsed = CloneRepoRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const { project, created } = await daemon.inbox.cloneProject(parsed.data, actorOf(req));
+    return reply.code(created ? 201 : 200).send(project);
   });
 
   app.delete("/api/v1/projects/:id", async (req, reply) => {

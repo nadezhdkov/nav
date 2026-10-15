@@ -141,3 +141,26 @@ export function workItemId(repo: string, number: number): string {
   // `owner~name`: `~` cannot appear in a GitHub name, and it is safe in a URL path.
   return `wi_github_${repo.toLowerCase().replace("/", "~")}_${number}`;
 }
+
+/** A GitHub repository the token reaches, for the New run picker (ADR 0026). */
+export const GitHubRepoView = z.object({
+  /** `owner/name`. */
+  repo: z.string(),
+  owner: z.string(),
+  private: z.boolean(),
+  description: z.string().nullable(),
+  default_branch: z.string(),
+  pushed_at: z.string().nullable(),
+  /** Whether the token may push; without it a run can work but cannot open a PR. */
+  can_push: z.boolean(),
+  /** The project already registered for it, if any. */
+  project_id: z.string().nullable(),
+  /** Its local clone, when it is a registered project. */
+  path: z.string().nullable(),
+});
+export type GitHubRepoView = z.infer<typeof GitHubRepoView>;
+
+export const CloneRepoRequest = z.object({
+  repo: z.string().regex(new RegExp(`^${REPO_PATTERN}$`), "expected owner/name"),
+});
+export type CloneRepoRequest = z.infer<typeof CloneRepoRequest>;
