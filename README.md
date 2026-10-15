@@ -71,7 +71,7 @@ Each run works on its own branch, `navarch/<run-id>/…`, in a worktree under `~
 
 ## Web UI
 
-`navarch web` opens the UI that `navarchd` serves on `127.0.0.1`. It signs in with a single-use code, so your token never lands in the browser's command line. Everything updates live over the daemon's event stream.
+`navarch web` opens the UI that `navarchd` serves on `127.0.0.1`. It signs in with a single-use code, so your token never lands in the browser's command line. Everything updates live over the daemon's event stream. The interface speaks English, Brazilian Portuguese, Spanish, German and Simplified Chinese: it follows your browser and remembers the language you pick in the sidebar.
 
 <table>
   <tr>

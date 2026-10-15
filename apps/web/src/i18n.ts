@@ -1,120 +1,69 @@
 import { createI18n } from "vue-i18n";
+import { de } from "./locales/de.ts";
+import { en, type Messages } from "./locales/en.ts";
+import { es } from "./locales/es.ts";
+import { ptBR } from "./locales/pt-BR.ts";
+import { zhCN } from "./locales/zh-CN.ts";
 
-/** UI strings, English base locale (AGENTS.md › Language). */
-const en = {
-  app: { name: "Navarch", tagline: "orchestrate your fleet of coding agents" },
-  nav: { runs: "Runs", approvals: "Approvals", live: "Live", offline: "Reconnecting", main: "Main navigation" },
-  token: {
-    title: "Connect to navarchd",
-    body: "The Web UI needs the daemon's local token. Open it from a terminal with:",
-    paste: "Or paste the token from ~/.navarch/token",
-    label: "Token",
-    submit: "Connect",
-    invalid: "The daemon refused this token.",
-  },
-  runs: {
-    title: "Runs",
-    empty: "No runs yet. Start one with navarch run or navarch chat.",
-    status: "Status",
-    work: "Work",
-    flow: "Flow",
-    repo: "Repository",
-    cost: "Cost / budget",
-    updated: "Updated",
-    loading: "Loading runs…",
-  },
-  run: {
-    back: "All runs",
-    cancel: "Cancel run",
-    resume: "Resume run",
-    confirmCancel: "Cancel this run? Running agents are stopped.",
-    pr: "Draft PR",
-    cost: "Cost",
-    budget: "of {budget}",
-    graph: "Task graph",
-    noFlow: "This run predates Flows; see the timeline.",
-    timeline: "Timeline",
-    logs: "Logs",
-    filter: "Filter events",
-    allEvents: "All events",
-    noEvents: "No events.",
-    noLogs: "No log lines yet.",
-    loading: "Loading run…",
-    autonomy: "Autonomy {level}",
-  },
-  node: {
-    panel: "Node details",
-    select: "Select a node in the graph to see its agent, model, cost and output.",
-    profile: "Profile",
-    adapter: "Adapter",
-    model: "Model",
-    attempt: "Attempt",
-    iteration: "Iteration",
-    iterationOf: "Iteration {n} of {max}",
-    cost: "Cost",
-    summary: "Summary",
-    error: "Error",
-    retryAt: "Waiting for quota until",
-    artifacts: "Artifacts",
-    routing: "Routing",
-    noTask: "Not started yet.",
-    close: "Close",
-    kind: {
-      trigger: "Trigger",
-      agent: "Agent",
-      action: "Action",
-      github: "GitHub",
-      approval: "Approval gate",
-      loop: "Loop",
-    },
-  },
-  approvals: {
-    title: "Approvals",
-    pending: "Pending",
-    decided: "Decided",
-    empty: "Nothing waits for you.",
-    what: "What will happen",
-    why: "Why it needs you",
-    run: "Run",
-    cost: "Run cost so far",
-    reason: "Reason (optional)",
-    approve: "Approve",
-    reject: "Reject",
-    by: "{status} {when} ago",
-  },
-  status: {
-    not_started: "Not started",
-    pending: "Pending",
-    ready: "Queued",
-    waiting_approval: "Waiting for approval",
-    blocked: "Blocked",
-    running: "Running",
-    paused: "Paused",
-    succeeded: "Succeeded",
-    failed: "Failed",
-    interrupted: "Interrupted",
-    cancelled: "Cancelled",
-    skipped: "Skipped",
-    created: "Created",
-    planning: "Planning",
-    awaiting_approval: "Awaiting approval",
-    executing: "Executing",
-    verifying: "Verifying",
-    reviewing: "Reviewing",
-    ready_for_pr: "Ready for PR",
-    pr_opened: "PR opened",
-    done: "Done",
-    budget_exceeded: "Budget exceeded",
-    approved: "Approved",
-    rejected: "Rejected",
-  },
-};
+export type { Messages };
 
-export type Messages = typeof en;
+/** UI locales, English first as the base (AGENTS.md › Language); `name` is each one's own name for itself. */
+export const locales = [
+  { code: "en", name: "English" },
+  { code: "pt-BR", name: "Português (Brasil)" },
+  { code: "es", name: "Español" },
+  { code: "de", name: "Deutsch" },
+  { code: "zh-CN", name: "简体中文" },
+] as const;
 
-export const i18n = createI18n<[Messages], "en", false>({
+export type Locale = (typeof locales)[number]["code"];
+
+const messages: Record<Locale, Messages> = { en, "pt-BR": ptBR, es, de, "zh-CN": zhCN };
+
+const KEY = "navarch.locale";
+
+function isLocale(value: unknown): value is Locale {
+  return locales.some((l) => l.code === value);
+}
+
+/** The best UI locale for a list of browser languages: an exact match, then the same language, then English. */
+export function matchLocale(languages: readonly string[]): Locale {
+  for (const tag of languages) {
+    const exact = locales.find((l) => l.code.toLowerCase() === tag.toLowerCase());
+    if (exact) return exact.code;
+    const lang = tag.split("-")[0]!.toLowerCase();
+    const same = locales.find((l) => l.code.split("-")[0]!.toLowerCase() === lang);
+    if (same) return same.code;
+  }
+  return "en";
+}
+
+/** The viewer's saved choice, else the browser's languages. */
+export function initialLocale(): Locale {
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (isLocale(saved)) return saved;
+  } catch {
+    // Storage blocked: fall back to the browser's languages.
+  }
+  const nav = typeof navigator === "undefined" ? [] : navigator.languages?.length ? navigator.languages : [navigator.language];
+  return matchLocale(nav.filter(Boolean));
+}
+
+export const i18n = createI18n<[Messages], Locale, false>({
   legacy: false,
-  locale: "en",
+  locale: initialLocale(),
   fallbackLocale: "en",
-  messages: { en },
+  messages,
 });
+
+/** Switches the UI language, remembers it for this browser and sets `<html lang>`. */
+export function setLocale(locale: Locale): void {
+  i18n.global.locale.value = locale;
+  if (typeof document !== "undefined") document.documentElement.lang = locale;
+  try {
+    localStorage.setItem(KEY, locale);
+  } catch {
+    // Storage blocked: the choice lasts for this page only.
+  }
+}
