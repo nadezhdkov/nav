@@ -9,7 +9,7 @@ A run whose work is led by one agent. The **lead** reads the goal, writes a team
 ### Starting a team run
 
 - `navarch run --flow team [--adapter <lead adapter>] [--model <lead model>] <prompt>` and `navarch run --issue <owner/repo#N> --flow team`. Web UI New run and the Inbox's "Start run" offer the `team` Flow. The concierge's `start_run` accepts `flow: team`.
-- Without `--adapter`/`--model`, the lead is routed with profile `lead`, tier `strong` (Claude Code first by default, ADR 0013).
+- Without `--adapter`/`--model`, the lead is routed with profile `lead`, tier `expert` (Claude Code first by default, ADR 0013).
 
 ### The `team` Flow (`flows/team.yaml`)
 
@@ -36,8 +36,16 @@ start → team → review → open_pr
 3. **First-plan approval**: when `approve_first_plan` is true (autonomy < 3), the first plan with members waits for a human (approval subject `team.plan`, showing summary and members). Rejecting fails the run, as with `approve_plan`.
 4. **Members** run one at a time in `depends_on` order (ties by plan order), in the run's worktree (task `team.<key>`). Their prompt is the profile's rules, the lead's brief, and the summaries of the members they depend on. Each is routed (profile tier, the lead's `prefer` tried first when available) and retried like any task. A failed member does not fail the node: the lead sees it next turn.
 5. **Verify** (task `team.verify`, iteration = turn) runs the project's checks once all of the turn's members finished, when any member edits.
-6. **Next turn** starts with what happened. The node **succeeds** when a turn says `done: true` and the latest verification passed (or nothing was edited). `done: true` with failing checks starts another turn with "checks still fail". The node **fails** at `max_turns` (default `team.max_turns`, 8) or when the run budget is exhausted (budget stop, as today).
+6. **Next turn** starts with what happened. The node **succeeds** when a turn says `done: true` and the latest verification passed (or nothing was edited). `done: true` with failing checks starts another turn with "checks still fail". The node **fails** at `max_turns` (Flow param, default 8) or when the run budget is exhausted (budget stop, as today).
 7. **Questions**: a turn with `question` set (and no members) stops the team: the next lead turn is created `blocked` with reason `question`, the question is shown to the user (Fleet, run detail, push notification "agent waiting for you"), and the first instruction sent to the run unblocks it.
+
+### Context and tokens
+
+Navarch does not manage a CLI agent's internal context (each has its own harness); it manages what goes into each prompt.
+
+- **Isolation**: a member's prompt holds its profile's rules, the lead's brief and the summaries of the members it depends on. It never gets the lead's conversation or the other members' work.
+- **Bounded summaries**: in the lead's prompt each member's summary is capped (2,000 characters, cut with a marker); the full output stays in the member's task and artifacts.
+- **Informed preferences**: the lead's prompt lists the enabled agents (catalog entries) with what is known of their quota (exhausted until when, last observed utilization and reset), so `prefer` picks agents that can run now.
 
 ### Instructions and chat
 
@@ -50,7 +58,7 @@ start → team → review → open_pr
 
 ## Policy
 
-- `team.turn` before each lead turn and `team.delegate` before each member: denied when the run is paused or stopped, when `max_turns` or `team.max_members` (default 12 per run) would be exceeded, or when the run's spent cost is at or over its budget. A denial fails the node with the reason.
+- `team.turn` before each lead turn and `team.delegate` before each member: denied when the run is paused or stopped, when `max_turns` or `max_members` would be exceeded, or when the run's spent cost is at or over its budget. A denial fails the node with the reason.
 - Grants: the `lead` profile edits (it may fix small things itself), with the project allowlist like the implementer. Members get their own profile's grant. Neither the lead nor members can change autonomy, grants, budgets or auto-merge; the team plan has no field for it.
 - The issue body is still untrusted input to every turn; briefs written by the lead are the lead's output and go into members' prompts inside an `<input name="brief">` block.
 
@@ -58,9 +66,9 @@ start → team → review → open_pr
 
 - Flow: `TeamNode` in `FlowNode`; `team` leaves nothing in `PHASE_2_NODE_TYPES`.
 - `TeamPlan`, `TeamMemberSpec` (the block above); `TeamMemberProfile`.
-- Events: `team.plan.recorded { node_id, turn, summary, done, question, member_keys }`, `team.member.added { node_id, key, title, brief, profile, prefer, depends_on, turn }`, `task.subagent { tool_use_id, description, status }`.
+- Events: no new team events. The team plan is the lead turn's own output (`task.completed`), parsed by the Flow engine; the team's tasks carry `team: { node_id, role: lead | member | verify | approval, key? }` in `task.created`. New: `task.subagent { tool_use_id, description, status }`.
 - `RunDetail.team: { node_id, turn, max_turns, members: TeamMemberView[], question: string | null } | null`, with `TeamMemberView { key, title, profile, prefer, depends_on, added_in_turn, task_id }`. `FleetAgent` gains `team_role: "lead" | "member" | null` and `team_key`.
-- Config: `team.max_turns`, `team.max_members`; routing profiles `lead` (tier `strong`) and `researcher` (tier `fast`).
+- Limits are the `team` Flow's params `max_turns` (8) and `max_members` (12). Routing profiles `lead` (tier `expert`) and `researcher` (tier `fast`).
 
 ## Tests (no network, no real agent)
 

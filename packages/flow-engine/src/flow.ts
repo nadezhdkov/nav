@@ -1,6 +1,7 @@
-import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type FlowNode, type RunStatus } from "@navarch/contracts";
+import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type FlowNode, type RunStatus, type TeamTaskRef } from "@navarch/contracts";
 import { parse } from "yaml";
 import { evaluate, exprPaths, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
+import { teamState, teamStep } from "./team.ts";
 
 export class FlowError extends Error {}
 
@@ -98,6 +99,9 @@ function expressionsOf(n: FlowNode | BodyNode): string[] {
     if (typeof n.max_iterations === "string") out.push(n.max_iterations);
   }
   if (n.type === "approval") out.push(...(n.show ?? []).map((p) => `\${{ ${p} }}`));
+  if (n.type === "team") {
+    for (const v of [n.max_turns, n.max_members, n.approve_first_plan]) if (typeof v === "string") out.push(v);
+  }
   return out;
 }
 
@@ -127,7 +131,8 @@ export type RunContext = {
 };
 
 export type NodeToStart = {
-  node: FlowNode | BodyNode;
+  /** A Flow node, or a node a `team` makes for its lead, members, checks and approval. */
+  node: FlowNode | BodyNode | { id: string; type: "approval" };
   iteration: number;
   /** The run state while it runs (spec §8.4). */
   stage: RunStatus;
@@ -135,6 +140,12 @@ export type NodeToStart = {
   inputs: Record<string, unknown>;
   /** Text shown to an approver (approval nodes). */
   show: { path: string; value: unknown }[];
+  /** The team a task belongs to (ADR 0022). */
+  team?: TeamTaskRef;
+  /** Create the task blocked, for this reason (a team waiting for the user's answer). */
+  blocked?: string;
+  /** An adapter or catalog entry the lead prefers for this member. */
+  prefer?: string;
 };
 
 export type Step =
@@ -152,11 +163,19 @@ const ACTIVE = new Set(["pending", "ready", "waiting_approval", "blocked", "runn
  * calls again, so a restart resumes from the event log.
  */
 export function next(flow: FlowDefinition, ctx: RunContext): Step {
-  const scope = scopeOf(ctx);
+  const scope = scopeOf(ctx, flow);
   for (const node of chain(flow)) {
     if (node.type === "trigger" || ctx.skipped.includes(node.id)) continue;
     if (node.type === "loop") {
       const step = loopStep(node, ctx, scope);
+      if (step) return step;
+      continue;
+    }
+    if (node.type === "team") {
+      if (node.when && !ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) && !truthy(evaluate(parseExpr(node.when), scope))) {
+        return { kind: "skip", nodeId: node.id, reason: `when ${node.when.replace(/^\$\{\{\s*|\s*\}\}$/g, "")} is false` };
+      }
+      const step = teamStep(node, ctx, scope);
       if (step) return step;
       continue;
     }
@@ -204,15 +223,21 @@ function latestTask(ctx: RunContext, nodeId: string): TaskState | undefined {
 }
 
 /** `nodes.<id>.outputs` is the latest finished task of each node. */
-function scopeOf(ctx: RunContext): Scope {
+function scopeOf(ctx: RunContext, flow?: FlowDefinition): Scope {
   const nodes: Record<string, { outputs: Record<string, unknown>; status: string; iteration: number }> = {};
   for (const t of [...ctx.tasks].sort((a, b) => a.iteration - b.iteration)) {
     if (t.status === "succeeded" || !nodes[t.node_id]) nodes[t.node_id] = { outputs: t.outputs ?? {}, status: t.status, iteration: t.iteration };
   }
+  // A team's output is its lead's latest plan summary.
+  for (const n of flow?.nodes ?? []) {
+    if (n.type !== "team") continue;
+    const summary = teamState(n.id, ctx.tasks).summary;
+    if (summary !== undefined) nodes[n.id] = { outputs: { summary }, status: "succeeded", iteration: 1 };
+  }
   return { nodes, params: ctx.params, project: ctx.project };
 }
 
-function toStart(node: FlowNode | BodyNode, iteration: number, scope: Scope): NodeToStart {
+function toStart(node: Exclude<FlowNode, { type: "team" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
   const inputs: Record<string, unknown> = {};
   if (node.type === "agent") {
     for (const [name, value] of Object.entries(node.inputs ?? {})) inputs[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;
@@ -222,7 +247,7 @@ function toStart(node: FlowNode | BodyNode, iteration: number, scope: Scope): No
 }
 
 /** Spec §8.4: the run state a node puts the run in. */
-export function stageOf(node: FlowNode | BodyNode): RunStatus {
+export function stageOf(node: NodeToStart["node"]): RunStatus {
   switch (node.type) {
     case "approval":
       return "awaiting_approval";

@@ -7,3 +7,4 @@ export * from "./work.ts";
 export * from "./redact.ts";
 export * from "./flow.ts";
 export * from "./inbox.ts";
+export * from "./team.ts";
