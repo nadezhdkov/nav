@@ -16,7 +16,7 @@ async function start(server: FakeServer, config: Record<string, unknown> = {}) {
   const home = tempHome();
   const daemon = new Daemon({
     home,
-    config: Config.parse({ daemon: { port: 0 }, ...config }),
+    config: Config.parse({ daemon: { port: 0 }, routing: { enabled: false }, ...config }),
     adapters: { native: { providers: { fake: { baseUrl: server.baseUrl } } } },
   });
   await daemon.start();

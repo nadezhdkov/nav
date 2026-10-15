@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS runs (
   protected_paths TEXT NOT NULL DEFAULT '[]',
   flow TEXT,
   autonomy_level INTEGER,
+  routing TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   ended_at TEXT
@@ -54,6 +55,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   max_attempts INTEGER NOT NULL,
   profile TEXT NOT NULL,
   adapter TEXT NOT NULL,
+  model TEXT,
+  model_id TEXT,
+  routing TEXT,
   sandbox_id TEXT,
   sandbox_path TEXT,
   branch TEXT,

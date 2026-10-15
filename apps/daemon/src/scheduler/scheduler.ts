@@ -3,7 +3,7 @@ import { canTransitionRun, isTerminalRun, newId, type Actor, type NewEvent, type
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
-import { buildInstructions, implementer, PROFILES } from "../orchestrator/profiles.ts";
+import { buildInstructions, implementer, parseComplexity, PROFILES } from "../orchestrator/profiles.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
 const RETRYABLE = new Set(["transient", "interrupted"]);
@@ -140,9 +140,14 @@ export class Scheduler {
     while (this.active.size) await Promise.allSettled([...this.active.values()]);
   }
 
-  private dispatch(task: TaskRecord): void {
-    const run = this.store.getRunRecord(task.run_id);
+  private dispatch(queued: TaskRecord): void {
+    const run = this.store.getRunRecord(queued.run_id);
     if (!run) return;
+    let task = queued;
+    if (task.type === "agent" && task.routing === "auto" && !task.model_id) {
+      this.store.append([this.routeTask(run, task)]);
+      task = this.store.getTask(task.id)!;
+    }
 
     const uses = task.type === "approval" ? "approval" : (task.uses ?? LEGACY_USES[task.node_id]);
     const executor = task.type === "agent" ? undefined : uses ? this.actions.get(uses) : undefined;
@@ -217,7 +222,7 @@ export class Scheduler {
         ...(sandboxSlug ? { sandboxSlug } : {}),
         profile: profile!,
         instructions: buildInstructions(profile!, run.prompt, tools, task.inputs),
-        ...(run.model && task.adapter === run.adapter ? { model: run.model } : {}),
+        ...(task.model ? { model: task.model } : {}),
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.
         setupCommands: profile!.edits ? run.setup_commands : [],
@@ -263,6 +268,8 @@ export class Scheduler {
     if (this.stopping) return;
     const runId = task.run_id;
     const cancelled = this.cancelRequested.has(task.id) || outcome.error?.kind === "cancelled";
+    const complexity = task.profile === "triager" && outcome.status === "succeeded" ? parseComplexity(outcome.summary) : undefined;
+    const outputs = complexity === undefined ? outcome.outputs : { ...outcome.outputs, complexity };
     const events: NewEvent[] = [
       {
         type: "task.completed",
@@ -276,7 +283,7 @@ export class Scheduler {
           cost: outcome.cost,
           duration_ms: outcome.durationMs,
           ...(outcome.error ? { error: outcome.error } : {}),
-          ...(outcome.outputs ? { outputs: outcome.outputs } : {}),
+          ...(outputs ? { outputs } : {}),
         },
       },
     ];
@@ -296,7 +303,11 @@ export class Scheduler {
       events.push(taskStatus(runId, task.id, "running", "failed", attempt, error.message, error));
       // Waits for a quota reset are not counted as attempts.
       const attempts = attempt - task.rate_limit_waits;
-      if (kind === "rate_limited" && !isTerminalRun(run.status)) {
+      const fallback = kind === "rate_limited" && !isTerminalRun(run.status) ? this.fallback(task) : undefined;
+      if (fallback) {
+        // Another agent takes over right away; like a quota wait, this is not an attempt.
+        events.push(fallback, taskStatus(runId, task.id, "failed", "ready", attempt, `rate limited; falling back to ${fallback.payload.adapter}`, undefined, new Date().toISOString()));
+      } else if (kind === "rate_limited" && !isTerminalRun(run.status)) {
         events.push(...this.waitForQuota(task, attempt, run.status, error.retry_at));
       } else if (RETRYABLE.has(kind) && attempts < task.max_attempts && !isTerminalRun(run.status)) {
         events.push(taskStatus(runId, task.id, "failed", "ready", attempt, `retry after ${kind}`));
@@ -306,6 +317,65 @@ export class Scheduler {
       }
     }
     this.store.append(events);
+  }
+
+  /**
+   * Asks the Model Router, through the Agent Runtime, where an agent task runs (ADR 0013). When
+   * no candidate is usable the task keeps the run's adapter, which then waits for its quota.
+   */
+  private routeTask(run: RunRecord, task: TaskRecord, exclude: string[] = []): NewEvent<"model.routed"> {
+    const tasks = this.store.taskRecordsOfRun(run.id);
+    const triage = tasks.filter((t) => t.profile === "triager" && t.status === "succeeded").at(-1);
+    const complexity = typeof triage?.outputs?.complexity === "number" ? triage.outputs.complexity : undefined;
+    const implementerProviders = [
+      ...new Set(tasks.filter((t) => t.profile === "implementer" && t.status === "succeeded").map((t) => this.providerOf(t))),
+    ];
+    const decision = this.runtime.route({
+      profile: task.profile,
+      ...(complexity !== undefined ? { complexity } : {}),
+      iteration: task.iteration,
+      implementerProviders,
+      exhausted: this.store.exhaustedAdapters(),
+      exclude,
+    });
+    const chosen: { id: string; adapter: string; model?: string; provider: string } = decision?.chosen ?? {
+      id: task.model_id ?? task.adapter,
+      adapter: task.adapter,
+      ...(task.model ? { model: task.model } : {}),
+      provider: this.providerOf(task),
+    };
+    return {
+      type: "model.routed",
+      run_id: run.id,
+      task_id: task.id,
+      actor: { kind: "system", component: "model-router" },
+      payload: {
+        model_id: chosen.id,
+        adapter: chosen.adapter,
+        ...(chosen.model ? { model: chosen.model } : {}),
+        provider: chosen.provider,
+        tier: decision?.tier ?? "standard",
+        reason: decision?.chosen ? decision.reason : `${decision?.reason ?? "routing is off"}; keeping the run's adapter`,
+        candidates: decision?.candidates ?? [],
+        skipped: decision?.skipped ?? [],
+        ...(exclude.length ? { fallback_from: exclude.at(-1)! } : {}),
+      },
+    };
+  }
+
+  /** On a rate limit, the next usable candidate other than those this task already left (spec §6.4.2 step 5). */
+  private fallback(task: TaskRecord): NewEvent<"model.routed"> | undefined {
+    if (task.type !== "agent" || task.routing !== "auto") return undefined;
+    const run = this.store.getRunRecord(task.run_id);
+    if (!run) return undefined;
+    const left = [...this.store.routedFrom(task.id), task.model_id ?? task.adapter];
+    const routed = this.routeTask(run, task, left);
+    return left.includes(routed.payload.model_id) ? undefined : routed;
+  }
+
+  private providerOf(task: TaskRecord): string {
+    const models = this.config.routing.models;
+    return (task.model_id && models[task.model_id]?.provider) || Object.values(models).find((m) => m.adapter === task.adapter)?.provider || task.adapter;
   }
 
   /**

@@ -20,8 +20,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "run.created": {
       const p = (event as NavarchEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, created_at, updated_at)
-         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, routing, created_at, updated_at)
+         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.repo_path,
@@ -38,6 +38,7 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         JSON.stringify(p.protected_paths ?? []),
         p.flow ? JSON.stringify(p.flow) : null,
         p.autonomy_level ?? null,
+        p.routing ?? null,
         ts,
         ts,
       );
@@ -62,11 +63,15 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     }
     case "task.created": {
       const p = (event as NavarchEvent<"task.created">).payload;
-      const run = db.prepare("SELECT profile FROM runs WHERE id = ?").get(event.run_id);
+      const run = db.prepare("SELECT adapter, model FROM runs WHERE id = ?").get(event.run_id) as
+        | { adapter: string; model: string | null }
+        | undefined;
       if (!run) throw new ProjectionError(`unknown run ${event.run_id}`);
+      // The run's model belongs to the run's adapter; a routed task gets its own with model.routed.
+      const model = p.type === "agent" && p.adapter === run.adapter ? run.model : null;
       db.prepare(
-        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, iteration, stage, uses, inputs, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.task_id,
         event.run_id,
@@ -75,6 +80,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.max_attempts,
         p.profile,
         p.adapter,
+        model,
+        p.routing ?? null,
         p.iteration ?? 1,
         p.stage ?? null,
         p.uses ?? null,
@@ -110,6 +117,17 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "task.resume_token": {
       const p = (event as NavarchEvent<"task.resume_token">).payload;
       db.prepare("UPDATE tasks SET resume_token = ?, updated_at = ? WHERE id = ?").run(p.token, ts, event.task_id);
+      return;
+    }
+    case "model.routed": {
+      const p = (event as NavarchEvent<"model.routed">).payload;
+      db.prepare("UPDATE tasks SET adapter = ?, model = ?, model_id = ?, resume_token = NULL, updated_at = ? WHERE id = ?").run(
+        p.adapter,
+        p.model ?? null,
+        p.model_id,
+        ts,
+        event.task_id,
+      );
       return;
     }
     case "sandbox.created": {

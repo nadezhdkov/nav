@@ -82,6 +82,8 @@ export const EventPayloads = {
     flow: z.object({ definition: FlowDefinition, params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])) }).optional(),
     /** Spec §11: from `.navarch/project.yaml`, else the daemon's configuration. Absent before per-run levels. */
     autonomy_level: z.number().int().min(0).max(4).optional(),
+    /** `auto`: the Model Router picks each agent task's adapter; `pinned`: the run's adapter and model (ADR 0013). Absent (pinned) before routing. */
+    routing: z.enum(["auto", "pinned"]).optional(),
   }),
   "run.status_changed": z.object({ from: RunStatus, to: RunStatus, reason: z.string().optional() }),
   "task.created": z.object({
@@ -98,6 +100,8 @@ export const EventPayloads = {
     uses: z.string().optional(),
     /** Inputs resolved when the task was created, rendered as text for the agent's prompt. */
     inputs: z.record(z.string(), z.string()).optional(),
+    /** `auto` when the Model Router picks this agent task's adapter at dispatch (ADR 0013). */
+    routing: z.literal("auto").optional(),
   }),
   "task.status_changed": z.object({
     from: TaskStatus,
@@ -145,6 +149,23 @@ export const EventPayloads = {
     summary: z.string(),
   }),
   "model.call.completed": UsageRecord,
+  /**
+   * The Model Router chose where an agent task runs (spec §6.4.2). The task's adapter and model
+   * change to the chosen ones and its resume token is dropped, since it belonged to another agent.
+   */
+  "model.routed": z.object({
+    /** Catalog id. */
+    model_id: z.string(),
+    adapter: z.string(),
+    model: z.string().optional(),
+    provider: z.string(),
+    tier: z.enum(["fast", "standard", "expert"]),
+    reason: z.string(),
+    candidates: z.array(z.string()),
+    skipped: z.array(z.object({ id: z.string(), reason: z.string() })),
+    /** On a fallback after a rate limit: the catalog id the task left. */
+    fallback_from: z.string().optional(),
+  }),
   "run.message": z.object({ text: z.string() }),
   /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
   "quota.observed": QuotaObservation,

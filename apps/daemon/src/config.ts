@@ -24,6 +24,45 @@ const defaultProviders: Record<string, ProviderConfig> = {
   },
 };
 
+const Tier = z.enum(["fast", "standard", "expert"]);
+const CatalogEntry = z.object({
+  adapter: AdapterId,
+  /** The adapter's model id; absent means the adapter's default. */
+  model: z.string().optional(),
+  provider: z.string(),
+  status: z.enum(["active", "disabled"]).default("active"),
+});
+
+/**
+ * Model Router v1 (spec §6.4, ADR 0013). The catalog lists adapter + model pairs the router may
+ * use; prices and quotas are not in code. The defaults send triage and simple issues to Copilot
+ * and the rest to Claude Code, each falling back to the other.
+ */
+const Routing = z
+  .object({
+    /** When false, runs use `default_adapter` as before. `--adapter`/`--model` always pin a run. */
+    enabled: z.boolean().default(true),
+    models: z.record(z.string(), CatalogEntry).default({
+      "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
+      copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
+      codex: { adapter: "codex", provider: "openai", status: "active" },
+      "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
+      antigravity: { adapter: "antigravity", provider: "google", status: "active" },
+    }),
+    tiers: z
+      .object({
+        fast: z.array(z.string()).default(["copilot", "claude-code"]),
+        standard: z.array(z.string()).default(["claude-code", "copilot"]),
+        expert: z.array(z.string()).default(["claude-code", "copilot"]),
+      })
+      .prefault({}),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard" }),
+    simple_max_complexity: z.number().int().min(0).max(5).default(2),
+    different_provider: z.array(z.string()).default(["reviewer"]),
+  })
+  .prefault({});
+export type RoutingConfig = z.infer<typeof Routing>;
+
 /** Global configuration, `~/.navarch/config.yaml` (spec §14.1). Only Phase 0 keys are read. */
 export const Config = z.object({
   daemon: z
@@ -56,6 +95,7 @@ export const Config = z.object({
     })
     .prefault({}),
   allow_commands: z.array(z.string()).default([]),
+  routing: Routing,
   /** Adapter used when a run does not choose one. */
   default_adapter: AdapterId.default("claude-code"),
   adapters: z

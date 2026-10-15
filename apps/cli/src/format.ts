@@ -24,7 +24,7 @@ export function formatRunDetail(run: RunDetail): string {
   ];
   for (const t of run.tasks) {
     const node = t.iteration > 1 ? `${t.node_id}#${t.iteration}` : t.node_id;
-    lines.push(`  ${t.id}  ${node}  ${t.adapter}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
+    lines.push(`  ${t.id}  ${node}  ${t.adapter}${t.model ? `/${t.model}` : ""}  ${t.status}  attempt ${t.attempt}/${t.max_attempts}  ${usd(t.cost)}`);
     if (t.branch) lines.push(`    branch   ${t.branch}`);
     if (t.sandbox_path) lines.push(`    worktree ${t.sandbox_path}`);
     if (t.error) lines.push(`    error    ${truncate(t.error, 300)}`);

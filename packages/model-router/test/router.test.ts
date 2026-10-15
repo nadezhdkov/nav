@@ -1,0 +1,84 @@
+import { describe, expect, it } from "vitest";
+import { route, type RouteRequest, type RouterConfig } from "../src/index.ts";
+
+const config: RouterConfig = {
+  models: {
+    "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
+    copilot: { adapter: "copilot", provider: "github", status: "active" },
+    codex: { adapter: "codex", provider: "openai", status: "disabled" },
+    qwen: { adapter: "native", model: "ollama/qwen2.5:7b", provider: "ollama", status: "active" },
+  },
+  tiers: { fast: ["copilot", "claude-code"], standard: ["claude-code", "copilot"], expert: ["claude-code", "copilot"] },
+  profiles: { triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard" },
+  simple_max_complexity: 2,
+  different_provider: ["reviewer"],
+};
+
+const req = (over: Partial<RouteRequest>): RouteRequest => ({
+  profile: "implementer",
+  iteration: 1,
+  implementerProviders: [],
+  adapters: new Set(["claude-code", "copilot", "codex", "native"]),
+  exhausted: new Map(),
+  ...over,
+});
+
+describe("route", () => {
+  it("uses the profile's tier when the run has no triage", () => {
+    const d = route(config, req({}));
+    expect(d).toMatchObject({ tier: "standard", chosen: { id: "claude-code", adapter: "claude-code" } });
+    expect(d.reason).toBe("implementer needs standard; first usable in tier standard");
+  });
+
+  it("sends planner and implementer of a simple issue to the fast tier", () => {
+    expect(route(config, req({ complexity: 2 })).chosen?.id).toBe("copilot");
+    expect(route(config, req({ profile: "planner", complexity: 1 })).chosen?.id).toBe("copilot");
+    expect(route(config, req({ complexity: 3 })).chosen?.id).toBe("claude-code");
+    expect(route(config, req({ profile: "triager" })).chosen?.id).toBe("copilot");
+  });
+
+  it("escalates the implementer one tier after failed verification", () => {
+    const d = route(config, req({ complexity: 1, iteration: 2 }));
+    expect(d).toMatchObject({ tier: "standard", chosen: { id: "claude-code" } });
+    expect(d.reason).toContain("escalated to standard after failed verification");
+  });
+
+  it("skips exhausted quotas, excluded entries and disabled adapters, with reasons", () => {
+    const d = route(
+      { ...config, tiers: { ...config.tiers, fast: ["codex", "copilot", "claude-code"] } },
+      req({ profile: "triager", exhausted: new Map([["copilot", "2026-11-01T00:00:00.000Z"]]) }),
+    );
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.skipped).toEqual([
+      { id: "codex", reason: "status disabled" },
+      { id: "copilot", reason: "quota exhausted until 2026-11-01T00:00:00.000Z" },
+    ]);
+    expect(route(config, req({ exclude: ["claude-code"] })).chosen?.id).toBe("copilot");
+    expect(route(config, req({ adapters: new Set(["copilot"]) })).skipped).toEqual([{ id: "claude-code", reason: "adapter claude-code not enabled" }]);
+  });
+
+  it("returns no choice when every candidate is unusable", () => {
+    const d = route(config, req({ exclude: ["claude-code", "copilot"] }));
+    expect(d.chosen).toBeUndefined();
+    expect(d.reason).toContain("no usable candidate in tier standard");
+  });
+
+  it("puts the reviewer on a provider other than the implementer's", () => {
+    const d = route(config, req({ profile: "reviewer", implementerProviders: ["anthropic"] }));
+    expect(d.chosen?.id).toBe("copilot");
+    expect(d.skipped).toEqual([{ id: "claude-code", reason: "same provider as the implementer" }]);
+    expect(route(config, req({ profile: "reviewer", implementerProviders: ["github"] })).chosen?.id).toBe("claude-code");
+  });
+
+  it("falls back to the same provider for the reviewer when no other is usable, and says so", () => {
+    const d = route(config, req({ profile: "reviewer", implementerProviders: ["anthropic"], exclude: ["copilot"] }));
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.reason).toContain("no usable candidate from another provider");
+  });
+
+  it("carries the catalog entry's model", () => {
+    const d = route({ ...config, tiers: { ...config.tiers, fast: ["qwen"] } }, req({ profile: "triager" }));
+    expect(d.chosen).toEqual({ id: "qwen", adapter: "native", model: "ollama/qwen2.5:7b", provider: "ollama" });
+  });
+});
+

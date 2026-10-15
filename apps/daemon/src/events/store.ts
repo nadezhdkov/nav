@@ -33,7 +33,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id")) {
       this.rebuildProjections();
     }
   }
@@ -143,7 +143,35 @@ export class EventStore {
       verify: JSON.parse(row.verify),
       protected_paths: JSON.parse(row.protected_paths),
       flow_definition: row.flow ? (JSON.parse(row.flow) as RunFlow) : null,
+      routing: row.routing === "auto" ? "auto" : "pinned",
     };
+  }
+
+  /**
+   * Adapters whose latest observation of some quota window says it is exhausted and resets
+   * after `now`, with the latest such reset. Feeds the Model Router (ADR 0013).
+   */
+  exhaustedAdapters(now = Date.now()): Map<string, string> {
+    const latest = new Map<string, { exhausted: boolean; resets_at?: string }>();
+    for (const row of this.db.prepare("SELECT payload FROM events WHERE type = 'quota.observed' ORDER BY seq").all() as { payload: string }[]) {
+      const q = JSON.parse(row.payload) as { adapter: string; window: string; exhausted?: boolean; resets_at?: string };
+      latest.set(`${q.adapter}\u0000${q.window}`, { exhausted: Boolean(q.exhausted), ...(q.resets_at ? { resets_at: q.resets_at } : {}) });
+    }
+    const out = new Map<string, string>();
+    for (const [key, q] of latest) {
+      if (!q.exhausted || !q.resets_at || Date.parse(q.resets_at) <= now) continue;
+      const adapter = key.split("\u0000")[0]!;
+      const prev = out.get(adapter);
+      if (!prev || q.resets_at > prev) out.set(adapter, q.resets_at);
+    }
+    return out;
+  }
+
+  /** Catalog ids a task left after rate limits, oldest first. */
+  routedFrom(taskId: string): string[] {
+    return (this.db.prepare("SELECT payload FROM events WHERE task_id = ? AND type = 'model.routed' ORDER BY seq").all(taskId) as { payload: string }[])
+      .map((r) => (JSON.parse(r.payload) as { fallback_from?: string }).fallback_from)
+      .filter((id): id is string => Boolean(id));
   }
 
   /** Nodes of a run whose `when` was false. */
@@ -219,6 +247,7 @@ export type RunRecord = RunView & {
   verify: VerifyCommand[];
   protected_paths: string[];
   flow_definition: RunFlow | null;
+  routing: "auto" | "pinned";
 };
 export type TaskRecord = TaskView & {
   sandbox_id: string | null;
@@ -228,6 +257,9 @@ export type TaskRecord = TaskView & {
   uses: string | null;
   inputs: Record<string, string>;
   outputs: Record<string, unknown> | null;
+  /** Catalog id the Model Router chose; null until routed (or for pinned tasks). */
+  model_id: string | null;
+  routing: "auto" | null;
 };
 
 type Row = Record<string, unknown>;
@@ -240,6 +272,7 @@ type RunRow = Row & {
   verify: string;
   protected_paths: string;
   flow: string | null;
+  routing: string | null;
 };
 type TaskRow = Row;
 
@@ -303,6 +336,7 @@ function toTaskView(row: Row): TaskView {
     max_attempts: Number(row.max_attempts),
     profile: String(row.profile),
     adapter: String(row.adapter),
+    model: (row.model as string | null) ?? null,
     sandbox_path: (row.sandbox_path as string | null) ?? null,
     branch: (row.branch as string | null) ?? null,
     cost: Number(row.cost),
@@ -324,5 +358,7 @@ function toTaskRecord(row: Row): TaskRecord {
     uses: (row.uses as string | null) ?? null,
     inputs: row.inputs ? (JSON.parse(String(row.inputs)) as Record<string, string>) : {},
     outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
+    model_id: (row.model_id as string | null) ?? null,
+    routing: row.routing === "auto" ? "auto" : null,
   };
 }

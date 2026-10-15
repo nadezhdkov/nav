@@ -23,8 +23,9 @@ export const triager: Profile = {
     "Rules:",
     "- Read only what you need to understand the request.",
     ...COMMON,
-    "- Finish with a short summary: kind (bug, feature, docs, chore), complexity 1-5 with one line of reasoning,",
-    "  the areas of the code most likely involved, and anything that makes the request unclear or risky.",
+    "- Finish with a short summary: kind (bug, feature, docs, chore), the areas of the code most likely involved,",
+    "  and anything that makes the request unclear or risky.",
+    "- End the summary with one line `Complexity: N`, N from 1 (a one-line fix) to 5 (a redesign), and one line of reasoning before it.",
   ].join("\n"),
 };
 
@@ -76,6 +77,15 @@ export const reviewer: Profile = {
     "- Finish with your verdict (approve, or changes needed) and the findings, Standards first, then Spec.",
   ].join("\n"),
 };
+
+/**
+ * The triager's `Complexity: N` (1–5), from the last such line of its summary; undefined when it
+ * is missing or out of range, and the Model Router then uses the profile's own tier.
+ */
+export function parseComplexity(summary: string): number | undefined {
+  const last = [...summary.matchAll(/complexity\W{0,4}([1-5])\b/gi)].at(-1)?.[1];
+  return last ? Number(last) : undefined;
+}
 
 export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer].map((p) => [p.id, p]));
 

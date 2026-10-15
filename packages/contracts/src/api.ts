@@ -16,7 +16,10 @@ export const CreateRunRequest = z
     prompt: z.string().min(1).optional(),
     /** `owner/repo#N`: the run implements this GitHub issue; the repository's origin must match. */
     issue: z.string().regex(ISSUE_REF, "expected owner/repo#number").optional(),
-    /** Defaults to the daemon's `default_adapter`. */
+    /**
+     * Pins every agent of the run to this adapter. Without it (and without `model`) the Model
+     * Router picks one per task, or the daemon's `default_adapter` when routing is off.
+     */
     adapter: AdapterId.optional(),
     budget: z.number().positive().optional(),
     allow_commands: z.array(z.string()).optional(),
@@ -39,6 +42,8 @@ export const TaskView = z.object({
   max_attempts: z.number().int(),
   profile: z.string(),
   adapter: z.string(),
+  /** The model the task runs on, when one was chosen (by `--model` or the Model Router). */
+  model: z.string().nullable(),
   sandbox_path: z.string().nullable(),
   branch: z.string().nullable(),
   cost: z.number(),
