@@ -11,6 +11,8 @@ export type PolicyEffect = "allow" | "deny" | "require_approval";
 export type PolicyContext = {
   autonomyLevel: number;
   budgetRemaining?: number;
+  /** For `budget.exceed`: the used-up scopes, described (ADR 0023). */
+  budgetExceeded?: string[];
   branch?: string;
   command?: string;
   allowCommands?: string[];
@@ -135,9 +137,9 @@ export const defaultRules: PolicyRule[] = [
     reason: "the flow asks a human at this step",
   },
   {
-    match: (r) => startsAgent(r.action) && (r.context.budgetRemaining ?? 1) <= 0,
-    effect: "deny",
-    reason: "run budget exhausted",
+    match: (r) => r.action === "budget.exceed",
+    effect: "require_approval",
+    reason: "a budget is used up; spending beyond it needs a human (spec §6.1.4)",
   },
   {
     match: (r) => startsAgent(r.action) && r.context.autonomyLevel < 1,
@@ -149,7 +151,7 @@ export const defaultRules: PolicyRule[] = [
     effect: "require_approval",
     reason: "autonomy level 1 (analyse) requires approval to edit files",
   },
-  { match: (r) => startsAgent(r.action), effect: "allow", reason: "agent task within budget" },
+  { match: (r) => startsAgent(r.action), effect: "allow", reason: "agent task within the autonomy level" },
   {
     match: (r) =>
       r.action === "cmd.exec" &&

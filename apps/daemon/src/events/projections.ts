@@ -13,6 +13,51 @@ import {
 
 export class ProjectionError extends Error {}
 
+type UsageRow = { model: string; billing: string; tokens_in: number; tokens_out: number; cached_tokens: number; cost: number };
+
+/** An agent attempt ended: its usage is what the task recorded since its previous attempt ended. */
+function insertAttempt(db: DatabaseSync, event: NavarchEvent, p: NavarchEvent<"task.completed">["payload"]): void {
+  const task = db.prepare("SELECT type, profile, adapter, model, model_id FROM tasks WHERE id = ?").get(event.task_id) as
+    | { type: string; profile: string; adapter: string; model: string | null; model_id: string | null }
+    | undefined;
+  if (!task || task.type !== "agent" || !event.run_id || !event.task_id) return;
+  const previous = db.prepare("SELECT MAX(seq) AS seq FROM attempts WHERE task_id = ?").get(event.task_id) as { seq: number | null };
+  const u = db
+    .prepare(
+      `SELECT COALESCE(SUM(tokens_in), 0) AS tokens_in, COALESCE(SUM(tokens_out), 0) AS tokens_out, COALESCE(SUM(cached_tokens), 0) AS cached_tokens,
+              COALESCE(SUM(CASE WHEN billing = 'plan' THEN 0 ELSE cost END), 0) AS cost, COALESCE(SUM(CASE WHEN billing = 'plan' THEN cost ELSE 0 END), 0) AS plan_cost
+       FROM usage WHERE task_id = ? AND seq > ?`,
+    )
+    .get(event.task_id, previous.seq ?? 0) as { tokens_in: number; tokens_out: number; cached_tokens: number; cost: number; plan_cost: number };
+  db.prepare(
+    `INSERT INTO attempts (seq, ts, run_id, task_id, profile, adapter, model, model_id, status, error_kind, duration_ms, tokens_in, tokens_out, cached_tokens, cost, plan_cost)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    event.seq,
+    event.ts,
+    event.run_id,
+    event.task_id,
+    task.profile,
+    task.adapter,
+    task.model,
+    task.model_id,
+    p.status,
+    p.error?.kind ?? null,
+    p.duration_ms,
+    u.tokens_in,
+    u.tokens_out,
+    u.cached_tokens,
+    u.cost,
+    u.plan_cost,
+  );
+}
+
+function insertUsage(db: DatabaseSync, event: NavarchEvent, u: UsageRow): void {
+  db.prepare(
+    "INSERT INTO usage (seq, ts, run_id, task_id, model, billing, tokens_in, tokens_out, cached_tokens, cost) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(event.seq, event.ts, event.run_id, event.task_id, u.model, u.billing, u.tokens_in, u.tokens_out, u.cached_tokens, u.cost);
+}
+
 /**
  * Applies one event to the projection tables. Runs inside the same transaction as the event
  * insert, so an invalid transition rejects the event instead of corrupting state.
@@ -167,16 +212,38 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         ts,
         event.task_id,
       );
+      insertAttempt(db, event, p);
       return;
     }
     case "model.call.completed": {
       const p = (event as NavarchEvent<"model.call.completed">).payload;
-      db.prepare("UPDATE tasks SET cost = cost + ? WHERE id = ?").run(p.cost, event.task_id);
-      db.prepare("UPDATE runs SET cost_total = cost_total + ?, updated_at = ? WHERE id = ?").run(
+      // Budgets count billed use only; plan use keeps its API-equivalent figure apart (ADR 0023).
+      const billing = p.billing ?? "metered";
+      const taskColumn = billing === "plan" ? "plan_cost" : "cost";
+      const runColumn = billing === "plan" ? "plan_cost" : "cost_total";
+      db.prepare(`UPDATE tasks SET ${taskColumn} = ${taskColumn} + ? WHERE id = ?`).run(p.cost, event.task_id);
+      db.prepare(`UPDATE runs SET ${runColumn} = ${runColumn} + ?, updated_at = ? WHERE id = ?`).run(
         p.cost,
         ts,
         event.run_id,
       );
+      insertUsage(db, event, { model: p.model, billing, tokens_in: p.tokens_in, tokens_out: p.tokens_out, cached_tokens: p.cached_tokens, cost: p.cost });
+      return;
+    }
+    case "budget.set": {
+      const p = (event as NavarchEvent<"budget.set">).payload;
+      if (p.scope === "run") {
+        db.prepare("UPDATE runs SET budget = ?, updated_at = ? WHERE id = ?").run(p.usd, ts, p.target);
+        return;
+      }
+      db.prepare(
+        "INSERT INTO budget_overrides (scope, target, usd, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT (scope, target) DO UPDATE SET usd = excluded.usd, updated_at = excluded.updated_at",
+      ).run(p.scope, p.target ?? "", p.usd, ts);
+      return;
+    }
+    case "budget.threshold": {
+      const p = (event as NavarchEvent<"budget.threshold">).payload;
+      db.prepare("INSERT OR IGNORE INTO budget_alerts (scope, target, period, ratio) VALUES (?, ?, ?, ?)").run(p.scope, p.target ?? "", p.period, p.ratio);
       return;
     }
     case "artifact.created": {
@@ -294,6 +361,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     }
     case "workitem.triaged": {
       const p = (event as NavarchEvent<"workitem.triaged">).payload;
+      // Inbox triage runs on an API model outside any run: billed, counted in the global month.
+      insertUsage(db, event, { model: p.model, billing: "metered", tokens_in: 0, tokens_out: 0, cached_tokens: 0, cost: p.cost_usd });
       db.prepare("UPDATE work_items SET triage = ?, triage_model = ?, triage_version = version, triage_failures = 0, triaged_at = ? WHERE id = ?").run(
         JSON.stringify(p.triage),
         p.model,

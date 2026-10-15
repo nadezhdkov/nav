@@ -5,7 +5,7 @@ import { agentNodeId, buildFleetTree, moveFocus, OTHER_REPOS, runNodeId, subagen
 function agent(over: Partial<FleetAgent> = {}): FleetAgent {
   return {
     id: "task_impl", run_id: "run_1", node_id: "implement", type: "agent", status: "running", attempt: 1, max_attempts: 3,
-    profile: "implementer", adapter: "claude-code", model: null, sandbox_path: null, branch: null, cost: 0, summary: null, error: null,
+    profile: "implementer", adapter: "claude-code", model: null, sandbox_path: null, branch: null, cost: 0, plan_cost: 0, summary: null, error: null,
     not_before: null, updated_at: "2026-10-15T01:00:00Z", iteration: 1, last_activity: null, waiting: null, resumable: true,
     pending_messages: 0, team_role: null, team_key: null, ...over,
   };
@@ -13,7 +13,7 @@ function agent(over: Partial<FleetAgent> = {}): FleetAgent {
 
 function run(over: Partial<FleetRun> = {}): FleetRun {
   return {
-    id: "run_1", status: "executing", repo_path: "/src/app", base_commit: "abc", prompt: "p", budget: 2, cost_total: 0,
+    id: "run_1", status: "executing", repo_path: "/src/app", base_commit: "abc", prompt: "p", budget: 2, cost_total: 0, plan_cost: 0,
     created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z", ended_at: null, work_item: null, pr_url: null,
     flow: "task", autonomy_level: 2, team: null, progress: { done: 0, total: 2 }, project_id: null, agents: [], ...over,
   };

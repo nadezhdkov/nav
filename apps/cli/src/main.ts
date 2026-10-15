@@ -19,11 +19,14 @@ import {
   type ProjectView,
   type StartInboxResult,
   type SyncInboxResult,
+  type BudgetView,
+  type SetBudgetRequest,
+  type UsageView,
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatDevices, formatEvent, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync } from "./format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -66,6 +69,11 @@ Usage:
   navarch inbox start <item-id>... [--flow <name>] [--budget <usd>]
                                          start one issue run per item in its project's clone
   navarch inbox dismiss <item-id> [--reason <text>] | restore <item-id>
+  navarch budget [show]                    billed use against the run, project-day and monthly limits
+  navarch budget set --monthly <usd|none> | --project <id> --daily <usd|none> | --run <id> <usd>
+                                         change a limit; raising one releases tasks waiting on it
+  navarch usage [--days <n>] [--profile <name>]
+                                         spend today and this month, tokens, success and cost per model
 
 Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
@@ -105,6 +113,11 @@ async function main(argv: string[]): Promise<number> {
       github: { type: "string" },
       name: { type: "string" },
       project: { type: "string" },
+      monthly: { type: "string" },
+      daily: { type: "string" },
+      run: { type: "string" },
+      days: { type: "string" },
+      profile: { type: "string" },
     },
   });
   const [command, ...rest] = positionals;
@@ -232,6 +245,22 @@ async function main(argv: string[]): Promise<number> {
       const projects = await api.request<ProjectView[]>("GET", "/api/v1/projects");
       return print(json ? projects : formatProjects(projects), json);
     }
+    case "budget": {
+      const api = new ApiClient(home);
+      if (rest[0] === "set") {
+        const body = budgetRequest(values, rest.slice(1));
+        const budgets = await api.request<BudgetView[]>("PUT", "/api/v1/budgets", body);
+        return print(json ? budgets : formatBudgets(budgets), json);
+      }
+      if (rest[0] !== "show" && rest[0] !== undefined) throw new CliError("usage: navarch budget [show] | set ...", EXIT.usage);
+      const budgets = await api.request<BudgetView[]>("GET", "/api/v1/budgets");
+      return print(json ? budgets : formatBudgets(budgets), json);
+    }
+    case "usage": {
+      const query = new URLSearchParams({ ...(values.days ? { days: values.days } : {}), ...(values.profile ? { profile: values.profile } : {}) }).toString();
+      const usage = await new ApiClient(home).request<UsageView>("GET", `/api/v1/usage${query ? `?${query}` : ""}`);
+      return print(json ? usage : formatUsage(usage), json);
+    }
     case "sync": {
       const result = await new ApiClient(home).request<SyncInboxResult>("POST", "/api/v1/inbox/sync", values.project ? { project_id: values.project } : {});
       print(json ? result : formatSync(result.results), json);
@@ -313,6 +342,22 @@ async function main(argv: string[]): Promise<number> {
     default:
       throw new CliError(`unknown command: ${command}\n\n${USAGE}`, EXIT.usage);
   }
+}
+
+/** `navarch budget set`: exactly one of --monthly, --project with --daily, or --run with an amount. */
+function budgetRequest(values: { monthly?: string; project?: string; daily?: string; run?: string }, rest: string[]): SetBudgetRequest {
+  const amount = (raw: string | undefined, what: string, removable: boolean): number | null => {
+    if (raw === undefined) throw new CliError(`missing ${what}`, EXIT.usage);
+    if (removable && raw === "none") return null;
+    const n = Number(raw);
+    if (!(n > 0)) throw new CliError(`${what} must be a positive number${removable ? " or none" : ""}`, EXIT.usage);
+    return n;
+  };
+  const chosen = [values.monthly !== undefined, values.project !== undefined, values.run !== undefined].filter(Boolean).length;
+  if (chosen !== 1) throw new CliError("usage: navarch budget set --monthly <usd|none> | --project <id> --daily <usd|none> | --run <id> <usd>", EXIT.usage);
+  if (values.monthly !== undefined) return { scope: "global_monthly", usd: amount(values.monthly, "--monthly", true) };
+  if (values.project !== undefined) return { scope: "project_daily", target: values.project, usd: amount(values.daily, "--daily", true) };
+  return { scope: "run", target: values.run!, usd: amount(rest[0], "the run's new budget", false) };
 }
 
 function required(value: string | undefined, what: string): string {

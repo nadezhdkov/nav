@@ -13,6 +13,7 @@ import type {
   AdapterCapabilities,
   AdapterIO,
   AgentAdapter,
+  Billing,
   HealthStatus,
   TaskContext,
   TaskResult,
@@ -83,7 +84,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact" };
+    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact", billing: "plan" };
   }
 
   healthcheck(): Promise<HealthStatus> {
@@ -127,6 +128,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     let result: ClaudeResult | undefined;
     let limit: ClaudeLimit | undefined;
     let lastText = "";
+    /** Billed per call only when Claude Code uses an API key rather than a claude.ai plan (ADR 0023). */
+    let billing: Billing = "plan";
     /** Sub-agents started in this attempt and not finished yet, by tool use id. */
     const subagents = new Map<string, string>();
     const exit = await this.processes.run({
@@ -140,7 +143,9 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       onLine: (line) => {
         io.emit({ kind: "log", line });
         for (const item of parseLine(line)) {
-          if (item.kind === "text") {
+          if (item.kind === "init") {
+            billing = item.apiKeySource && item.apiKeySource !== "none" ? "metered" : "plan";
+          } else if (item.kind === "text") {
             lastText = item.text;
             io.emit({ kind: "progress", message: item.text.slice(0, 500) });
           } else if (item.kind === "tool") {
@@ -168,7 +173,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     const final = result && {
       ok: result.ok,
       summary: result.text,
-      usage: result.usage,
+      usage: result.usage.map((u) => ({ ...u, billing })),
       ...(result.ok ? {} : { error: `${result.subtype}: ${result.text}` }),
     };
     // Claude Code exits non-zero on some successful runs with warnings; trust its result line.

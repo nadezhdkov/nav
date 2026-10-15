@@ -62,9 +62,19 @@ describe("concierge API", () => {
     expect(turn).toMatchObject({ status: 200, body: { reply: "Nothing has run yet.", proposals: [], model: "fake/concierge-1" } });
     expect(server.requests[0]?.model).toBe("concierge-1");
     expect(server.requests[0]?.tools?.map((t) => t.function.name)).toEqual(
-      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_inbox", "list_approvals", "start_run", "cancel_run", "send_instruction", "resume_run", "approve", "reject"]),
+      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_inbox", "show_usage", "list_approvals", "start_run", "cancel_run", "send_instruction", "resume_run", "approve", "reject"]),
     );
     expect(server.requests[1]?.messages.at(-1)).toMatchObject({ role: "tool", content: "[]" });
+  });
+
+  it("reads budgets and spend with show_usage, and cannot change them (ADR 0023)", async () => {
+    const { api, server, conversation } = await start([{ tool_calls: [{ name: "show_usage", args: {} }] }, { content: "Nothing spent." }]);
+    const id = await conversation();
+    await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "how much did I spend?" });
+    const result = JSON.parse(String(server.requests[1]?.messages.at(-1)?.content)) as { today: { cost: number }; budgets: { scope: string; limit: number | null }[] };
+    expect(result.today.cost).toBe(0);
+    expect(result.budgets[0]).toMatchObject({ scope: "global_monthly", limit: 100 });
+    expect(server.requests[0]?.tools?.map((t) => t.function.name).some((n) => n.includes("budget"))).toBe(false);
   });
 
   it("starts a run only after the operator approves the proposal, in the operator's directory", async () => {

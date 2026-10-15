@@ -161,7 +161,9 @@ describe("navarchd", () => {
     const [task] = run.body.tasks;
     expect(task).toMatchObject({ status: "succeeded", attempt: 1, branch: `navarch/${created.body.id}/task` });
     expect(task?.sandbox_path?.startsWith(join(home, "worktrees"))).toBe(true);
-    expect(run.body.cost_total).toBeCloseTo(0.01);
+    // The fake Claude Code is signed in to a plan: its cost is API-equivalent, outside the budget (ADR 0023).
+    expect(run.body.cost_total).toBe(0);
+    expect(run.body.plan_cost).toBeCloseTo(0.01);
     expect(existsSync(join(repo, "hello.txt"))).toBe(false);
 
     const diff = run.body.artifacts.find((a) => a.kind === "diff");

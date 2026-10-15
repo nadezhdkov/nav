@@ -1,4 +1,4 @@
-import type { ApprovalView, DeviceView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, BudgetView, DeviceView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -14,7 +14,7 @@ export function formatRunDetail(run: RunDetail): string {
     `run      ${run.id}`,
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
-    `cost     ${usd(run.cost_total)} of ${usd(run.budget)}`,
+    `cost     ${usd(run.cost_total)} of ${usd(run.budget)}${run.plan_cost > 0 ? ` (plus ${usd(run.plan_cost)} plan-equivalent, not billed)` : ""}`,
     ...(run.flow ? [`flow     ${run.flow}${run.autonomy_level !== null ? ` (autonomy level ${run.autonomy_level})` : ""}`] : []),
     ...(run.work_item ? [`issue    ${run.work_item.repo}#${run.work_item.number}  ${run.work_item.url}`] : []),
     ...(run.pr_url ? [`pr       ${run.pr_url}`] : []),
@@ -224,5 +224,64 @@ export function formatInbox(view: InboxView): string {
     ),
   );
   lines.push("", "start runs: navarch inbox start <item>... · dismiss: navarch inbox dismiss <item>");
+  return lines.join("\n");
+}
+
+/** `navarch budget`: each scope's billed use against its limit (ADR 0023). */
+export function formatBudgets(budgets: BudgetView[]): string {
+  const scope = (b: BudgetView) => (b.scope === "run" ? `run ${b.target}` : b.scope === "project_daily" ? `project ${b.label} (${b.target}) · ${b.period}` : `global · ${b.period}`);
+  const state = (b: BudgetView) => (b.state === "exceeded" ? "EXCEEDED" : b.state === "warning" ? "warning" : "ok");
+  const rows = budgets.map((b) => [
+    scope(b),
+    b.limit === null ? `${usd(b.used)} (no limit)` : `${usd(b.used)} of ${usd(b.limit)} · ${Math.round((b.ratio ?? 0) * 100)} %`,
+    b.limit === null ? "-" : state(b),
+    b.plan_equivalent > 0 ? usd(b.plan_equivalent) : "-",
+    b.source,
+  ]);
+  return [
+    table(["SCOPE", "BILLED", "STATE", "PLAN-EQUIVALENT", "LIMIT FROM"], rows),
+    "",
+    "only billed (API key) use counts; plan use is limited by quotas. Change a limit with:",
+    "  navarch budget set --monthly <usd|none> | --project <id> --daily <usd|none> | --run <id> <usd>",
+  ].join("\n");
+}
+
+/** `navarch usage`: spend and observed metrics per model (ADR 0023). */
+export function formatUsage(u: UsageView): string {
+  const tokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+  const pct = (n: number | null) => (n === null ? "-" : `${Math.round(n * 100)} %`);
+  const lines = [
+    `today       ${usd(u.today.cost)} billed · ${usd(u.today.plan_cost)} plan-equivalent · ${tokens(u.today.tokens)} tokens`,
+    `this month  ${usd(u.month.cost)} billed · ${usd(u.month.plan_cost)} plan-equivalent · ${tokens(u.month.tokens)} tokens`,
+    "",
+  ];
+  if (!u.models.length) lines.push(`no agent tasks in the last ${u.window_days} days`);
+  else {
+    lines.push(`agents and models, last ${u.window_days} days${u.models[0]?.profile ? ` (profile ${u.models[0].profile})` : ""}:`);
+    lines.push(
+      table(
+        ["MODEL", "BILLING", "TASKS", "OK", "ERR 24H", "TOKENS IN/OUT", "TOKENS/OK", "COST/OK", "BILLED", "P50"],
+        u.models.map((m) => [
+          m.id,
+          m.billing,
+          String(m.tasks),
+          pct(m.success_rate),
+          pct(m.error_rate_24h),
+          `${tokens(m.tokens_in)}/${tokens(m.tokens_out)}`,
+          m.median_tokens_per_success === null ? "-" : tokens(m.median_tokens_per_success),
+          m.median_cost_per_success === null ? "-" : usd(m.median_cost_per_success),
+          usd(m.cost),
+          m.p50_duration_ms === null ? "-" : `${Math.round(m.p50_duration_ms / 1000)}s`,
+        ]),
+      ),
+    );
+  }
+  const quotas = u.quotas.filter((q) => q.utilization !== null || q.exhausted);
+  if (quotas.length) {
+    lines.push("", "quotas:");
+    for (const q of quotas) {
+      lines.push(`  ${q.adapter}${q.model_prefix ? `/${q.model_prefix}` : ""} ${q.window}: ${q.exhausted ? "exhausted" : pct(q.utilization)}${q.resets_at ? `, resets ${q.resets_at.slice(0, 16).replace("T", " ")}` : ""}`);
+    }
+  }
   return lines.join("\n");
 }

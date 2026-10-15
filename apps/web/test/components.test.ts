@@ -24,6 +24,7 @@ const run: RunView = {
   prompt: "Add a CONTRIBUTING.md\nwith sections",
   budget: 2,
   cost_total: 0.4,
+  plan_cost: 0,
   created_at: "2026-10-15T00:00:00Z",
   updated_at: "2026-10-15T00:00:00Z",
   ended_at: null,

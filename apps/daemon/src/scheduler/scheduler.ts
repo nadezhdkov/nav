@@ -1,5 +1,7 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
-import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { Budgets } from "../budgets/budgets.ts";
+import { observedFor } from "../budgets/metrics.ts";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
@@ -28,6 +30,9 @@ export type ActionExecutor = {
   execute(ctx: { run: RunRecord; task: TaskRecord; attempt: number; signal: AbortSignal }): Promise<TaskOutcome>;
 };
 
+/** How far back observed metrics reach for routing (ADR 0023). */
+const OBSERVED_WINDOW_MS = 30 * 86_400_000;
+
 /** Runs created before Flows carry no stage on their tasks. */
 const LEGACY_STAGE: Record<string, RunStatus> = { implement: "executing", verify: "verifying", open_pr: "ready_for_pr" };
 /** Executors of legacy tasks, which had no `uses`. */
@@ -45,6 +50,7 @@ export class Scheduler {
   private readonly runtime: AgentRuntime;
   private readonly policy: PolicyEngine;
   private readonly config: Config;
+  private readonly budgets: Budgets;
   private readonly cancelHook: CancelHook;
   private readonly actions: Map<string, ActionExecutor>;
   private readonly onSucceeded: (runId: string) => void;
@@ -65,6 +71,7 @@ export class Scheduler {
     policy: PolicyEngine;
     config: Config;
     cancel: CancelHook;
+    budgets?: Budgets;
     actions?: Map<string, ActionExecutor>;
     /** Called after a task succeeded, to advance the run's TaskGraph (the Orchestrator). */
     onSucceeded?: (runId: string) => void;
@@ -75,6 +82,7 @@ export class Scheduler {
     this.runtime = deps.runtime;
     this.policy = deps.policy;
     this.config = deps.config;
+    this.budgets = deps.budgets ?? new Budgets({ store: deps.store, config: deps.config });
     this.cancelHook = deps.cancel;
   }
 
@@ -171,17 +179,26 @@ export class Scheduler {
       return;
     }
     const profile = task.type === "agent" ? (PROFILES.get(task.profile) ?? implementer) : undefined;
-    const action = executor?.action ?? (task.team?.role === "lead" ? "team.turn" : task.team?.role === "member" ? "team.delegate" : "task.start");
+    const runAction = executor?.action ?? (task.team?.role === "lead" ? "team.turn" : task.team?.role === "member" ? "team.delegate" : "task.start");
+    // A used-up budget (run, project day or global month) asks a human before any agent starts (ADR 0023).
+    const exceeded = executor ? [] : this.budgets.scopesOf(run).filter((s) => s.state === "exceeded");
+    const overBudget = exceeded.length > 0 && !this.store.taskApproved(task.id, "budget.exceed");
+    const action = overBudget ? "budget.exceed" : runAction;
+    const budgetRemaining = this.budgets.remaining(run);
     const decision = this.policy.decide(scheduler, action, task.id, {
       autonomyLevel: run.autonomy_level ?? this.config.autonomy_level,
-      budgetRemaining: run.budget - run.cost_total,
+      budgetRemaining,
+      ...(overBudget ? { budgetExceeded: exceeded.map(describeBudget) } : {}),
       ...(profile ? { edits: profile.edits } : {}),
     });
     const nodeStatus = task.stage ?? LEGACY_STAGE[task.node_id];
+    const agentText = `Run the ${task.profile} agent (${task.adapter}) on this run's worktree${profile?.edits ? ", editing files" : ", read-only"}.`;
     const describe = executor
       ? executor.describe(run, task)
-      : `Run the ${task.profile} agent (${task.adapter}) on this run's worktree${profile?.edits ? ", editing files" : ", read-only"}.`;
-    if (decision.effect === "require_approval" && !this.store.taskApproved(task.id)) {
+      : overBudget
+        ? `${agentText} Over budget: ${exceeded.map(describeBudget).join("; ")}. Approving lets this one task spend beyond it; raising the budget releases every waiting task.`
+        : agentText;
+    if (decision.effect === "require_approval" && !this.store.taskApproved(task.id, action)) {
       const events: NewEvent[] = [
         taskStatus(run.id, task.id, "ready", "waiting_approval", task.attempt, decision.reason),
         {
@@ -192,8 +209,9 @@ export class Scheduler {
           payload: { approval_id: newId("apr"), action, resource: task.id, reason: decision.reason, summary: describe },
         },
       ];
-      // An approval node puts the run in awaiting_approval; a gated side effect keeps the stage it belongs to.
-      const waitStatus = task.type === "approval" ? "awaiting_approval" : nodeStatus;
+      // An approval node puts the run in awaiting_approval; a budget stop shows as budget_exceeded;
+      // a gated side effect keeps the stage it belongs to.
+      const waitStatus = task.type === "approval" ? "awaiting_approval" : overBudget ? "budget_exceeded" : nodeStatus;
       if (waitStatus && canTransitionRun(run.status, waitStatus)) events.push(runStatus(run.id, run.status, waitStatus, "waiting for approval"));
       this.store.append(events);
       return;
@@ -257,7 +275,8 @@ export class Scheduler {
         setupCommands: profile!.edits ? run.setup_commands : [],
         ...(profile!.id === "planner" ? { summaryArtifact: "plan" as const } : {}),
         budget: {
-          maxCost: Math.max(run.budget - run.cost_total, 0),
+          // Billed agents stop at the smallest amount left (0: no limit, or approved beyond it).
+          maxCost: Number.isFinite(budgetRemaining) ? budgetRemaining : 0,
           maxTurns: 0,
           timeoutMs: this.config.scheduler.task_timeout_minutes * 60_000,
         },
@@ -384,6 +403,19 @@ export class Scheduler {
     const implementerProviders = [
       ...new Set(tasks.filter((t) => t.profile === "implementer" && t.status === "succeeded").map((t) => this.providerOf(t))),
     ];
+    // Budget left, quota headroom and observed failures and costs adjust the order (ADR 0023).
+    const now = Date.now();
+    const observed = observedFor(this.store.attemptsSince(new Date(now - OBSERVED_WINDOW_MS).toISOString()), now);
+    const quotaUse = this.store
+      .quotas(now)
+      .filter((q) => !q.exhausted && q.utilization !== null && (!q.resets_at || Date.parse(q.resets_at) > now))
+      .map((q) => ({
+        adapter: q.adapter,
+        window: q.window,
+        utilization: q.utilization!,
+        ...(q.model_prefix ? { modelPrefix: q.model_prefix } : {}),
+        ...(q.resets_at ? { resetsAt: q.resets_at } : {}),
+      }));
     const decision = this.runtime.route({
       profile: task.profile,
       ...(complexity !== undefined ? { complexity } : {}),
@@ -392,6 +424,9 @@ export class Scheduler {
       exhausted: this.store.exhaustedQuotas(),
       exclude,
       ...(prefer ? { prefer } : {}),
+      budgetRemaining: this.budgets.remaining(run),
+      quotaUse,
+      observed: (id) => observed(id, task.profile),
     });
     const chosen: { id: string; adapter: string; model?: string; provider: string } = decision?.chosen ?? {
       id: task.model_id ?? task.adapter,
@@ -467,4 +502,9 @@ export class Scheduler {
     const reason = `waiting for ${task.adapter} quota until ${untilIso}`;
     return [taskStatus(task.run_id, task.id, "failed", "ready", attempt, reason, undefined, untilIso)];
   }
+}
+
+function describeBudget(b: BudgetView): string {
+  const scope = b.scope === "run" ? "run" : b.scope === "project_daily" ? `project ${b.label} today` : `global ${b.period}`;
+  return `${scope} $${b.used.toFixed(2)} of $${(b.limit ?? 0).toFixed(2)}`;
 }

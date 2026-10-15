@@ -111,3 +111,55 @@ describe("route", () => {
     expect(route(config, req({ prefer: "nope" })).chosen?.id).toBe("claude-code");
   });
 });
+
+describe("route: budget and observed metrics (ADR 0023)", () => {
+  const withBudget: RouterConfig = {
+    ...config,
+    tiers: { ...config.tiers, standard: ["qwen", "claude-code", "copilot"] },
+    quota_reserve: 0.9,
+    degraded_error_rate: 0.5,
+  };
+  const held: RouterConfig = { ...config, quota_reserve: 0.9, degraded_error_rate: 0.5 };
+  const billing = (e: { adapter: string }) => (e.adapter === "native" ? ("metered" as const) : ("plan" as const));
+
+  it("skips a billed entry expected to cost more than the budget left", () => {
+    const d = route(withBudget, req({ budgetRemaining: 0.25, billing, observed: (id) => (id === "qwen" ? { expectedCost: 0.4 } : undefined) }));
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.skipped).toContainEqual({ id: "qwen", reason: "expected $0.40, $0.25 left in the budget" });
+  });
+
+  it("does not filter without history, without a limit, or for plan entries", () => {
+    expect(route(withBudget, req({ budgetRemaining: 0.25, billing })).chosen?.id).toBe("qwen");
+    expect(route(withBudget, req({ budgetRemaining: Infinity, billing, observed: () => ({ expectedCost: 9 }) })).chosen?.id).toBe("qwen");
+    const plan = route(config, req({ budgetRemaining: 0, billing, observed: () => ({ expectedCost: 9 }) }));
+    expect(plan.chosen?.id).toBe("claude-code");
+  });
+
+  it("applies the budget filter to a lead's preference", () => {
+    const d = route(withBudget, req({ prefer: "qwen", budgetRemaining: 0.1, billing, observed: () => ({ expectedCost: 0.5 }) }));
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.skipped[0]).toEqual({ id: "qwen", reason: "preferred by the lead; expected $0.50, $0.10 left in the budget" });
+  });
+
+  it("keeps an entry whose quota is nearly used for later", () => {
+    const d = route(held, req({ quotaUse: [{ adapter: "claude-code", window: "five_hour", utilization: 0.93, resetsAt: "2026-10-15T18:00:00Z" }] }));
+    expect(d.chosen?.id).toBe("copilot");
+    expect(d.reason).toContain("after the others: claude-code (quota 93 % used until 2026-10-15T18:00:00Z, kept for later)");
+    expect(route(held, req({ quotaUse: [{ adapter: "claude-code", window: "five_hour", utilization: 0.5 }] })).chosen?.id).toBe("claude-code");
+  });
+
+  it("puts an entry that keeps failing after the others, given enough recent tasks", () => {
+    const failing = (n: number) => (id: string) => (id === "claude-code" ? { recent: { failed: n, total: Math.max(n, 4) } } : undefined);
+    const d = route(withBudget, req({ observed: failing(4), billing, budgetRemaining: Infinity, exclude: ["qwen"] }));
+    expect(d.chosen?.id).toBe("copilot");
+    expect(d.reason).toContain("claude-code (4 of 4 tasks failed in 24 h)");
+    expect(route(held, req({ observed: () => ({ recent: { failed: 3, total: 3 } }) })).chosen?.id).toBe("claude-code");
+    expect(route(held, req({ observed: failing(1) })).chosen?.id).toBe("claude-code");
+  });
+
+  it("still uses a held-back entry when it is the only usable one", () => {
+    const d = route(held, req({ adapters: new Set(["claude-code"]), quotaUse: [{ adapter: "claude-code", window: "seven_day", utilization: 0.95 }] }));
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.reason).toContain("every candidate in tier standard is held back, using claude-code (quota 95 % used, kept for later)");
+  });
+});

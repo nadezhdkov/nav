@@ -18,16 +18,20 @@ describe("PolicyEngine", () => {
   it("gates a team's lead turns and members like any agent task (ADR 0022)", () => {
     for (const action of ["team.turn", "team.delegate"]) {
       expect(policy.decide(agent, action, "t", { autonomyLevel: 3, budgetRemaining: 1, edits: true }).effect).toBe("allow");
-      expect(policy.decide(agent, action, "t", { autonomyLevel: 3, budgetRemaining: 0 })).toMatchObject({ effect: "deny", reason: "run budget exhausted" });
       expect(policy.decide(agent, action, "t", { autonomyLevel: 1, edits: true }).effect).toBe("require_approval");
       expect(policy.decide(agent, action, "t", { autonomyLevel: 0, edits: false }).effect).toBe("require_approval");
     }
   });
 
-  it("gates task start on autonomy and budget", () => {
+  it("asks a human before spending beyond a used-up budget, at any autonomy level (ADR 0023)", () => {
+    const decision = policy.decide(agent, "budget.exceed", "t", { autonomyLevel: 4, budgetRemaining: 0, budgetExceeded: ["run $2.10 of $2.00"] });
+    expect(decision.effect).toBe("require_approval");
+    expect(decision.reason).toMatch(/budget is used up/);
+  });
+
+  it("gates task start on autonomy", () => {
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 1 }).effect).toBe("allow");
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 0, budgetRemaining: 1 }).effect).toBe("require_approval");
-    expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 0 }).effect).toBe("deny");
     // Level 1 (analyse): reading agents run, editing agents wait for a human.
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 1, edits: false }).effect).toBe("allow");
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 1, edits: true }).effect).toBe("require_approval");

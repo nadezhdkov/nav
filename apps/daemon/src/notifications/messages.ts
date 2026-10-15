@@ -5,7 +5,7 @@ import type { Locale } from "@navarch/contracts";
  * notification is shown by the phone's system, not by the app; the device's locale comes with
  * its push subscription. `{n}` is a count.
  */
-export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "paused_quota" | "pr_opened" | "run_done" | "question";
+export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "budget_warning" | "paused_quota" | "pr_opened" | "run_done" | "question";
 export type ApprovalSubject = "plan" | "pr" | "verification" | "agent";
 
 interface Texts {
@@ -21,6 +21,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       approval: "Approval needed",
       run_failed: "Run failed",
       budget_exceeded: "Budget reached",
+      budget_warning: "Budget almost used",
       paused_quota: "Run paused: quota",
       pr_opened: "Draft PR opened",
       run_done: "Run done",
@@ -35,6 +36,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       approval: "Aprovação pendente",
       run_failed: "Run falhou",
       budget_exceeded: "Orçamento atingido",
+      budget_warning: "Orçamento quase no fim",
       paused_quota: "Run pausada: cota",
       pr_opened: "PR rascunho aberto",
       run_done: "Run concluída",
@@ -49,6 +51,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       approval: "Aprobación pendiente",
       run_failed: "La run falló",
       budget_exceeded: "Presupuesto alcanzado",
+      budget_warning: "Presupuesto casi agotado",
       paused_quota: "Run en pausa: cuota",
       pr_opened: "PR borrador abierto",
       run_done: "Run terminada",
@@ -63,6 +66,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       approval: "Freigabe nötig",
       run_failed: "Run fehlgeschlagen",
       budget_exceeded: "Budget erreicht",
+      budget_warning: "Budget fast aufgebraucht",
       paused_quota: "Run pausiert: Kontingent",
       pr_opened: "Entwurfs-PR geöffnet",
       run_done: "Run fertig",
@@ -77,6 +81,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       approval: "需要审批",
       run_failed: "运行失败",
       budget_exceeded: "已达预算",
+      budget_warning: "预算即将用完",
       paused_quota: "运行已暂停：配额",
       pr_opened: "已打开草稿 PR",
       run_done: "运行完成",

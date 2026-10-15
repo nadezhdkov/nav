@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatDevices, formatEvent, formatInbox, formatRemote, formatRunList, formatSync } from "../src/format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatInbox, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -11,6 +11,7 @@ function run(prompt: string): RunView {
     prompt,
     budget: 5,
     cost_total: 0,
+    plan_cost: 0,
     created_at: "2026-10-14T19:34:47.558Z",
     updated_at: "2026-10-14T19:34:47.558Z",
   } as RunView;
@@ -140,5 +141,56 @@ describe("formatInbox", () => {
     expect(formatSync([{ project_id: "p", new: 2, changed: 1, closed: 0, not_modified: false }, { project_id: "q", new: 0, changed: 0, closed: 0, not_modified: false, error: "rate limit" }])).toBe(
       "p: 2 new, 1 changed, 0 closed\nq: failed: rate limit",
     );
+  });
+});
+
+describe("budgets and usage (ADR 0023)", () => {
+  it("shows billed use against each limit and how to change one", () => {
+    const text = formatBudgets([
+      { scope: "global_monthly", target: null, label: "global", period: "2026-10", limit: 100, source: "config", used: 85, plan_equivalent: 12.5, ratio: 0.85, state: "warning" },
+      { scope: "project_daily", target: "prj_1", label: "acme", period: "2026-10-15", limit: null, source: "config", used: 0.25, plan_equivalent: 0, ratio: null, state: "ok" },
+      { scope: "run", target: "run_1", label: "Fix it", period: "run_1", limit: 2, source: "run", used: 2.1, plan_equivalent: 0, ratio: 1.05, state: "exceeded" },
+    ]);
+    expect(text).toContain("global · 2026-10");
+    expect(text).toMatch(/\$85\.00 of \$100\.00 · 85 %\s+warning\s+\$12\.50/);
+    expect(text).toContain("$0.2500 (no limit)");
+    expect(text).toMatch(/run run_1\s+\$2\.10 of \$2\.00 · 105 %\s+EXCEEDED/);
+    expect(text).toContain("navarch budget set --monthly");
+  });
+
+  it("shows spend, tokens and per-model metrics", () => {
+    const text = formatUsage({
+      generated_at: "2026-10-15T12:00:00Z",
+      window_days: 30,
+      today: { cost: 0.5, plan_cost: 3, tokens: 12_345 },
+      month: { cost: 4, plan_cost: 40, tokens: 2_500_000 },
+      budgets: [],
+      models: [
+        {
+          id: "claude-code",
+          adapter: "claude-code",
+          model: null,
+          billing: "plan",
+          profile: null,
+          tasks: 10,
+          succeeded: 9,
+          success_rate: 0.9,
+          error_rate_24h: null,
+          tokens_in: 900_000,
+          tokens_out: 40_000,
+          cached_tokens: 0,
+          median_tokens_per_success: 80_000,
+          cost: 0,
+          plan_cost: 12,
+          median_cost_per_success: 1.2,
+          p50_duration_ms: 95_000,
+        },
+      ],
+      quotas: [{ adapter: "claude-code", window: "five_hour", utilization: 0.4, resets_at: "2026-10-15T18:00:00Z", exhausted: false, model_prefix: null, observed_at: "2026-10-15T11:00:00Z" }],
+    });
+    expect(text).toContain("today       $0.5000 billed · $3.00 plan-equivalent · 12.3k tokens");
+    expect(text).toContain("2.5M tokens");
+    expect(text).toMatch(/claude-code\s+plan\s+10\s+90 %\s+-\s+900\.0k\/40\.0k\s+80\.0k\s+\$1\.20\s+\$0\.00\s+95s/);
+    expect(text).toContain("claude-code five_hour: 40 %, resets 2026-10-15 18:00");
   });
 });

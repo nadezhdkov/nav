@@ -9,9 +9,11 @@ import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini
 import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode";
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
+import { Budgets, spends } from "./budgets/budgets.ts";
+import { modelMetrics } from "./budgets/metrics.ts";
 import { ConciergeService } from "./concierge/service.ts";
 import { InboxService } from "./inbox/service.ts";
-import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage } from "@navarch/contracts";
+import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
@@ -60,6 +62,7 @@ export class Daemon {
   readonly devices: DeviceService;
   readonly notifier: Notifier;
   readonly inbox: InboxService;
+  readonly budgets: Budgets;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
@@ -87,11 +90,20 @@ export class Daemon {
     const policy = new PolicyEngine();
     this.policy = policy;
     const github = new GitHubIntegration(this.config, this.vault, policy);
+    this.budgets = new Budgets({ store: this.store, config: this.config });
+    // Billed use may cross a budget threshold: record it once per scope and period (ADR 0023).
+    this.store.subscribe((event) => {
+      if (!spends(event)) return;
+      const run = event.run_id ? this.store.getRun(event.run_id) : undefined;
+      const crossed = this.budgets.thresholdEvents(run);
+      if (crossed.length) this.store.append(crossed);
+    });
     this.scheduler = new Scheduler({
       store: this.store,
       runtime,
       policy,
       config: this.config,
+      budgets: this.budgets,
       cancel: async (taskId) => {
         await Promise.all([...adapters.values()].map((a) => a.cancel(taskId)));
       },
@@ -110,6 +122,7 @@ export class Daemon {
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
       listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
+      usage: () => this.usage({ days: 30 }),
     });
     this.inbox = new InboxService({ config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
   }
@@ -131,6 +144,39 @@ export class Daemon {
   /** An instruction from the user to a run (ADR 0019, `POST /api/v1/runs/:id/messages`). */
   pauseRun(runId: string, actor: Actor): RunView {
     return this.orchestrator.pauseRun(runId, actor, (taskId) => this.scheduler.requestInterrupt(taskId, PAUSE_INTERRUPT));
+  }
+
+  /**
+   * The user sets or removes a budget limit (ADR 0023). Tasks waiting on `budget.exceed` whose
+   * scopes are no longer used up are released, as if the user approved them.
+   */
+  setBudget(req: SetBudgetRequest, actor: Actor): void {
+    this.store.append([this.budgets.setEvent(req, actor)]);
+    for (const approval of this.store.listApprovals("pending")) {
+      if (approval.action !== "budget.exceed") continue;
+      const run = this.store.getRun(approval.run_id);
+      if (!run || this.budgets.scopesOf(run).some((s) => s.state === "exceeded")) continue;
+      this.orchestrator.decideApproval(approval.id, "approve", "budget raised", actor);
+    }
+  }
+
+  /** The Usage screen (ADR 0023): budgets, spend today and this month, observed metrics per model, quotas. */
+  usage(opts: { days: number; profile?: string }): UsageView {
+    const now = Date.now();
+    const attempts = this.store.attemptsSince(new Date(now - opts.days * 86_400_000).toISOString());
+    return {
+      generated_at: new Date(now).toISOString(),
+      window_days: opts.days,
+      today: this.store.usageTotals(this.budgets.day().from),
+      month: this.store.usageTotals(this.budgets.month().from),
+      budgets: this.budgets.views(),
+      models: modelMetrics(attempts, {
+        now,
+        ...(opts.profile ? { profile: opts.profile } : {}),
+        billingOf: (adapter) => this.adapters.get(adapter)?.capabilities().billing ?? "metered",
+      }),
+      quotas: this.store.quotas(now),
+    };
   }
 
   /** The kill switch: pauses every active run. */

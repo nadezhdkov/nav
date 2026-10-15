@@ -48,7 +48,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost")) {
       this.rebuildProjections();
     }
   }
@@ -285,9 +285,11 @@ export class EventStore {
     return this.listApprovals().find((a) => a.id === id);
   }
 
-  /** True when a human approved this task's pending side effect. */
-  taskApproved(taskId: string): boolean {
-    return Boolean(this.db.prepare("SELECT 1 FROM approvals WHERE task_id = ? AND status = 'approved'").get(taskId));
+  /** True when a human approved this task's side effect (one action, or any). */
+  taskApproved(taskId: string, action?: string): boolean {
+    return Boolean(
+      this.db.prepare("SELECT 1 FROM approvals WHERE task_id = ? AND status = 'approved' AND (? IS NULL OR action = ?)").get(taskId, action ?? null, action ?? null),
+    );
   }
 
   /** Instructions sent to a run (ADR 0019), oldest first. */
@@ -449,6 +451,64 @@ export class EventStore {
     ).map((r) => ({ cost: Number(r.cost), triage: r.triage ?? null }));
   }
 
+  /**
+   * Billed and plan-equivalent cost and tokens of the Cost Ledger since `from` (ISO 8601), for all
+   * use, one run, or the runs of one repository path (ADR 0023).
+   */
+  usageTotals(from: string | null, scope: { runId?: string; repoPath?: string } = {}): UsageTotals {
+    const where = ["(? IS NULL OR u.ts >= ?)"];
+    const args: (string | null)[] = [from, from];
+    if (scope.runId) {
+      where.push("u.run_id = ?");
+      args.push(scope.runId);
+    }
+    if (scope.repoPath) {
+      where.push("u.run_id IN (SELECT id FROM runs WHERE repo_path = ?)");
+      args.push(scope.repoPath);
+    }
+    const row = this.db
+      .prepare(
+        `SELECT COALESCE(SUM(CASE WHEN u.billing = 'plan' THEN 0 ELSE u.cost END), 0) AS cost,
+                COALESCE(SUM(CASE WHEN u.billing = 'plan' THEN u.cost ELSE 0 END), 0) AS plan_cost,
+                COALESCE(SUM(u.tokens_in + u.tokens_out), 0) AS tokens
+         FROM usage u WHERE ${where.join(" AND ")}`,
+      )
+      .get(...args) as { cost: number; plan_cost: number; tokens: number };
+    return { cost: Number(row.cost), plan_cost: Number(row.plan_cost), tokens: Number(row.tokens) };
+  }
+
+  /** A limit the user set for a project or the global month: `usd: null` removed it; undefined means the config applies. */
+  budgetOverride(scope: "project_daily" | "global_monthly", target: string | null): { usd: number | null } | undefined {
+    const row = this.db.prepare("SELECT usd FROM budget_overrides WHERE scope = ? AND target = ?").get(scope, target ?? "") as { usd: number | null } | undefined;
+    return row ? { usd: row.usd === null ? null : Number(row.usd) } : undefined;
+  }
+
+  /** Whether `budget.threshold` was already recorded for this scope, period and ratio. */
+  budgetAlerted(scope: string, target: string | null, period: string, ratio: number): boolean {
+    return !!this.db.prepare("SELECT 1 FROM budget_alerts WHERE scope = ? AND target = ? AND period = ? AND ratio = ?").get(scope, target ?? "", period, ratio);
+  }
+
+  /** Finished agent attempts since `from`, oldest first: the observed metrics' source (ADR 0023). */
+  attemptsSince(from: string): AttemptRecord[] {
+    return (this.db.prepare("SELECT * FROM attempts WHERE ts >= ? ORDER BY seq").all(from) as Row[]).map((r) => ({
+      ts: String(r.ts),
+      run_id: String(r.run_id),
+      task_id: String(r.task_id),
+      profile: String(r.profile),
+      adapter: String(r.adapter),
+      model: (r.model as string | null) ?? null,
+      model_id: (r.model_id as string | null) ?? null,
+      status: String(r.status) as AttemptRecord["status"],
+      error_kind: (r.error_kind as string | null) ?? null,
+      duration_ms: Number(r.duration_ms),
+      tokens_in: Number(r.tokens_in),
+      tokens_out: Number(r.tokens_out),
+      cached_tokens: Number(r.cached_tokens),
+      cost: Number(r.cost),
+      plan_cost: Number(r.plan_cost),
+    }));
+  }
+
   /** The latest observation of every quota window, by adapter (Home, ADR 0021). */
   quotas(now = Date.now()): QuotaView[] {
     const latest = new Map<string, QuotaView>();
@@ -476,6 +536,26 @@ export class EventStore {
   }
 }
 
+
+export type UsageTotals = { cost: number; plan_cost: number; tokens: number };
+
+export type AttemptRecord = {
+  ts: string;
+  run_id: string;
+  task_id: string;
+  profile: string;
+  adapter: string;
+  model: string | null;
+  model_id: string | null;
+  status: "succeeded" | "failed" | "needs_input";
+  error_kind: string | null;
+  duration_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+  cached_tokens: number;
+  cost: number;
+  plan_cost: number;
+};
 
 export type ProjectRecord = {
   id: string;
@@ -594,6 +674,7 @@ function toRunView(row: Row): RunView {
     prompt: String(row.prompt),
     budget: Number(row.budget),
     cost_total: Number(row.cost_total),
+    plan_cost: Number(row.plan_cost ?? 0),
     created_at: String(row.created_at),
     updated_at: String(row.updated_at),
     ended_at: (row.ended_at as string | null) ?? null,
@@ -619,6 +700,7 @@ function toTaskView(row: Row): TaskView {
     sandbox_path: (row.sandbox_path as string | null) ?? null,
     branch: (row.branch as string | null) ?? null,
     cost: Number(row.cost),
+    plan_cost: Number(row.plan_cost ?? 0),
     summary: (row.summary as string | null) ?? null,
     error: (row.error as string | null) ?? null,
     not_before: (row.not_before as string | null) ?? null,

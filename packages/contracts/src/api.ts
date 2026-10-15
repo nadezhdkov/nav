@@ -47,7 +47,10 @@ export const TaskView = z.object({
   model: z.string().nullable(),
   sandbox_path: z.string().nullable(),
   branch: z.string().nullable(),
+  /** Billed cost (ADR 0023). */
   cost: z.number(),
+  /** API-equivalent cost of plan use, where the agent reports one. */
+  plan_cost: z.number(),
   summary: z.string().nullable(),
   error: z.string().nullable(),
   /** Set while a rate-limited task waits for its quota to reset. */
@@ -65,7 +68,10 @@ export const RunView = z.object({
   base_commit: z.string(),
   prompt: z.string(),
   budget: z.number(),
+  /** Billed cost, what the budget counts (ADR 0023). */
   cost_total: z.number(),
+  /** API-equivalent cost of plan use. */
+  plan_cost: z.number(),
   created_at: z.string(),
   updated_at: z.string(),
   ended_at: z.string().nullable(),

@@ -8,6 +8,7 @@ export const routes = [
   { path: "/new", name: "new", component: () => import("./views/NewRunView.vue") },
   { path: "/inbox", name: "inbox", component: () => import("./views/InboxView.vue") },
   { path: "/fleet", name: "fleet", component: () => import("./views/FleetView.vue") },
+  { path: "/usage", name: "usage", component: () => import("./views/UsageView.vue") },
   { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
   { path: "/device", name: "device", component: () => import("./views/DeviceView.vue") },
   { path: "/settings/devices", name: "devices", component: () => import("./views/DevicesView.vue") },

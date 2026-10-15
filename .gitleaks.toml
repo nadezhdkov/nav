@@ -8,3 +8,11 @@ useDefault = true
 description = "RFC 8291 Appendix A test vector"
 regexTarget = "match"
 regexes = ['''BTBZMqHH6r4Tts7J_aSIgg''']
+
+# A sortable table column of the Usage screen (`{ key: "p50_duration_ms", ... }`),
+# read by the generic-api-key rule as a key; it is a field name, not a secret.
+[[allowlists]]
+description = "Usage table column id"
+condition = "AND"
+paths = ['''apps/web/src/views/UsageView\.vue''']
+regexes = ['''^p50_duration_ms$''']

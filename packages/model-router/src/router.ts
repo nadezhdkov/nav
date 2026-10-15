@@ -29,6 +29,18 @@ export type RouterConfig = {
   simple_max_complexity: number;
   /** Profiles that should run on a provider other than the run's implementer. */
   different_provider: string[];
+  /** A candidate with a quota window at least this used goes after the others (ADR 0023). */
+  quota_reserve?: number;
+  /** A candidate failing at this rate or more over enough recent tasks goes after the others. */
+  degraded_error_rate?: number;
+};
+
+/** What Navarch has observed of a catalog entry (spec §6.4.1), as far as routing needs it. */
+export type Observed = {
+  /** Median billed cost of the entry's succeeded tasks for this profile; absent without enough history. */
+  expectedCost?: number;
+  /** Failures (not rate limits or cancellations) over finished tasks in the last 24 h. */
+  recent?: { failed: number; total: number };
 };
 
 export type RouteRequest = {
@@ -49,7 +61,18 @@ export type RouteRequest = {
   exclude?: string[];
   /** A team lead's preference for this member (ADR 0022): a catalog id or an adapter, tried first when usable. */
   prefer?: string;
+  /** The smallest amount left in the run's budgets; absent or Infinity when nothing is limited (ADR 0023). */
+  budgetRemaining?: number;
+  /** Whether an entry's use is billed; only `metered` entries are filtered by budget. */
+  billing?: (entry: CatalogEntry) => "metered" | "plan";
+  /** Quota windows not exhausted yet, with how much of them is used. */
+  quotaUse?: ReadonlyArray<{ adapter: string; modelPrefix?: string; window: string; utilization: number; resetsAt?: string }>;
+  /** Observed metrics of a catalog entry for this request's profile. */
+  observed?: (id: string) => Observed | undefined;
 };
+
+/** Below this many recent tasks an error rate says nothing. */
+export const MIN_RECENT_TASKS = 4;
 
 export type RouteDecision = {
   /** Undefined when no candidate is usable. */
@@ -78,9 +101,12 @@ export function tierFor(config: RouterConfig, req: Pick<RouteRequest, "profile" 
   return { tier, why };
 }
 
+const appliesTo = (q: { adapter: string; modelPrefix?: string }, entry: CatalogEntry) =>
+  q.adapter === entry.adapter && (!q.modelPrefix || (entry.model ?? "").startsWith(q.modelPrefix));
+
 function unusable(config: RouterConfig, req: RouteRequest, id: string): string | undefined {
   const entry = config.models[id];
-  const quota = entry && req.exhausted.find((q) => q.adapter === entry.adapter && (!q.modelPrefix || (entry.model ?? "").startsWith(q.modelPrefix)));
+  const quota = entry && req.exhausted.find((q) => appliesTo(q, entry));
   return !entry
     ? "not in the catalog"
     : entry.status !== "active"
@@ -91,7 +117,27 @@ function unusable(config: RouterConfig, req: RouteRequest, id: string): string |
           ? "rate limited"
           : quota
             ? `quota exhausted until ${quota.resetsAt}`
-            : req.unavailable?.(entry);
+            : (req.unavailable?.(entry) ?? overBudget(req, id, entry));
+}
+
+/** Step 3 of spec §6.4.2: a billed entry expected to cost more than the run has left (ADR 0023). */
+function overBudget(req: RouteRequest, id: string, entry: CatalogEntry): string | undefined {
+  const left = req.budgetRemaining;
+  if (left === undefined || !Number.isFinite(left) || req.billing?.(entry) !== "metered") return undefined;
+  const expected = req.observed?.(id)?.expectedCost;
+  return expected !== undefined && expected > left ? `expected $${expected.toFixed(2)}, $${left.toFixed(2)} left in the budget` : undefined;
+}
+
+/** Why a usable entry should wait behind the others: a nearly used quota or many recent failures. */
+function demotion(config: RouterConfig, req: RouteRequest, id: string): string | undefined {
+  const entry = config.models[id]!;
+  const reserve = config.quota_reserve ?? 1;
+  const busy = req.quotaUse?.filter((q) => appliesTo(q, entry) && q.utilization >= reserve).sort((a, b) => b.utilization - a.utilization)[0];
+  if (busy) return `quota ${Math.round(busy.utilization * 100)} % used${busy.resetsAt ? ` until ${busy.resetsAt}` : ""}, kept for later`;
+  const recent = req.observed?.(id)?.recent;
+  const limit = config.degraded_error_rate ?? 1;
+  if (recent && recent.total >= MIN_RECENT_TASKS && recent.failed / recent.total >= limit) return `${recent.failed} of ${recent.total} tasks failed in 24 h`;
+  return undefined;
 }
 
 export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
@@ -116,13 +162,22 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
       };
     }
   }
-  const usable: string[] = [];
+  const ready: string[] = [];
+  const later: { id: string; why: string }[] = [];
   for (const id of candidates) {
     const entry = config.models[id];
     const skip = entry ? unusable(config, req, id) : "not in the catalog";
-    if (skip) skipped.push({ id, reason: skip });
-    else usable.push(id);
+    if (skip) {
+      skipped.push({ id, reason: skip });
+      continue;
+    }
+    const why = demotion(config, req, id);
+    if (why) later.push({ id, why });
+    else ready.push(id);
   }
+  // Demoted entries keep their order among themselves, after every other usable one.
+  const usable = [...ready, ...later.map((l) => l.id)];
+  const laterNote = later.length ? `; after the others: ${later.map((l) => `${l.id} (${l.why})`).join(", ")}` : "";
 
   let pick = usable[0];
   let providerNote = "";
@@ -138,11 +193,14 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
   }
 
   if (!pick) return { tier, reason: `${why}; no usable candidate in tier ${tier}`, candidates, skipped };
+  const demoted = later.find((l) => l.id === pick);
   const entry = config.models[pick]!;
   return {
     chosen: { id: pick, adapter: entry.adapter, ...(entry.model ? { model: entry.model } : {}), provider: entry.provider },
     tier,
-    reason: `${why}; first usable in tier ${tier}${providerNote}`,
+    reason: demoted
+      ? `${why}; every candidate in tier ${tier} is held back, using ${pick} (${demoted.why})${providerNote}`
+      : `${why}; first usable in tier ${tier}${providerNote}${laterNote}`,
     candidates,
     skipped,
   };

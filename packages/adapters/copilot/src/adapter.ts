@@ -81,7 +81,7 @@ export class CopilotAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact" };
+    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact", billing: "plan" };
   }
 
   healthcheck(): Promise<HealthStatus> {
