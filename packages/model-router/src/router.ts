@@ -41,8 +41,10 @@ export type RouteRequest = {
   implementerProviders: string[];
   /** Adapters the daemon has enabled. */
   adapters: ReadonlySet<string>;
-  /** Adapter → when its exhausted quota resets (ISO 8601). */
-  exhausted: ReadonlyMap<string, string>;
+  /** Exhausted quotas: the adapter, optionally only its models with this id prefix, and when they reset (ISO 8601). */
+  exhausted: ReadonlyArray<{ adapter: string; modelPrefix?: string; resetsAt: string }>;
+  /** Why an entry's adapter cannot run its model now (e.g. no API key), if it cannot. */
+  unavailable?: (entry: CatalogEntry) => string | undefined;
   /** Catalog ids not to use, e.g. the one that just hit its rate limit. */
   exclude?: string[];
 };
@@ -81,6 +83,7 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
   const usable: string[] = [];
   for (const id of candidates) {
     const entry = config.models[id];
+    const quota = entry && req.exhausted.find((q) => q.adapter === entry.adapter && (!q.modelPrefix || (entry.model ?? "").startsWith(q.modelPrefix)));
     const skip = !entry
       ? "not in the catalog"
       : entry.status !== "active"
@@ -89,9 +92,9 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
           ? `adapter ${entry.adapter} not enabled`
           : req.exclude?.includes(id)
             ? "rate limited"
-            : req.exhausted.has(entry.adapter)
-              ? `quota exhausted until ${req.exhausted.get(entry.adapter)}`
-              : undefined;
+            : quota
+              ? `quota exhausted until ${quota.resetsAt}`
+              : req.unavailable?.(entry);
     if (skip) skipped.push({ id, reason: skip });
     else usable.push(id);
   }

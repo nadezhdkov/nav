@@ -10,6 +10,7 @@ import {
   type RunView,
   type TaskView,
   type NavarchEvent,
+  type QuotaObservation,
   type VerifyCommand,
 } from "@navarch/contracts";
 import { applyEvent } from "./projections.ts";
@@ -148,23 +149,18 @@ export class EventStore {
   }
 
   /**
-   * Adapters whose latest observation of some quota window says it is exhausted and resets
-   * after `now`, with the latest such reset. Feeds the Model Router (ADR 0013).
+   * Quota windows whose latest observation says they are exhausted and reset after `now`
+   * (optionally scoped to a model prefix). Feeds the Model Router (ADR 0013, 0014).
    */
-  exhaustedAdapters(now = Date.now()): Map<string, string> {
-    const latest = new Map<string, { exhausted: boolean; resets_at?: string }>();
+  exhaustedQuotas(now = Date.now()): { adapter: string; modelPrefix?: string; resetsAt: string }[] {
+    const latest = new Map<string, QuotaObservation>();
     for (const row of this.db.prepare("SELECT payload FROM events WHERE type = 'quota.observed' ORDER BY seq").all() as { payload: string }[]) {
-      const q = JSON.parse(row.payload) as { adapter: string; window: string; exhausted?: boolean; resets_at?: string };
-      latest.set(`${q.adapter}\u0000${q.window}`, { exhausted: Boolean(q.exhausted), ...(q.resets_at ? { resets_at: q.resets_at } : {}) });
+      const q = JSON.parse(row.payload) as QuotaObservation;
+      latest.set(JSON.stringify([q.adapter, q.model_prefix ?? "", q.window]), q);
     }
-    const out = new Map<string, string>();
-    for (const [key, q] of latest) {
-      if (!q.exhausted || !q.resets_at || Date.parse(q.resets_at) <= now) continue;
-      const adapter = key.split("\u0000")[0]!;
-      const prev = out.get(adapter);
-      if (!prev || q.resets_at > prev) out.set(adapter, q.resets_at);
-    }
-    return out;
+    return [...latest.values()]
+      .filter((q) => q.exhausted && q.resets_at && Date.parse(q.resets_at) > now)
+      .map((q) => ({ adapter: q.adapter, ...(q.model_prefix ? { modelPrefix: q.model_prefix } : {}), resetsAt: q.resets_at! }));
   }
 
   /** Catalog ids a task left after rate limits, oldest first. */

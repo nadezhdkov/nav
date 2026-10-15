@@ -1,0 +1,45 @@
+# Free models for the Model Router (ADR 0014). Merge into ~/.navarch/config.yaml.
+#
+# Keys live in the Vault, never here:
+#   navarch secret set openrouter/api_key   # https://openrouter.ai/keys
+#   navarch secret set opencode/api_key     # https://opencode.ai/console
+# An entry whose provider has no key is skipped by the router ("no API key for provider …").
+#
+# Free offers change often and are not guaranteed; check before relying on them:
+#   OpenRouter: ids ending in `:free`, 20 requests/min and 50/day (1,000/day after buying 10 credits once).
+#   OpenCode Zen: ids ending in `-free` (plus big-pickle), limits not published, often time-limited.
+# Data terms differ per model: several free models log prompts or use them for training.
+# Keep them out of the tiers for private or confidential repositories.
+
+routing:
+  models:
+    laguna-s-free:
+      adapter: native
+      model: openrouter/poolside/laguna-s-2.1:free
+      provider: poolside
+    north-mini-code-free:
+      adapter: native
+      model: openrouter/cohere/north-mini-code:free
+      provider: cohere
+    nemotron-ultra-free:
+      adapter: native
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      provider: nvidia
+    zen-big-pickle:
+      adapter: native
+      model: opencode-zen/big-pickle
+      provider: opencode
+    zen-nemotron-lightning:
+      adapter: native
+      model: opencode-zen/nemotron-3.5-lightning-free
+      provider: nvidia
+    zen-mimo-flash:
+      adapter: native
+      model: opencode-zen/mimo-v2.6-flash-free
+      provider: xiaomi
+  tiers:
+    # Free first; the router falls back on rate limits and missing keys, and a failed
+    # verification moves the implementer up to `standard`.
+    fast: [laguna-s-free, zen-mimo-flash, copilot, claude-code]
+    standard: [claude-code, copilot]
+    expert: [claude-code, copilot]

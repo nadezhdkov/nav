@@ -19,7 +19,7 @@ const req = (over: Partial<RouteRequest>): RouteRequest => ({
   iteration: 1,
   implementerProviders: [],
   adapters: new Set(["claude-code", "copilot", "codex", "native"]),
-  exhausted: new Map(),
+  exhausted: [],
   ...over,
 });
 
@@ -46,7 +46,7 @@ describe("route", () => {
   it("skips exhausted quotas, excluded entries and disabled adapters, with reasons", () => {
     const d = route(
       { ...config, tiers: { ...config.tiers, fast: ["codex", "copilot", "claude-code"] } },
-      req({ profile: "triager", exhausted: new Map([["copilot", "2026-11-01T00:00:00.000Z"]]) }),
+      req({ profile: "triager", exhausted: [{ adapter: "copilot", resetsAt: "2026-11-01T00:00:00.000Z" }] }),
     );
     expect(d.chosen?.id).toBe("claude-code");
     expect(d.skipped).toEqual([
@@ -74,6 +74,26 @@ describe("route", () => {
     const d = route(config, req({ profile: "reviewer", implementerProviders: ["anthropic"], exclude: ["copilot"] }));
     expect(d.chosen?.id).toBe("claude-code");
     expect(d.reason).toContain("no usable candidate from another provider");
+  });
+
+  it("skips entries whose adapter cannot run their model, and quotas scoped to a model prefix", () => {
+    const free = {
+      ...config,
+      models: {
+        ...config.models,
+        "or-free": { adapter: "native", model: "openrouter/poolside/laguna-s-2.1:free", provider: "poolside", status: "active" as const },
+        "zen-free": { adapter: "native", model: "opencode-zen/big-pickle", provider: "opencode", status: "active" as const },
+      },
+      tiers: { ...config.tiers, fast: ["or-free", "zen-free", "copilot"] },
+    };
+    const noZenKey = (e: { model?: string }) => (e.model?.startsWith("opencode-zen/") ? "no API key for provider opencode-zen" : undefined);
+    const d = route(free, req({ profile: "triager", unavailable: noZenKey, exhausted: [{ adapter: "native", modelPrefix: "openrouter/", resetsAt: "2026-10-16T00:00:00.000Z" }] }));
+    expect(d.chosen?.id).toBe("copilot");
+    expect(d.skipped).toEqual([
+      { id: "or-free", reason: "quota exhausted until 2026-10-16T00:00:00.000Z" },
+      { id: "zen-free", reason: "no API key for provider opencode-zen" },
+    ]);
+    expect(route(free, req({ profile: "triager" })).chosen?.id).toBe("or-free");
   });
 
   it("carries the catalog entry's model", () => {

@@ -17,7 +17,7 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
 | `copilot` | `copilot -p` | `copilot login` (Copilot plan; each prompt costs premium requests) | yes |
-| `native` | Navarch's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
+| `native` | Navarch's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` and `opencode-zen/<model>`, keys in the Vault (`navarch secret set openrouter/api_key`, `opencode/api_key`) or `OPENROUTER_API_KEY` (ADR 0014) | no, a retry restarts the conversation |
 
 Agents run with Navarch's configuration, not the operator's: Claude Code without user-level settings (`--setting-sources project,local`), gemini-cli with a per-task home. The task prompt lists the allowed commands, and `--setup <cmd>` prepares the worktree (e.g. `npm ci`) before the agent starts (ADR 0006). After a restart, interrupted tasks are dispatched first.
 
@@ -34,7 +34,7 @@ Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 
 - The GitHub Integration (`packages/github`) is the only GitHub client. It reads issues and opens draft PRs with a fine-grained PAT kept in the OS keychain as `secret://github/token` (ADR 0007), and pushes only `navarch/*` branches, never forced.
 - Below autonomy level 3, opening a PR waits for a human (`navarch approvals`, `navarch approve|reject`, API `/api/v1/approvals`).
 
-Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): without `--adapter`/`--model`, each agent task is routed at dispatch through the Agent Runtime to a catalog entry (adapter + model) from `routing` in the config. Tiers per profile, `fast` for triage and for planner/implementer when the triage says `Complexity: ≤ 2` (Copilot first by default), Claude Code first otherwise; the reviewer goes to a provider other than the implementer's; exhausted quotas are skipped and a rate limit falls back to the next candidate at once. Every decision is a `model.routed` event. Tests run with stub agent CLIs first on PATH (`test/no-real-agents.ts`), so no test can reach a real agent.
+Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): without `--adapter`/`--model`, each agent task is routed at dispatch through the Agent Runtime to a catalog entry (adapter + model) from `routing` in the config. Tiers per profile, `fast` for triage and for planner/implementer when the triage says `Complexity: ≤ 2` (Copilot first by default), Claude Code first otherwise; the reviewer goes to a provider other than the implementer's; exhausted quotas are skipped and a rate limit falls back to the next candidate at once. Every decision is a `model.routed` event. Free models (OpenRouter `:free`, OpenCode Zen) are catalog entries on the `native` adapter, merged from `routing.models` (example: `docs/examples/free-models.yaml`); an entry whose provider has no key is skipped, and a free daily limit is a quota scoped to that provider's models (ADR 0014). Tests run with stub agent CLIs first on PATH (`test/no-real-agents.ts`, also `secret-tool`), so no test can reach a real agent or the keychain.
 
 Not yet: budget-aware routing and observed metrics, branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
 

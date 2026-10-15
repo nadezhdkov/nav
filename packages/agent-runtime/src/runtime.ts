@@ -68,9 +68,13 @@ export class AgentRuntime {
   }
 
   /** Asks the Model Router where an agent task should run, among the adapters this runtime has. */
-  route(req: Omit<RouteRequest, "adapters">): RouteDecision | undefined {
+  route(req: Omit<RouteRequest, "adapters" | "unavailable">): RouteDecision | undefined {
     if (!this.deps.router) return undefined;
-    return route(this.deps.router, { ...req, adapters: new Set(this.deps.adapters.keys()) });
+    return route(this.deps.router, {
+      ...req,
+      adapters: new Set(this.deps.adapters.keys()),
+      unavailable: (entry) => this.deps.adapters.get(entry.adapter)?.unavailableReason?.(entry.model),
+    });
   }
 
   async execute(spec: TaskSpec): Promise<TaskOutcome> {
@@ -136,6 +140,7 @@ export class AgentRuntime {
                 ...(event.utilization !== undefined ? { utilization: event.utilization } : {}),
                 ...(event.resetsAt ? { resets_at: event.resetsAt } : {}),
                 ...(event.exhausted !== undefined ? { exhausted: event.exhausted } : {}),
+                ...(event.modelPrefix ? { model_prefix: event.modelPrefix } : {}),
               });
             } else {
               this.publish(spec, actor, "task.resume_token", { adapter: adapter.id, token: event.token });

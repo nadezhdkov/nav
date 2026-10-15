@@ -43,7 +43,8 @@ navarch run --adapter antigravity --model gemini-3.8-flash-medium "Fix the typo 
 navarch run --adapter codex "Add a unit test for parse_date"
 navarch run --adapter copilot "Add a unit test for parse_date"   # one premium request per prompt
 navarch run --adapter native --model ollama/qwen2.5:7b "Update the usage section in README.md"
-navarch run --adapter native --model openrouter/<model>:free "…"   # needs OPENROUTER_API_KEY
+navarch run --adapter native --model openrouter/<model>:free "…"   # key: navarch secret set openrouter/api_key
+navarch run --adapter native --model opencode-zen/big-pickle "…"    # key: navarch secret set opencode/api_key
 ```
 
 Small local models are free but make more mistakes. Always read the diff (`navarch run show <id>`).
