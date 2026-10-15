@@ -27,7 +27,7 @@ const meta = computed(() => {
     :class="[`tone-${look.tone}`, { pulse: live, 'border-dashed': gate && data.state === 'not_started' }]"
     :style="{
       borderColor: data.state === 'not_started' ? 'var(--border)' : 'color-mix(in srgb, var(--tone) 60%, transparent)',
-      boxShadow: live || data.state === 'succeeded' ? 'var(--glow)' : undefined,
+      boxShadow: live || data.state === 'succeeded' ? 'var(--glow)' : 'var(--card-shadow)',
       background: gate ? 'color-mix(in srgb, var(--tone-warning) 8%, var(--surface))' : undefined,
     }"
     :aria-label="`${t(`node.kind.${data.kind}`)} ${data.label}: ${t(`status.${data.state}`)}`"
