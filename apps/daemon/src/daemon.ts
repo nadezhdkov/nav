@@ -10,13 +10,16 @@ import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
 import { ConciergeService } from "./concierge/service.ts";
-import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RunView, type SendRunMessage } from "@navarch/contracts";
+import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
 import { buildActions } from "./orchestrator/actions.ts";
 import { homeFiles, loadConfig, type Config } from "./config.ts";
 import { EventStore } from "./events/store.ts";
+import { DeviceService } from "./devices/devices.ts";
+import { Notifier } from "./notifications/notifier.ts";
+import { tailscaleStatus } from "./remote/tailscale.ts";
 import { Orchestrator } from "./orchestrator/orchestrator.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
@@ -53,6 +56,9 @@ export class Daemon {
   readonly vault: Vault;
   readonly concierge: ConciergeService;
   readonly policy: PolicyEngine;
+  readonly devices: DeviceService;
+  readonly notifier: Notifier;
+  private remoteCache: { at: number; status: RemoteStatus } | undefined;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
   private port?: number;
@@ -90,6 +96,8 @@ export class Daemon {
       actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
       onSucceeded: (runId) => this.orchestrator.advance(runId),
     });
+    this.devices = new DeviceService(this.store, join(this.home, "device-key"));
+    this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });
     this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github, undefined, policy);
     this.concierge = new ConciergeService({
       config: this.config,
@@ -142,7 +150,31 @@ export class Daemon {
     this.port = typeof address === "object" && address ? address.port : this.config.daemon.port;
     writeFileSync(homeFiles(this.home).daemonInfo, JSON.stringify({ pid: process.pid, url: this.url }));
     this.orchestrator.recover();
+    this.notifier.start();
     this.scheduler.pump();
+    // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
+    void this.remoteStatus().catch(() => {});
+  }
+
+  /** Remote access as configured and as Tailscale reports it; cached for 30 seconds. */
+  async remoteStatus(): Promise<RemoteStatus> {
+    const remote = this.config.daemon.remote;
+    const port = this.port ?? this.config.daemon.port;
+    if (remote.mode === "off") {
+      return { mode: "off", installed: false, running: false, url: null, serving: false, setup_command: `tailscale serve --bg ${port}` };
+    }
+    if (this.remoteCache && Date.now() - this.remoteCache.at < 30_000) return this.remoteCache.status;
+    const detected = await tailscaleStatus(port);
+    const status: RemoteStatus = { ...detected, url: remote.url?.replace(/\/+$/, "") ?? detected.url };
+    this.remoteCache = { at: Date.now(), status };
+    return status;
+  }
+
+  /** The phone's origin, if known, for the WebSocket origin check. */
+  remoteOrigin(): string | undefined {
+    if (this.config.daemon.remote.mode === "off") return undefined;
+    const url = this.config.daemon.remote.url ?? this.remoteCache?.status.url ?? undefined;
+    return url ? new URL(url).origin : undefined;
   }
 
   /**
@@ -151,6 +183,7 @@ export class Daemon {
    */
   async stop(): Promise<void> {
     await this.server?.close();
+    await this.notifier.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });

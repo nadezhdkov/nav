@@ -192,15 +192,34 @@ export const DeviceSession = z.object({
 });
 export type DeviceSession = z.infer<typeof DeviceSession>;
 
-/** A browser's Web Push subscription (`PushSubscription.toJSON()`). */
+/** The Web UI's languages (ADR 0017); notifications are written in the device's. */
+export const Locale = z.enum(["en", "pt-BR", "es", "de", "zh-CN"]);
+export type Locale = z.infer<typeof Locale>;
+
+/** A browser's Web Push subscription (`PushSubscription.toJSON()`) and the language to notify in. */
 export const PushSubscriptionRequest = z.object({
   endpoint: z.string().url().max(2048),
   keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(64) }),
+  locale: Locale.default("en"),
 });
 export type PushSubscriptionRequest = z.infer<typeof PushSubscriptionRequest>;
 
 export const PushKey = z.object({ public_key: z.string() });
 export type PushKey = z.infer<typeof PushKey>;
+
+/** Remote access as the daemon sees it (`GET /api/v1/remote`, `navarch remote status`). */
+export const RemoteStatus = z.object({
+  mode: z.enum(["tailscale", "off"]),
+  installed: z.boolean(),
+  running: z.boolean(),
+  /** The HTTPS origin the phone opens; from the config or the tailnet name. */
+  url: z.string().nullable(),
+  /** `tailscale serve` proxies that origin to this daemon. */
+  serving: z.boolean(),
+  /** What to run when `serving` is false. */
+  setup_command: z.string(),
+});
+export type RemoteStatus = z.infer<typeof RemoteStatus>;
 
 /** The kill switch's result: the runs it paused. */
 export const StopResult = z.object({ paused: z.array(z.string()) });

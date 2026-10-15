@@ -229,6 +229,21 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       if (res.changes !== 1) throw new ProjectionError(`message ${p.message_id} is unknown or already delivered`);
       return;
     }
+    case "device.paired": {
+      const p = (event as NavarchEvent<"device.paired">).payload;
+      db.prepare("INSERT INTO devices (id, name, paired_at) VALUES (?, ?, ?)").run(p.device_id, p.name, ts);
+      return;
+    }
+    case "device.revoked": {
+      const p = (event as NavarchEvent<"device.revoked">).payload;
+      db.prepare("UPDATE devices SET revoked_at = COALESCE(revoked_at, ?), revoke_reason = COALESCE(revoke_reason, ?), push = 0 WHERE id = ?").run(ts, p.reason, p.device_id);
+      return;
+    }
+    case "device.push_changed": {
+      const p = (event as NavarchEvent<"device.push_changed">).payload;
+      db.prepare("UPDATE devices SET push = ? WHERE id = ?").run(p.enabled ? 1 : 0, p.device_id);
+      return;
+    }
     case "workitem.received":
     case "verification.completed":
     case "github.push":
@@ -237,6 +252,9 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "concierge.message":
     case "concierge.action.proposed":
     case "concierge.action.decided":
+    case "fleet.stopped":
+    case "notification.sent":
+    case "notification.failed":
       return;
   }
 }

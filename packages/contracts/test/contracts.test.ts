@@ -91,7 +91,7 @@ describe("devices and push", () => {
     expect(PairDeviceRequest.safeParse({ code: "c", name: "  " }).success).toBe(false);
     expect(PairDeviceRequest.parse({ code: "c", name: " Pixel 9 " }).name).toBe("Pixel 9");
     const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: "BPk", auth: "x" } };
-    expect(PushSubscriptionRequest.parse(sub)).toEqual(sub);
+    expect(PushSubscriptionRequest.parse(sub)).toEqual({ ...sub, locale: "en" });
     expect(PushSubscriptionRequest.safeParse({ endpoint: "not a url", keys: sub.keys }).success).toBe(false);
   });
 });

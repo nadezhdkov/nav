@@ -110,6 +110,14 @@ CREATE TABLE IF NOT EXISTS run_messages (
   delivered_at TEXT
 );
 CREATE INDEX IF NOT EXISTS run_messages_run ON run_messages(run_id, created_at);
+CREATE TABLE IF NOT EXISTS devices (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  paired_at TEXT NOT NULL,
+  revoked_at TEXT,
+  revoke_reason TEXT,
+  push INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -129,4 +137,32 @@ DROP TABLE IF EXISTS artifacts;
 DROP TABLE IF EXISTS approvals;
 DROP TABLE IF EXISTS skipped_nodes;
 DROP TABLE IF EXISTS run_messages;
+DROP TABLE IF EXISTS devices;
+`;
+
+/**
+ * Device credentials (ADR 0020): refresh-token hashes and push subscriptions. They are not
+ * projections, so no event carries them and rebuilding projections leaves them alone.
+ */
+export const credentialTables = `
+CREATE TABLE IF NOT EXISTS device_credentials (
+  device_id TEXT PRIMARY KEY,
+  refresh_hash TEXT NOT NULL UNIQUE,
+  refresh_expires_at TEXT NOT NULL,
+  rotated_at TEXT,
+  last_seen_at TEXT
+);
+CREATE TABLE IF NOT EXISTS device_refresh_used (
+  hash TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  used_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  device_id TEXT PRIMARY KEY,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  locale TEXT NOT NULL DEFAULT 'en',
+  created_at TEXT NOT NULL
+);
 `;
