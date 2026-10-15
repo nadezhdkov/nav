@@ -199,6 +199,9 @@ importers:
       '@navarch/adapter-codex':
         specifier: workspace:*
         version: link:../../packages/adapters/codex
+      '@navarch/adapter-copilot':
+        specifier: workspace:*
+        version: link:../../packages/adapters/copilot
       '@navarch/adapter-gemini-cli':
         specifier: workspace:*
         version: link:../../packages/adapters/gemini-cli
@@ -255,6 +258,15 @@ importers:
         version: link:../../contracts
 
   packages/adapters/codex:
+    dependencies:
+      '@navarch/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/copilot:
     dependencies:
       '@navarch/adapter-kit':
         specifier: workspace:*

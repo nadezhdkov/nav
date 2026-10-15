@@ -79,6 +79,9 @@ export const Config = z.object({
       codex: z
         .object({ enabled: z.boolean().default(true), command: z.string().default("codex"), model: z.string().optional() })
         .prefault({}),
+      copilot: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("copilot"), model: z.string().optional() })
+        .prefault({}),
       native: z
         .object({
           enabled: z.boolean().default(true),

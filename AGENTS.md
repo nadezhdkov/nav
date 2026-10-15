@@ -8,7 +8,7 @@ Instructions for AI agents working in this repository. Product source of truth: 
 
 ## Current state
 
-**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `navarchd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants and the CLI. Five agent adapters run tasks in a worktree, chosen per run with `--adapter` (ADR 0004):
+**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `navarchd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants and the CLI. Six agent adapters run tasks in a worktree, chosen per run with `--adapter` (ADR 0004, ADR 0012):
 
 | Adapter | Runs | Login / key | Resume |
 |---|---|---|---|
@@ -16,11 +16,12 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | `gemini-cli` | `gemini --prompt` | `GEMINI_API_KEY` (AI Studio) in the environment or `~/.gemini/.env`; each task gets its own Gemini home that selects it (ADR 0006) | yes |
 | `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
+| `copilot` | `copilot -p` | `copilot login` (Copilot plan; each prompt costs premium requests) | yes |
 | `native` | Navarch's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
 
 Agents run with Navarch's configuration, not the operator's: Claude Code without user-level settings (`--setting-sources project,local`), gemini-cli with a per-task home. The task prompt lists the allowed commands, and `--setup <cmd>` prepares the worktree (e.g. `npm ci`) before the agent starts (ADR 0006). After a restart, interrupted tasks are dispatched first.
 
-When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `navarch run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events.
+When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `navarch run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events; Copilot running out of premium requests waits for the monthly reset (1st, 00:00 UTC).
 
 Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md).
 
@@ -49,13 +50,13 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 | `make ci` | verify + audit + secrets + lint-workflows, everything CI runs |
 | `make daemon` | run `navarchd` in the foreground |
 | `make cli ARGS="…"` | run the `navarch` CLI, e.g. `ARGS="run list"` |
-| `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, ollama) |
+| `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, copilot, ollama) |
 
 CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
 
 CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,native}`, `flows/`, `docs/adr`, `docs/specs`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,native}`, `flows/`, `docs/adr`, `docs/specs`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

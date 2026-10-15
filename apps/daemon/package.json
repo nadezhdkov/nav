@@ -16,6 +16,7 @@
     "@navarch/adapter-antigravity": "workspace:*",
     "@navarch/adapter-claude-code": "workspace:*",
     "@navarch/adapter-codex": "workspace:*",
+    "@navarch/adapter-copilot": "workspace:*",
     "@navarch/adapter-gemini-cli": "workspace:*",
     "@navarch/adapter-kit": "workspace:*",
     "@navarch/adapter-native": "workspace:*",
