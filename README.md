@@ -155,7 +155,7 @@ Runtime state lives in `~/.navarch`; set `NAVARCH_HOME` to use another directory
 <details>
 <summary><b>Development</b></summary>
 
-Every command goes through the root `Makefile` (`make help` lists them): `make verify` before committing, `make ci` for everything CI runs, `make web-dev` for the Web UI with hot reload against a running daemon. Contributor notes for humans and agents are in [`AGENTS.md`](AGENTS.md); decisions are in [`docs/adr/`](docs/adr) and slice specs in [`docs/specs/`](docs/specs).
+Every command goes through the root `Makefile` (`make help` lists them): `make verify` before committing, `make ci` for everything CI runs, `make web-dev` for the Web UI with hot reload against a running daemon. Contributor notes for humans and agents are in [`AGENTS.md`](AGENTS.md), and how to report bugs and what contributions are accepted in [`CONTRIBUTING.md`](CONTRIBUTING.md); decisions are in [`docs/adr/`](docs/adr) and slice specs in [`docs/specs/`](docs/specs).
 
 </details>
 
