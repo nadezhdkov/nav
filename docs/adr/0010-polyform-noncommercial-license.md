@@ -1,6 +1,6 @@
 # 0010 — Source-available under the PolyForm Noncommercial License 1.0.0
 
-- Status: accepted
+- Status: superseded by [0018](0018-back-to-mit.md)
 - Date: 2026-10-14
 - Spec: §19.9 (license and distribution), v0.10
 - Supersedes: [0009](0009-mit-license.md) (MIT)

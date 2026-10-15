@@ -20,7 +20,7 @@
   <img src="https://img.shields.io/badge/status-Phase%201-22d3ee" alt="Status: Phase 1">
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2022.18-339933?logo=node.js&logoColor=white" alt="Node 22.18 or later">
   <img src="https://img.shields.io/badge/local--first-yes-34d399" alt="Local-first">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-a78bfa" alt="License: PolyForm Noncommercial 1.0.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-a78bfa" alt="License: MIT"></a>
 </p>
 
 <p align="center">
@@ -155,7 +155,7 @@ Runtime state lives in `~/.navarch`; set `NAVARCH_HOME` to use another directory
 <details>
 <summary><b>Development</b></summary>
 
-Every command goes through the root `Makefile` (`make help` lists them): `make verify` before committing, `make ci` for everything CI runs, `make web-dev` for the Web UI with hot reload against a running daemon. Contributor notes for humans and agents are in [`AGENTS.md`](AGENTS.md); decisions are in [`docs/adr/`](docs/adr) and slice specs in [`docs/specs/`](docs/specs).
+Every command goes through the root `Makefile` (`make help` lists them): `make verify` before committing, `make ci` for everything CI runs, `make web-dev` for the Web UI with hot reload against a running daemon. Contributor notes for humans and agents are in [`AGENTS.md`](AGENTS.md), and how to report bugs and send pull requests in [`CONTRIBUTING.md`](CONTRIBUTING.md); decisions are in [`docs/adr/`](docs/adr) and slice specs in [`docs/specs/`](docs/specs).
 
 </details>
 
@@ -167,4 +167,4 @@ Every command goes through the root `Makefile` (`make help` lists them): `make v
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE): you may use, change and share Navarch for any noncommercial purpose (personal use, study, research, hobby projects, charities and public institutions). Commercial use, including selling it or offering it as a paid service, is not allowed; ask the author if you need a commercial license. Navarch is source-available, not open source. The skills in `.claude/skills/` are adapted from mattpocock/skills and stay under MIT (`.claude/skills/THIRD_PARTY.md`).
+[MIT](LICENSE): Navarch is open source. You may use, change, share and sell it, including in closed products, as long as the copyright and license notice stay. Contributions are welcome under the same license; see [`CONTRIBUTING.md`](CONTRIBUTING.md). The skills in `.claude/skills/` are adapted from mattpocock/skills and stay under MIT (`.claude/skills/THIRD_PARTY.md`).

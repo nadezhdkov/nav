@@ -1,7 +1,7 @@
 {
   "name": "navarch",
   "private": true,
-  "license": "PolyForm-Noncommercial-1.0.0",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@12.11.2",
   "engines": {
