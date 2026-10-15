@@ -70,7 +70,7 @@ const Routing = z
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
       .prefault({}),
-    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast" }),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
     different_provider: z.array(z.string()).default(["reviewer"]),
   })
@@ -131,6 +131,26 @@ export const Config = z.object({
       model: z.string().optional(),
       /** Model calls per message. */
       max_steps: z.number().int().positive().default(8),
+    })
+    .prefault({}),
+  /**
+   * The Inbox (ADR 0021): GitHub polling of registered projects and triage of new items on an API
+   * model. Without `model`, profile `inbox` is routed among the `native` entries of its tier.
+   */
+  inbox: z
+    .object({
+      /** Minutes between syncs of each project; 0 turns polling off (`navarch sync` still works). */
+      poll_minutes: z.number().nonnegative().default(15),
+      /** `<provider>/<model>` of a native provider. */
+      model: z.string().optional(),
+      triage: z
+        .object({
+          enabled: z.boolean().default(true),
+          /** Per day in the PC's local time; the Policy Engine denies triage beyond either cap. */
+          daily_items: z.number().int().nonnegative().default(50),
+          daily_usd: z.number().nonnegative().default(0.5),
+        })
+        .prefault({}),
     })
     .prefault({}),
   scheduler: z

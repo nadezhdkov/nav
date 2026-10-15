@@ -16,6 +16,9 @@ export type PolicyContext = {
   allowCommands?: string[];
   /** For `task.start`: whether the agent's profile edits files. */
   edits?: boolean;
+  /** For `inbox.triage`: today's triage so far and the daily caps (ADR 0021). */
+  usage?: { items: number; usd: number };
+  cap?: { items: number; usd: number };
 };
 
 export type PolicyRequest = {
@@ -98,6 +101,31 @@ export const defaultRules: PolicyRule[] = [
     reason: "the daemon notifies the user's paired devices (ADR 0020)",
   },
   { match: (r) => r.action === "notification.send", effect: "deny", reason: "only the daemon sends notifications" },
+  {
+    match: (r) => (r.action === "project.add" || r.action === "project.remove") && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user chooses which repositories the Inbox watches (ADR 0021)",
+  },
+  { match: (r) => r.action === "project.add" || r.action === "project.remove", effect: "deny", reason: "only the user adds or removes projects" },
+  {
+    match: (r) => r.action === "inbox.sync" && (r.actor.kind === "user" || r.actor.kind === "system"),
+    effect: "allow",
+    reason: "reading issues of registered projects (ADR 0021)",
+  },
+  { match: (r) => r.action === "inbox.sync", effect: "deny", reason: "only the user or the daemon syncs the Inbox" },
+  {
+    match: (r) =>
+      r.action === "inbox.triage" &&
+      (!r.context.usage || !r.context.cap || r.context.usage.items >= r.context.cap.items || r.context.usage.usd >= r.context.cap.usd),
+    effect: "deny",
+    reason: "daily Inbox triage limit reached",
+  },
+  {
+    match: (r) => r.action === "inbox.triage" && r.actor.kind === "system",
+    effect: "allow",
+    reason: "Inbox triage within the daily limits (ADR 0021)",
+  },
+  { match: (r) => r.action === "inbox.triage", effect: "deny", reason: "only the daemon triages the Inbox" },
   {
     match: (r) => r.action === "flow.approval",
     effect: "require_approval",

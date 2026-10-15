@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS runs (
   flow TEXT,
   autonomy_level INTEGER,
   routing TEXT,
+  work_item_id TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   ended_at TEXT
@@ -118,6 +119,38 @@ CREATE TABLE IF NOT EXISTS devices (
   revoke_reason TEXT,
   push INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS projects (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  path TEXT NOT NULL,
+  added_at TEXT NOT NULL,
+  removed_at TEXT,
+  sync_cursor TEXT,
+  synced_at TEXT
+);
+CREATE TABLE IF NOT EXISTS work_items (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  labels TEXT NOT NULL,
+  author TEXT NOT NULL,
+  closed INTEGER NOT NULL DEFAULT 0,
+  dismissed INTEGER NOT NULL DEFAULT 0,
+  version INTEGER NOT NULL DEFAULT 1,
+  triage TEXT,
+  triage_model TEXT,
+  triage_version INTEGER,
+  triage_failures INTEGER NOT NULL DEFAULT 0,
+  triaged_at TEXT,
+  received_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS work_items_project ON work_items(project_id);
 CREATE TABLE IF NOT EXISTS artifacts (
   id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL,
@@ -138,6 +171,8 @@ DROP TABLE IF EXISTS approvals;
 DROP TABLE IF EXISTS skipped_nodes;
 DROP TABLE IF EXISTS run_messages;
 DROP TABLE IF EXISTS devices;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS work_items;
 `;
 
 /**

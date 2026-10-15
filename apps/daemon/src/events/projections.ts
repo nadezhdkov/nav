@@ -8,6 +8,7 @@ import {
   type RunStatus,
   type TaskStatus,
   type NavarchEvent,
+  workItemId,
 } from "@navarch/contracts";
 
 export class ProjectionError extends Error {}
@@ -22,8 +23,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "run.created": {
       const p = (event as NavarchEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, routing, created_at, updated_at)
-         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, routing, work_item_id, created_at, updated_at)
+         VALUES (?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.repo_path,
@@ -41,6 +42,7 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.flow ? JSON.stringify(p.flow) : null,
         p.autonomy_level ?? null,
         p.routing ?? null,
+        p.work_item ? workItemId(p.work_item.repo, p.work_item.number) : null,
         ts,
         ts,
       );
@@ -244,7 +246,60 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       db.prepare("UPDATE devices SET push = ? WHERE id = ?").run(p.enabled ? 1 : 0, p.device_id);
       return;
     }
-    case "workitem.received":
+    case "project.added": {
+      const p = (event as NavarchEvent<"project.added">).payload;
+      db.prepare("INSERT INTO projects (id, name, repo, path, added_at) VALUES (?, ?, ?, ?, ?)").run(p.project_id, p.name, p.repo, p.path, ts);
+      return;
+    }
+    case "project.removed": {
+      const p = (event as NavarchEvent<"project.removed">).payload;
+      db.prepare("UPDATE projects SET removed_at = COALESCE(removed_at, ?) WHERE id = ?").run(ts, p.project_id);
+      return;
+    }
+    case "inbox.synced": {
+      const p = (event as NavarchEvent<"inbox.synced">).payload;
+      db.prepare("UPDATE projects SET synced_at = ?, sync_cursor = COALESCE(?, sync_cursor) WHERE id = ?").run(ts, p.cursor ?? null, p.project_id);
+      return;
+    }
+    case "workitem.received": {
+      // Runs read their issue too; only a project's sync puts it in the Inbox (ADR 0021).
+      const p = (event as NavarchEvent<"workitem.received">).payload;
+      if (!p.project_id) return;
+      const id = workItemId(p.repo, p.number);
+      db.prepare(
+        `INSERT INTO work_items (id, project_id, repo, number, url, title, body, labels, author, received_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, url = excluded.url, title = excluded.title, body = excluded.body,
+           labels = excluded.labels, author = excluded.author, closed = 0, version = version + 1, triage_failures = 0, updated_at = excluded.updated_at`,
+      ).run(id, p.project_id, p.repo, p.number, p.url, p.title, p.body, JSON.stringify(p.labels), p.author, ts, ts);
+      return;
+    }
+    case "workitem.closed": {
+      const p = (event as NavarchEvent<"workitem.closed">).payload;
+      db.prepare("UPDATE work_items SET closed = 1, updated_at = ? WHERE id = ?").run(ts, p.item_id);
+      return;
+    }
+    case "workitem.triaged": {
+      const p = (event as NavarchEvent<"workitem.triaged">).payload;
+      db.prepare("UPDATE work_items SET triage = ?, triage_model = ?, triage_version = version, triage_failures = 0, triaged_at = ? WHERE id = ?").run(
+        JSON.stringify(p.triage),
+        p.model,
+        ts,
+        p.item_id,
+      );
+      return;
+    }
+    case "workitem.triage_failed": {
+      const p = (event as NavarchEvent<"workitem.triage_failed">).payload;
+      db.prepare("UPDATE work_items SET triage_failures = triage_failures + 1 WHERE id = ?").run(p.item_id);
+      return;
+    }
+    case "workitem.dismissed":
+    case "workitem.restored": {
+      const p = (event as NavarchEvent<"workitem.dismissed">).payload;
+      db.prepare("UPDATE work_items SET dismissed = ?, updated_at = ? WHERE id = ?").run(event.type === "workitem.dismissed" ? 1 : 0, ts, p.item_id);
+      return;
+    }
     case "verification.completed":
     case "github.push":
     case "policy.denied":

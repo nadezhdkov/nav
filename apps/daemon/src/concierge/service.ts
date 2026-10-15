@@ -5,6 +5,7 @@ import { newId, type Actor, type AgentAdapter, type ProposalView, type RunMessag
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
+import { nativeModels } from "../routing/native-models.ts";
 import { conciergeTools } from "./tools.ts";
 
 /**
@@ -98,30 +99,13 @@ export class ConciergeService {
 
   /** Model ids to try, in order: the pinned one, or the router's choice and the rest of its tier. */
   private candidates(): string[] {
-    const pinned = this.deps.config.concierge.model;
-    if (pinned) return [pinned];
-    const nonNative = Object.entries(this.deps.config.routing.models)
-      .filter(([, e]) => e.adapter !== "native")
-      .map(([id]) => id);
-    const exclude = [...nonNative];
-    const models: string[] = [];
-    let reason = "";
-    // The router returns its first usable entry; ask again without it to get the fallbacks.
-    for (let i = 0; i < 3; i++) {
-      const decision = this.deps.runtime.route({ profile: "concierge", iteration: 1, implementerProviders: [], exhausted: this.deps.store.exhaustedQuotas(), exclude });
-      if (!decision?.chosen?.model) {
-        reason ||= decision ? `${decision.reason}${decision.skipped.length ? ` (${decision.skipped.map((s) => `${s.id}: ${s.reason}`).join("; ")})` : ""}` : "routing is off";
-        break;
-      }
-      models.push(decision.chosen.model);
-      exclude.push(decision.chosen.id);
-    }
-    if (!models.length) {
+    const found = nativeModels(this.deps, "concierge", this.deps.config.concierge.model);
+    if ("reason" in found) {
       throw new NoModelError(
-        `no model for the concierge: ${reason}. Set concierge.model to a native model (e.g. openrouter/<id>:free) or add native entries to the concierge's tier (routing.profiles.concierge, default fast).`,
+        `no model for the concierge: ${found.reason}. Set concierge.model to a native model (e.g. openrouter/<id>:free) or add native entries to the concierge's tier (routing.profiles.concierge, default fast).`,
       );
     }
-    return models;
+    return found.models;
   }
 
   private get(id: string): Entry {

@@ -1,6 +1,6 @@
 # Phase 1, slice 8: projects, Inbox and desktop Home
 
-Status: draft · Branch: `feat/inbox` · Spec: §4 (WorkSource, WorkItem), §6.7.3, §6.14, §8.2, §9.1, §15.1, §15.3, §16 (Phase 1 "Web UI: Inbox") · ADR: 0021
+Status: in progress · Branch: `feat/inbox` · Spec: §4 (WorkSource, WorkItem), §6.7.3, §6.14, §8.2, §9.1, §15.1, §15.3, §16 (Phase 1 "Web UI: Inbox") · ADR: 0021
 
 Phase 1 asks for an Inbox in the Web UI: every open issue of the user's repositories in one list, triaged, with a suggested action and a cost estimate, and a way to start runs from it (§15.3). Today a run starts only from an issue reference typed by hand, the GitHub Integration reads one issue at a time, and triage happens only inside a run. This slice adds a project registry, a GitHub sync by polling, automatic triage on a cheap API model, the Inbox screen, and the desktop Home of §15.1 with the agents' quota windows.
 
@@ -20,7 +20,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 
 ### Sync (WorkSource GitHub, §6.7.3)
 
-- The GitHub Integration gains `listOpenIssues(repo, { etag })`. It returns the open issues (pull requests left out) of a repository, follows pagination up to 500 issues, and sends `If-None-Match`. A `304` costs no rate limit and changes nothing.
+- The GitHub client gains `listIssues(repo, { since, etag })`. The first sync of a project lists the open issues; later syncs list every issue updated since the newest `updated_at` seen (the project's cursor, open or closed), so closures are seen too. It leaves pull requests out, follows pagination up to 500 issues, and sends `If-None-Match`. A `304` costs no rate limit and changes nothing.
 - A sync of a project:
   - records each new issue as `workitem.received` (the existing event, now with `project_id`);
   - records an issue whose title, body or labels changed as `workitem.received` again, which makes the item eligible for triage again;
@@ -72,10 +72,10 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 
   These are WorkItem statuses (§8.2 `status`), not Run or Task states. §8.2 is updated with the list in this change.
 - Default view: `new` and `triaged`, sorted by suggested action and then complexity. Filters: project, status, kind, complexity, suggested action. Text search covers the title.
-- **Multi-select → "Start run with Flow X"** (§15.3): a dialog lists the items, the Flow (`fix-issue` by default, any published Flow that takes an issue), the budget per run, and the total estimate. *Start* calls `POST /api/v1/inbox/start { item_ids, flow, budget }`. That endpoint starts one issue run per item, in the project's clone, through the same path as `POST /api/v1/runs`, so the Policy Engine decides `run.start` for each. The answer lists the run ids and the per-item errors. The dialog states what will happen: "Starts 3 runs of fix-issue in nadezhdkov/nav. Each run asks before the plan and the PR (autonomy level 2)".
+- **Multi-select → "Start run with Flow X"** (§15.3): a dialog lists the items, the Flow (`fix-issue` by default, any published Flow that takes an issue), the budget per run, and the total estimate. *Start* calls `POST /api/v1/inbox/start { item_ids, flow, budget }`. That endpoint starts one issue run per item, in the project's clone, through the same path as `POST /api/v1/runs`, so each run's agents and side effects go through the Policy Engine as usual. An item with an active run, or closed, is refused. The answer lists the run ids and the per-item errors. The dialog states what will happen: "Starts 3 runs of fix-issue in nadezhdkov/nav. Each run asks before the plan and the PR (autonomy level 2)".
 - *Dismiss* (`POST /api/v1/inbox/:id/dismiss { reason? }`, `navarch inbox dismiss <id>`) records `workitem.dismissed`. A change on GitHub does not bring the item back. *Restore* records `workitem.restored`.
 - Item detail panel: the issue body as plain text (no HTML rendering, links shown but not followed automatically), labels, author, the triage with its model and reason, the duplicate, and the runs of this item.
-- A paired phone may read the Inbox and start runs from it, since starting runs in registered repositories is within the device scope of slice 7. Dismiss and sync are allowed too. Project changes are not.
+- A paired phone may read the Inbox and start runs from it with the daemon's defaults (no Flow or budget of its own). Dismiss and sync are allowed too, and its New run screen may use registered projects. Project changes stay on the PC.
 - The concierge gains one read tool, `list_inbox`, with no action.
 
 ### Desktop Home (§15.1) and agent quotas
@@ -97,7 +97,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 - `WorkItemTriage { kind, complexity, area, duplicate_of, suggested_action, flow?, reason }`.
 - `InboxItemView { id, project_id, source, repo, number, url, title, labels, author, status, triage?, triage_model?, estimate?: { usd, runs }, runs: string[], updated_at }`; the body only in `GET /api/v1/inbox/:id`.
 - `GET /api/v1/inbox?project=&status=` returns `InboxItemView[]` plus `{ triage: { available, reason?, used_today, cap } }`.
-- `POST /api/v1/inbox/sync { project_id? }` returns `{ started: string[] }`; the results arrive as `inbox.synced` events.
+- `POST /api/v1/inbox/sync { project_id? }` waits for the sync and returns `{ results: { project_id, new, changed, closed, not_modified, error? }[] }`.
 - `POST /api/v1/inbox/start { item_ids, flow?, budget? }` returns `{ runs: { item_id, run_id }[], errors: { item_id, message }[] }`.
 - `POST /api/v1/inbox/:id/dismiss|restore`.
 - `GET /api/v1/quotas` returns `QuotaView[] { adapter, window, utilization?, resets_at?, exhausted, model_prefix?, observed_at }`.
@@ -109,7 +109,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 
 - **Only the GitHub Integration talks to GitHub** (rule 5). Sync reads through it only. This slice adds no GitHub writes.
 - **Only the Agent Runtime calls the Model Router** (rule 4). The triage service asks the runtime for its route, as the concierge does.
-- **Every side effect through the Policy Engine** (rule 3): `project.add`, `project.remove`, `inbox.sync`, `inbox.triage` and `run.start` for each started run.
+- **Every side effect through the Policy Engine** (rule 3): `project.add`, `project.remove`, `inbox.sync` and `inbox.triage`. Runs started from the Inbox take the same path as any other run.
 - **Everything is an event** (rule 2): projects, items, triage and dismissals are events. The Inbox is a projection, and rebuilding it gives the same list.
 - **Untrusted content** (T1): issue text never becomes instructions. It is delimited in the triage prompt, and the model's answer is reduced to validated enums, numbers and short plain-text strings.
 - **Prices in configuration** (AGENTS.md): estimates come from observed costs only.
@@ -117,7 +117,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 ## Tests (no network, no real agent)
 
 - Contracts: projects, items, triage, quota view and the new events.
-- GitHub: `listOpenIssues` against a fake GitHub server (pagination, pull requests left out, `ETag` → `304`, rate-limit 403 with `x-ratelimit-reset`).
+- GitHub: `listIssues` against a fake GitHub server (pagination, pull requests left out, `ETag` → `304`, rate-limit 403 with `x-ratelimit-reset`).
 - Sync: new, changed, closed and unchanged items give the right events; ids are stable across re-syncs; one sync per project at a time; polling interval and back-off on a fake clock.
 - Triage: a fake OpenAI-compatible server. Covers valid JSON, invalid JSON (failed and retried at most 3 times per version), a `duplicate_of` outside the list (dropped), a rate limit (falls back to the next entry), no native model (items stay `new`, triage unavailable), and both daily caps (policy denial). The issue body is delimited in the request.
 - Estimate: median over the last 20 runs of the same complexity, nothing below 3 runs, and the multi-select total.

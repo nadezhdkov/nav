@@ -10,6 +10,7 @@ import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
 import { ConciergeService } from "./concierge/service.ts";
+import { InboxService } from "./inbox/service.ts";
 import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
@@ -58,6 +59,7 @@ export class Daemon {
   readonly policy: PolicyEngine;
   readonly devices: DeviceService;
   readonly notifier: Notifier;
+  readonly inbox: InboxService;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
@@ -108,6 +110,7 @@ export class Daemon {
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
     });
+    this.inbox = new InboxService({ config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
   }
 
   get url(): string {
@@ -151,6 +154,7 @@ export class Daemon {
     writeFileSync(homeFiles(this.home).daemonInfo, JSON.stringify({ pid: process.pid, url: this.url }));
     this.orchestrator.recover();
     this.notifier.start();
+    this.inbox.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
     void this.remoteStatus().catch(() => {});
@@ -184,6 +188,7 @@ export class Daemon {
   async stop(): Promise<void> {
     await this.server?.close();
     await this.notifier.stop();
+    await this.inbox.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });

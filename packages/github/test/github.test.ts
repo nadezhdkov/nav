@@ -148,3 +148,48 @@ describe("pushBranch", () => {
     expect(git(bare, "rev-parse", "refs/heads/navarch/run_2/implement")).toBe(before);
   });
 });
+
+describe("GitHubClient.listIssues", () => {
+  it("lists open issues without pull requests, newest update first", async () => {
+    const { gh, client } = await setup();
+    gh.repos.get("acme/widgets")!.issues.set(10, { title: "Newer", body: "", labels: [], author: "dan", updated_at: "2026-03-01T00:00:00Z" });
+    gh.repos.get("acme/widgets")!.issues.set(11, { title: "Closed", body: "", labels: [], author: "eve", state: "closed" });
+    const res = await client.listIssues("acme/widgets");
+    if (res.notModified) throw new Error("expected a listing");
+    expect(res.issues.map((i) => i.number)).toEqual([10, 8, 7]);
+    expect(res.issues[1]).toMatchObject({ body: "", state: "open", author: "bob" });
+    expect(res.etag).toMatch(/^"/);
+  });
+
+  it("answers notModified to a matching ETag, and lists closed issues with since", async () => {
+    const { gh, client } = await setup();
+    const first = await client.listIssues("acme/widgets");
+    if (first.notModified) throw new Error("expected a listing");
+    expect(await client.listIssues("acme/widgets", { etag: first.etag! })).toEqual({ notModified: true });
+    expect(gh.requests.at(-1)?.status).toBe(304);
+    gh.repos.get("acme/widgets")!.issues.get(7)!.state = "closed";
+    gh.repos.get("acme/widgets")!.issues.get(7)!.updated_at = "2026-05-01T00:00:00Z";
+    const since = await client.listIssues("acme/widgets", { since: "2026-04-01T00:00:00Z" });
+    if (since.notModified) throw new Error("expected a listing");
+    expect(since.issues).toEqual([expect.objectContaining({ number: 7, state: "closed" })]);
+    expect(gh.requests.at(-1)?.query).toContain("state=all");
+  });
+
+  it("follows pages of 100", async () => {
+    const { gh, client } = await setup();
+    const issues = gh.repos.get("acme/widgets")!.issues;
+    for (let n = 100; n < 330; n++) issues.set(n, { title: `#${n}`, body: "", labels: [], author: "x" });
+    const res = await client.listIssues("acme/widgets");
+    if (res.notModified) throw new Error("expected a listing");
+    expect(res.issues).toHaveLength(232);
+    expect(gh.requests.filter((r) => r.path.endsWith("/issues"))).toHaveLength(3);
+  });
+
+  it("reports when a rate limit resets", async () => {
+    const { gh, client } = await setup();
+    gh.rateLimitedUntil = 1_900_000_000;
+    const err = await client.listIssues("acme/widgets").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GitHubError);
+    expect((err as GitHubError).resetAt).toBe(new Date(1_900_000_000_000).toISOString());
+  });
+});

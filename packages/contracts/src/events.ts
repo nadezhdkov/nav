@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { FlowDefinition } from "./flow.ts";
+import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
@@ -189,8 +190,31 @@ export const EventPayloads = {
   "run.message.delivered": z.object({ message_id: z.string(), task_id: z.string(), attempt: z.number().int().positive() }),
   /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
   "quota.observed": QuotaObservation,
-  /** The GitHub Integration read a work item (spec §7.1); recorded before the run that uses it. */
-  "workitem.received": WorkItem,
+  /**
+   * The GitHub Integration read a work item (spec §7.1): before the run that uses it, or in a sync
+   * of a registered project (`project_id`, ADR 0021), where it is new or its text changed.
+   */
+  "workitem.received": WorkItem.extend({ project_id: z.string().optional() }),
+  /** A project's sync saw an Inbox item closed on GitHub. */
+  "workitem.closed": z.object({ item_id: z.string() }),
+  /** The Inbox triage's validated answer for the item's current version (ADR 0021). */
+  "workitem.triaged": z.object({ item_id: z.string(), triage: WorkItemTriage, model: z.string(), cost_usd: z.number().nonnegative() }),
+  /** The triage model failed or answered something invalid; retried at most 3 times per version. */
+  "workitem.triage_failed": z.object({ item_id: z.string(), model: z.string().optional(), reason: z.string() }),
+  "workitem.dismissed": z.object({ item_id: z.string(), reason: z.string().optional() }),
+  "workitem.restored": z.object({ item_id: z.string() }),
+  /** A repository the Inbox watches (ADR 0021). In Phase 1 a project is one clone of one GitHub repository. */
+  "project.added": z.object({ project_id: z.string(), name: z.string(), repo: z.string(), path: z.string() }),
+  "project.removed": z.object({ project_id: z.string() }),
+  /** One sync of a project ended; `cursor` is the newest `updated_at` seen, the next sync's `since`. */
+  "inbox.synced": z.object({
+    project_id: z.string(),
+    new: z.number().int().nonnegative(),
+    changed: z.number().int().nonnegative(),
+    closed: z.number().int().nonnegative(),
+    not_modified: z.boolean(),
+    cursor: z.string().optional(),
+  }),
   /** The Runner checked a task's worktree with the project's verify commands (spec §6.6). */
   "verification.completed": VerificationReport.extend({ artifact_id: z.string() }),
   /** The GitHub Integration pushed a run branch. Only `navarch/*` branches, never forced. */
