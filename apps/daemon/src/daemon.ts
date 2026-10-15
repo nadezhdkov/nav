@@ -9,6 +9,7 @@ import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini
 import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode";
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
+import { ConciergeService } from "./concierge/service.ts";
 import { registerSecret, type AdapterId, type AgentAdapter } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
@@ -50,6 +51,7 @@ export class Daemon {
   readonly scheduler: Scheduler;
   readonly adapters: Map<string, AgentAdapter>;
   readonly vault: Vault;
+  readonly concierge: ConciergeService;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
   private port?: number;
@@ -87,6 +89,14 @@ export class Daemon {
       onSucceeded: (runId) => this.orchestrator.advance(runId),
     });
     this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github);
+    this.concierge = new ConciergeService({
+      config: this.config,
+      store: this.store,
+      orchestrator: this.orchestrator,
+      runtime,
+      adapters,
+      requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
+    });
   }
 
   get url(): string {

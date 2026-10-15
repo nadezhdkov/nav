@@ -70,7 +70,7 @@ const Routing = z
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
       .prefault({}),
-    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard" }),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
     different_provider: z.array(z.string()).default(["reviewer"]),
   })
@@ -86,6 +86,19 @@ export const Config = z.object({
     })
     .prefault({}),
   budgets: z.object({ default_run: z.number().positive().default(2) }).prefault({}),
+  /**
+   * The conversational CLI's agent (ADR 0016). Without `model`, profile `concierge` is routed
+   * among the `native` entries of its tier (`routing.profiles.concierge`, default fast).
+   */
+  concierge: z
+    .object({
+      enabled: z.boolean().default(true),
+      /** `<provider>/<model>` of a native provider, e.g. `openrouter/nvidia/nemotron-3.5-lightning:free`. */
+      model: z.string().optional(),
+      /** Model calls per message. */
+      max_steps: z.number().int().positive().default(8),
+    })
+    .prefault({}),
   scheduler: z
     .object({
       concurrency: z.number().int().positive().default(2),

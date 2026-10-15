@@ -206,6 +206,9 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "github.push":
     case "policy.denied":
     case "quota.observed":
+    case "concierge.message":
+    case "concierge.action.proposed":
+    case "concierge.action.decided":
       return;
   }
 }

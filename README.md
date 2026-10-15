@@ -50,6 +50,20 @@ navarch run --adapter opencode --model opencode/big-pickle "…"      # OpenCode
 
 Small local models are free but make more mistakes. Always read the diff (`navarch run show <id>`).
 
+### Talk to it
+
+Run `navarch` with no arguments (or `navarch chat`) to ask in plain language: "what is running?", "why did the last run fail?", "start a run here to add a CONTRIBUTING.md". The concierge reads Navarch's state on its own; anything that changes something (starting, cancelling or resuming a run, approving or rejecting) is shown as a proposal and runs only after you type `y`. `navarch ask "<question>"` asks once and never acts.
+
+The concierge needs an API model with tool calling. Pin one in `~/.navarch/config.yaml`:
+
+```yaml
+concierge:
+  model: ollama/qwen2.5:7b                                # local, slower
+  # model: openrouter/nvidia/nemotron-3.5-lightning:free  # free, 50 requests/day shared with agent tasks
+```
+
+Without `concierge.model`, it uses the first usable `native` entry of the `fast` tier (see `docs/examples/free-models.yaml`).
+
 If an agent runs out of quota mid-task, Navarch waits for the reset time the agent reports and then continues the same conversation. If the reset is more than 12 hours away (for example a weekly limit), the run is paused instead; `navarch run show <id>` shows when, and `navarch run resume <id>` continues it. The limits are in `scheduler.rate_limit_*` in `~/.navarch/config.yaml`.
 
 By default the agent may read and edit files and run a few read-only git commands. To let it run other commands, pass each one with `--allow`, for example `--allow "npm test" --allow "npm run *"`.

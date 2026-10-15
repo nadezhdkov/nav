@@ -205,6 +205,31 @@ export const EventPayloads = {
     resource: z.string(),
     reason: z.string(),
   }),
+  /** A message in a concierge conversation (ADR 0016); the assistant's carries its model and usage. */
+  "concierge.message": z.object({
+    conversation_id: z.string(),
+    role: z.enum(["user", "assistant"]),
+    text: z.string(),
+    model: z.string().optional(),
+    tokens_in: z.number().int().nonnegative().optional(),
+    tokens_out: z.number().int().nonnegative().optional(),
+    cost: z.number().nonnegative().optional(),
+  }),
+  /** The concierge proposed an action; nothing happens until the operator confirms it. */
+  "concierge.action.proposed": z.object({
+    conversation_id: z.string(),
+    proposal_id: z.string(),
+    action: z.string(),
+    args: z.record(z.string(), z.unknown()),
+    summary: z.string(),
+  }),
+  "concierge.action.decided": z.object({
+    conversation_id: z.string(),
+    proposal_id: z.string(),
+    decision: z.enum(["approved", "rejected"]),
+    result: z.string().optional(),
+    error: z.string().optional(),
+  }),
 } as const;
 
 export type EventType = keyof typeof EventPayloads;

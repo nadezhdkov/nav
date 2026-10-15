@@ -1,6 +1,6 @@
 # Phase 1, slice 4: conversational CLI (concierge)
 
-Status: in progress · Branch: `feat/conversational-cli` · Spec: §6.12.4 ("natural-language instruction for a Run or new work"), §6.14, §9.1 · ADR: 0016
+Status: implemented · Branch: `feat/conversational-cli` · Spec: §6.12.4 ("natural-language instruction for a Run or new work"), §6.14, §9.1 · ADR: 0016
 
 `navarch` with no arguments opens a conversation: the operator asks in plain language and a **concierge** agent answers from Navarch's state and proposes actions. Reading is immediate; anything that changes something waits for the operator's explicit yes. The existing subcommands stay for scripting.
 
@@ -49,6 +49,10 @@ REPL commands: `/help`, `/new` (fresh conversation), `/exit` (also Ctrl-D).
 - `packages/concierge`: the loop with a scripted engine: read tools run and feed results back; act tools stop the turn with a proposal; approve runs the action once and continues; reject and reuse; turn limit; untrusted wrapping.
 - Daemon end to end with the native fake model server and the fake Claude CLI: ask what is running, propose a run, approve it, the run starts; rejecting starts nothing; no native model → 503.
 - CLI: the REPL against a stub API (confirmation prompt, `/new`, `/exit`).
+
+## Live check (2026-10-15)
+
+With `concierge.model: ollama/qwen2.5:7b` on the operator's machine: `navarch ask "what runs exist…"` called `list_runs` and answered correctly (40 s, model load included); in `navarch chat`, "start a run here to add a CHANGELOG.md file" produced a `start_run` proposal for the current directory (13 s), and answering `n` started nothing.
 
 ## 🔴 Open
 
