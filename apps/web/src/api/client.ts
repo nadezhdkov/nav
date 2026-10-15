@@ -20,6 +20,9 @@ import type {
   InboxView,
   ProjectView,
   QuotaView,
+  BudgetView,
+  SetBudgetRequest,
+  UsageView,
   StartInboxResult,
   SyncInboxResult,
   WorkItemStatus,
@@ -157,4 +160,7 @@ export const api = {
   dismissItem: (id: string, reason?: string) => request<InboxItemDetail>("POST", `/api/v1/inbox/${encodeURIComponent(id)}/dismiss`, reason ? { reason } : {}),
   restoreItem: (id: string) => request<InboxItemDetail>("POST", `/api/v1/inbox/${encodeURIComponent(id)}/restore`, {}),
   quotas: () => request<QuotaView[]>("GET", "/api/v1/quotas"),
+  usage: (days = 30, profile?: string) =>
+    request<UsageView>("GET", `/api/v1/usage?days=${days}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
+  setBudget: (body: SetBudgetRequest) => request<BudgetView[]>("PUT", "/api/v1/budgets", body),
 };

@@ -7,7 +7,7 @@ import KillSwitch from "../components/KillSwitch.vue";
 import QuotaBars from "../components/QuotaBars.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { money, runLook, runTitle } from "../lib/status.ts";
-import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore } from "../stores/runs.ts";
+import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore } from "../stores/runs.ts";
 
 /**
  * Home (spec §15.1): what needs you, what is running, and the kill switch; plus agents' quota
@@ -20,13 +20,10 @@ const fleet = useFleetStore();
 const inbox = useInboxStore();
 const projects = useProjectsStore();
 
-const today = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-};
-/** Cost of runs updated today: a close reading of today's spend from what the run list carries. */
-const costToday = computed(() => runs.runs.filter((r) => r.updated_at >= today()).reduce((sum, r) => sum + r.cost_total, 0));
+const usage = useUsageStore();
+/** Billed spend today from the Cost Ledger, with plan use apart (ADR 0023). */
+const today = computed(() => usage.view?.today ?? { cost: 0, plan_cost: 0, tokens: 0 });
+const budgetAlert = computed(() => (usage.view?.budgets ?? []).some((b) => b.scope !== "run" && b.state !== "ok"));
 const byAction = computed(() => {
   const counts = { start_run: 0, needs_info: 0, duplicate: 0, skip: 0, untriaged: 0 };
   for (const i of inbox.open) counts[i.triage?.suggested_action ?? "untriaged"]++;
@@ -93,11 +90,16 @@ function at(runId: string): string | null {
           {{ t("home.inboxBreakdown", { start: byAction.start_run, info: byAction.needs_info, dup: byAction.duplicate, untriaged: byAction.untriaged }) }}
         </p>
       </RouterLink>
-      <div class="rounded-lg border border-line bg-surface p-4">
-        <h2 class="flex items-center gap-2 text-sm font-medium"><Coins :size="16" class="text-accent" aria-hidden="true" />{{ t("home.costToday") }}</h2>
-        <p class="mt-1 font-mono text-2xl font-semibold">{{ money(costToday) }}</p>
-        <p class="text-xs text-muted">{{ t("home.costTodayHint") }}</p>
-      </div>
+      <RouterLink to="/usage" class="block rounded-lg border border-line bg-surface p-4 hover:bg-surface-2">
+        <h2 class="flex items-center gap-2 text-sm font-medium">
+          <Coins :size="16" class="text-accent" aria-hidden="true" />{{ t("home.costToday") }}
+          <span v-if="budgetAlert" class="tone-warning ml-auto flex items-center gap-1 text-xs font-normal" style="color: var(--tone)">
+            <CircleAlert :size="13" aria-hidden="true" />{{ t("home.budgetAlert") }}
+          </span>
+        </h2>
+        <p class="mt-1 font-mono text-2xl font-semibold">{{ money(today.cost) }}</p>
+        <p class="text-xs text-muted">{{ t("home.costTodayHint", { plan: money(today.plan_cost) }) }}</p>
+      </RouterLink>
     </div>
 
     <div>

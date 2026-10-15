@@ -1,4 +1,4 @@
-import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView } from "@navarch/contracts";
+import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -203,4 +203,28 @@ export const useProjectsStore = defineStore("projects", () => {
   }
 
   return { projects, quotas, error, load, apply };
+});
+
+/** Budgets, spend and observed metrics per model (ADR 0023), for Usage and Home's cost card. */
+export const useUsageStore = defineStore("usage", () => {
+  const view = ref<UsageView | null>(null);
+  const days = ref(30);
+  const profile = ref<string | null>(null);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      view.value = await api.usage(days.value, profile.value ?? undefined);
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^budget\./.test(event.type) || ["model.call.completed", "task.completed", "quota.observed", "workitem.triaged", "run.created"].includes(event.type)) refetch();
+  }
+
+  return { view, days, profile, error, load, apply };
 });

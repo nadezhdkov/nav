@@ -1,6 +1,6 @@
 # Phase 1, slice 11: Budgets, quota-aware routing and token metrics
 
-Status: draft · Branch: `feat/budgets` · Spec: §1.3 P3, §2.2 R2, §6.1.4, §6.4.1–6.4.2, §6.10.1, §9.2, §14.2, §15 · ADR: 0023 · Builds on: ADR 0005, 0013, 0014, 0020, 0021
+Status: implemented · Branch: `feat/budgets` · Spec: §1.3 P3, §2.2 R2, §6.1.4, §6.4.1–6.4.2, §6.10.1, §9.2, §14.2, §15 · ADR: 0023 · Builds on: ADR 0005, 0013, 0014, 0020, 0021
 
 The Cost Ledger of §6.1.4 grows from "a run has a budget" to budgets per run, per project and day and globally per month, with an alert at 80 % and an approval at 100 %. The Model Router gets step 3 of §6.4.2 (filter by remaining budget) and its first `observed` metrics, and a new **Usage** screen shows what was spent, in money and tokens, per model.
 
@@ -41,7 +41,7 @@ The difference from the spec's wording: most of Navarch's agents run on **subscr
 
 ### Metrics (`observed`)
 
-Computed from tasks and `model.call.completed` events, per catalog entry (adapter + model; tasks of pinned runs by adapter and model), per profile and in total, over a window (default 30 days):
+Computed per finished agent attempt (the `attempts` projection: one row per `task.completed` of an agent, with the usage recorded since the previous attempt), per catalog entry (adapter + model; tasks of pinned runs by adapter and model), per profile and in total, over a window (default 30 days):
 
 - tasks, succeeded, success rate, error rate in the last 24 h;
 - tokens in, out and cached (sums and median per task);
@@ -61,7 +61,7 @@ Computed from tasks and `model.call.completed` events, per catalog entry (adapte
 
 - `UsageRecord.billing?: "metered" | "plan"`.
 - Events: `budget.set { scope: "run"|"project_daily"|"global_monthly", target: string|null, usd: number|null, previous: number|null }`, `budget.threshold { scope, target, period, ratio: 0.8|1, used, limit }`.
-- `RunSummary.plan_cost`, `TaskView.plan_cost`.
+- `RunView.plan_cost`, `TaskView.plan_cost`; `AdapterCapabilities.billing`.
 - `BudgetView { scope, target, label, period, limit: number|null, used, plan_equivalent, ratio|null, state: "ok"|"warning"|"exceeded" }`, `ModelMetricsView { id, adapter, model, provider, billing, profile|null, tasks, succeeded, success_rate, error_rate_24h, tokens_in, tokens_out, cached_tokens, median_tokens_per_success|null, cost, plan_cost, median_cost_per_success|null, p50_duration_ms|null }`, `UsageView { generated_at, window_days, today: {cost, plan_cost, tokens}, month: {…}, budgets: BudgetView[], models: ModelMetricsView[], quotas: QuotaView[] }`.
 - `GET /api/v1/usage?days=7|30&profile=` (devices allowed), `GET /api/v1/budgets`, `PUT /api/v1/budgets { scope, target?, usd|null }` (user only).
 - CLI: `navarch budget [show]`, `navarch budget set --monthly <usd|none> | --project <id> --daily <usd|none> | --run <id> <usd>`, `navarch usage [--days N] [--profile P] [--json]`.

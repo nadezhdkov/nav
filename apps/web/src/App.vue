@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Hand, House, Inbox, Languages, ListChecks, Settings, Ship, Smartphone, Wifi, WifiOff } from "@lucide/vue";
+import { Hand, House, Inbox, Languages, ListChecks, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair } from "./api/client.ts";
@@ -9,7 +9,7 @@ import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
@@ -17,7 +17,8 @@ const approvals = useApprovalsStore();
 const fleet = useFleetStore();
 const inbox = useInboxStore();
 const projects = useProjectsStore();
-const stores = [runs, approvals, fleet, inbox, projects];
+const usage = useUsageStore();
+const stores = [runs, approvals, fleet, inbox, projects, usage];
 
 const offs: (() => void)[] = [];
 function start() {
@@ -49,7 +50,9 @@ const items = computed(() => {
   if (mobile.value) return [home, approvalsItem, runsItem, fleetItem, { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }];
   // The Inbox is a desktop tab; phones reach it from Home.
   const inboxItem = { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: inbox.open.length, tone: "info" };
-  return [home, inboxItem, approvalsItem, runsItem, fleetItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
+  // Usage is a desktop tab too; phones reach it from Home's cost card.
+  const usageItem = { to: "/usage", label: t("nav.usage"), icon: Wallet, badge: 0, tone: "neutral" };
+  return [home, inboxItem, approvalsItem, runsItem, fleetItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
 });
 </script>
 

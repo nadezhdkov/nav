@@ -1,5 +1,5 @@
 import type { ConciergeTool } from "@navarch/concierge";
-import { CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView } from "@navarch/contracts";
+import { CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 
@@ -17,6 +17,8 @@ export type ToolDeps = {
   sendMessage: (runId: string, req: SendRunMessage, actor: Actor) => RunMessage;
   /** The Inbox's open items (ADR 0021); absent when the daemon has no Inbox. */
   listInbox?: () => InboxView;
+  /** Budgets, spend and observed metrics per model (ADR 0023); absent in tests without a daemon. */
+  usage?: () => UsageView;
   /** Who confirmed the action (the client that sent the decision). */
   actor: () => Actor;
   /** The operator's working directory: the default repository for `start_run`. */
@@ -139,6 +141,37 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
                     : {}),
                   ...(i.estimate ? { estimated_cost: i.estimate.usd } : {}),
                 })),
+              };
+            },
+          },
+        ]
+      : []),
+    ...(deps.usage
+      ? [
+          {
+            name: "show_usage",
+            description:
+              "Budgets (run, project per day, global per month: billed use against each limit), spend today and this month, and per agent/model over 30 days: tasks, success rate, tokens, cost per succeeded task. Plan (subscription) use is shown as an API-equivalent cost and never counts against budgets. Budgets cannot be changed from here; tell the operator to use `navarch budget set` or the Usage screen.",
+            parameters: obj({}),
+            kind: "read" as const,
+            run: async () => {
+              const u = deps.usage!();
+              return {
+                today: u.today,
+                month: u.month,
+                budgets: u.budgets.map((b) => ({ scope: b.scope, target: b.target, label: clip(b.label, 80), period: b.period, limit: b.limit, used: b.used, state: b.state })),
+                models: u.models.slice(0, 20).map((m) => ({
+                  model: m.id,
+                  billing: m.billing,
+                  tasks: m.tasks,
+                  success_rate: m.success_rate,
+                  tokens_in: m.tokens_in,
+                  tokens_out: m.tokens_out,
+                  median_cost_per_success: m.median_cost_per_success,
+                  billed: m.cost,
+                  plan_equivalent: m.plan_cost,
+                })),
+                quotas: u.quotas.map((q) => ({ adapter: q.adapter, window: q.window, utilization: q.utilization, exhausted: q.exhausted, resets_at: q.resets_at })),
               };
             },
           },
