@@ -31,6 +31,7 @@ export const es: Messages = {
     back: "Todas las runs",
     cancel: "Cancelar run",
     resume: "Reanudar run",
+    retry: "Reintentar el paso fallido",
     confirmCancel: "¿Cancelar esta run? Los agentes en ejecución se detendrán.",
     pr: "PR en borrador",
     cost: "Costo",

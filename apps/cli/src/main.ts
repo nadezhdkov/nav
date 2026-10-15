@@ -44,7 +44,7 @@ Usage:
                                          verify and fix, review, then open a draft PR
   navarch run list
   navarch run show <run-id>
-  navarch run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
+  navarch run resume <run-id> [--follow]   continue a paused run, or retry the failed task of a failed run
   navarch logs <run-id> [-f|--follow] [--raw]
   navarch cancel <run-id>
   navarch pause <run-id>                   pause a run: running agents stop and nothing starts until resumed

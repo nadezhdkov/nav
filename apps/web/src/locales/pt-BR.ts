@@ -31,6 +31,7 @@ export const ptBR: Messages = {
     back: "Todas as runs",
     cancel: "Cancelar run",
     resume: "Retomar run",
+    retry: "Repetir etapa que falhou",
     confirmCancel: "Cancelar esta run? Os agentes em execução serão parados.",
     pr: "PR em rascunho",
     cost: "Custo",

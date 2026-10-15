@@ -31,6 +31,7 @@ export const de: Messages = {
     back: "Alle Runs",
     cancel: "Run abbrechen",
     resume: "Run fortsetzen",
+    retry: "Fehlgeschlagenen Schritt wiederholen",
     confirmCancel: "Diesen Run abbrechen? Laufende Agenten werden gestoppt.",
     pr: "PR-Entwurf",
     cost: "Kosten",

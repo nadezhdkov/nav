@@ -29,6 +29,7 @@ export const en = {
     back: "All runs",
     cancel: "Cancel run",
     resume: "Resume run",
+    retry: "Retry failed step",
     confirmCancel: "Cancel this run? Running agents are stopped.",
     pr: "Draft PR",
     cost: "Cost",

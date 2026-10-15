@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -231,6 +231,48 @@ describe("issue → verified draft PR", () => {
     expect(run.artifacts.some((a) => a.kind === "report")).toBe(true);
     expect(gh.pulls).toEqual([]);
     expect(git(bare, "for-each-ref", "--format=%(refname)", "refs/heads")).toBe("refs/heads/main");
+  });
+
+  it("retries the failed push on resume, without asking again for the approved PR (ADR 0025)", async () => {
+    const { repo, gitUrl, bare } = project(VERIFY_OK);
+    const { api, gh, waitRun, decide } = await start({ gitUrl });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    await decide("approve");
+    await waitRun(created.body.id, (r) => r.status === "ready_for_pr");
+    // The remote refuses the push, as GitHub does when the token cannot write to the repository.
+    renameSync(bare, `${bare}.away`);
+    await decide("approve");
+    const failedRun = await waitRun(created.body.id, (r) => r.status === "failed");
+    expect(failedRun.tasks.at(-1)).toMatchObject({ node_id: "open_pr", status: "failed" });
+    const agentCalls = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body.filter((e) => e.type === "task.completed").length;
+
+    renameSync(`${bare}.away`, bare);
+    const resumed = await api<RunView>("POST", `/api/v1/runs/${created.body.id}/resume`);
+    expect(resumed.status).toBe(200);
+    const done = await waitRun(created.body.id, (r) => r.status === "done");
+    expect(done.pr_url).toBe("https://github.com/acme/widgets/pull/100");
+    expect(gh.pulls).toHaveLength(1);
+    expect((await api<ApprovalView[]>("GET", "/api/v1/approvals?status=pending")).body).toEqual([]);
+
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    // Only the PR task ran again; no agent was asked to redo its work.
+    expect(events.filter((e) => e.type === "task.completed").length).toBe(agentCalls + 1);
+    const order = events.filter((e) => e.type === "run.status_changed").map((e) => (e.payload as { to: string }).to);
+    expect(order.slice(-4)).toEqual(["failed", "ready_for_pr", "pr_opened", "done"]);
+    expect(events.find((e) => e.type === "run.status_changed" && (e.payload as { from: string }).from === "failed")).toMatchObject({
+      actor: { kind: "user" },
+      payload: { to: "ready_for_pr", reason: "retried by user" },
+    });
+  });
+
+  it("refuses to resume a run that failed on a flow decision, with no failed task to retry", async () => {
+    const { repo, gitUrl } = project("verify:\n  - name: test\n    run: exit 1\n");
+    const { api, waitRun } = await start({ gitUrl, autonomy: 3 });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    await waitRun(created.body.id, (r) => r.status === "failed");
+    const res = await api<{ error: string }>("POST", `/api/v1/runs/${created.body.id}/resume`);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(res.body)).toContain("no failed task to retry");
   });
 
   it("cancels the run when the plan is rejected", async () => {

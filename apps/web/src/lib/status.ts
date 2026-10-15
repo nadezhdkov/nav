@@ -57,8 +57,9 @@ export function canCancel(status: RunStatus): boolean {
   return !isTerminalRun(status);
 }
 
+/** A paused run continues; a failed run retries its failed task (ADR 0025). */
 export function canResume(status: RunStatus): boolean {
-  return status === "paused";
+  return status === "paused" || status === "failed";
 }
 
 /** A run can be paused while it is active (ADR 0020); a budget stop waits for a decision instead. */
