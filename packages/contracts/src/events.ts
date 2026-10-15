@@ -2,6 +2,7 @@ import { z } from "zod";
 import { FlowDefinition } from "./flow.ts";
 import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
+import { TeamTaskRef } from "./team.ts";
 import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
 /** Who caused an event (spec §9.2 `actor`). */
@@ -115,6 +116,10 @@ export const EventPayloads = {
     inputs: z.record(z.string(), z.string()).optional(),
     /** `auto` when the Model Router picks this agent task's adapter at dispatch (ADR 0013). */
     routing: z.literal("auto").optional(),
+    /** The team this task is part of (ADR 0022). */
+    team: TeamTaskRef.optional(),
+    /** For team members: the adapter or catalog entry the lead prefers, tried first by the router. */
+    prefer: z.string().optional(),
   }),
   "task.status_changed": z.object({
     from: TaskStatus,
@@ -130,6 +135,8 @@ export const EventPayloads = {
     tool: z.string().optional(),
   }),
   "task.resume_token": z.object({ adapter: z.string(), token: z.string() }),
+  /** A sub-agent the task's own agent started (Claude Code's Task tool), observed from its stream (ADR 0022). */
+  "task.subagent": z.object({ tool_use_id: z.string(), description: z.string(), status: z.enum(["started", "finished"]) }),
   "task.completed": z.object({
     status: z.enum(["succeeded", "failed", "needs_input"]),
     summary: z.string(),

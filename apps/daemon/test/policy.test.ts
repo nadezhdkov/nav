@@ -15,6 +15,15 @@ describe("PolicyEngine", () => {
     expect(policy.decide(agent, "github.pr.merge", "pr/1", { autonomyLevel: 4 }).effect).toBe("require_approval");
   });
 
+  it("gates a team's lead turns and members like any agent task (ADR 0022)", () => {
+    for (const action of ["team.turn", "team.delegate"]) {
+      expect(policy.decide(agent, action, "t", { autonomyLevel: 3, budgetRemaining: 1, edits: true }).effect).toBe("allow");
+      expect(policy.decide(agent, action, "t", { autonomyLevel: 3, budgetRemaining: 0 })).toMatchObject({ effect: "deny", reason: "run budget exhausted" });
+      expect(policy.decide(agent, action, "t", { autonomyLevel: 1, edits: true }).effect).toBe("require_approval");
+      expect(policy.decide(agent, action, "t", { autonomyLevel: 0, edits: false }).effect).toBe("require_approval");
+    }
+  });
+
   it("gates task start on autonomy and budget", () => {
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 2, budgetRemaining: 1 }).effect).toBe("allow");
     expect(policy.decide(agent, "task.start", "t", { autonomyLevel: 0, budgetRemaining: 1 }).effect).toBe("require_approval");

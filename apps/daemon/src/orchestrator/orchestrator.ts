@@ -133,7 +133,8 @@ export class Orchestrator {
     const flowName = req.flow ?? (workItem ? "fix-issue" : "task");
     const flow = this.flows.get(flowName);
     if (!flow) throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
-    const usesGitHub = flow.nodes.some((n) => n.type === "github");
+    // A PR node that runs only `when` something holds (e.g. `project.work_item`) does not need an issue.
+    const usesGitHub = flow.nodes.some((n) => n.type === "github" && !n.when);
     if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
 
     const runId = newId("run");
@@ -182,7 +183,7 @@ export class Orchestrator {
 
       const step = next(run.flow_definition.definition, {
         params: run.flow_definition.params,
-        project: { autonomy_level: run.autonomy_level ?? this.config.autonomy_level },
+        project: { autonomy_level: run.autonomy_level ?? this.config.autonomy_level, work_item: run.work_item !== null },
         tasks: tasks.map((t): TaskState => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })),
         skipped: this.store.skippedNodes(runId),
       });
@@ -219,11 +220,17 @@ export class Orchestrator {
             return;
           }
           const adapter = agent ? (node.adapter ?? run.adapter) : node.type === "github" ? "github" : node.type === "approval" ? "human" : "runner";
+          const team = step.start.team;
           // A node's own `adapter` pins it; otherwise a routed run lets the Model Router choose at dispatch.
-          const routed = agent && !node.adapter && run.routing === "auto";
+          // Team members are routed whenever routing is on, so the lead's preference counts (ADR 0022).
+          const routed = agent && !node.adapter && (run.routing === "auto" || (team?.role === "member" && this.config.routing.enabled));
           const inputs = node.type === "approval"
             ? Object.fromEntries(step.start.show.flatMap(({ path, value }) => (renderValue(value) ? [[path, renderValue(value)!]] : [])))
             : renderInputs(step.start.inputs);
+          if (team?.role === "lead") {
+            const agents = this.agentsForLead();
+            if (agents) inputs.agents = agents;
+          }
           this.store.append([
             {
               type: "task.created",
@@ -241,15 +248,35 @@ export class Orchestrator {
                 ...(node.type === "action" || node.type === "github" ? { uses: node.uses } : {}),
                 ...(Object.keys(inputs).length ? { inputs } : {}),
                 ...(routed ? { routing: "auto" as const } : {}),
+                ...(team ? { team } : {}),
+                ...(step.start.prefer ? { prefer: step.start.prefer } : {}),
               },
             },
             taskStatus(runId, taskId, "pending", "ready", 0, iteration > 1 ? `iteration ${iteration}` : "node due"),
+            // A lead's turn after a question waits for the user's answer (ADR 0022).
+            ...(step.start.blocked ? [taskStatus(runId, taskId, "ready", "blocked", 0, step.start.blocked)] : []),
           ]);
           this.onReady();
           return;
         }
       }
     }
+  }
+
+  /**
+   * The agents a team lead may prefer (ADR 0022): enabled catalog entries with what is known of
+   * their quota, so the lead favours agents that can run now.
+   */
+  private agentsForLead(): string | undefined {
+    if (!this.config.routing.enabled) return undefined;
+    const exhausted = this.store.exhaustedQuotas();
+    const lines = Object.entries(this.config.routing.models)
+      .filter(([, m]) => m.status === "active" && this.adapters.includes(m.adapter))
+      .map(([id, m]) => {
+        const q = exhausted.find((x) => x.adapter === m.adapter && (!x.modelPrefix || (m.model ?? "").startsWith(x.modelPrefix)));
+        return `- ${id} (${m.adapter}${m.model ? `, ${m.model}` : ""}): ${q ? `quota exhausted until ${q.resetsAt}` : "available"}`;
+      });
+    return lines.length ? lines.join("\n") : undefined;
   }
 
   /** Runs created before Flows: their tasks were created up front and run in order. */
@@ -371,6 +398,12 @@ export class Orchestrator {
     ]);
     // If the attempt ended in the meantime, the message waits for the task's next attempt, if it gets one.
     if (req.delivery === "now") deps.interrupt(task!.id);
+    // An answer to a team lead's question lets its next turn start (ADR 0022).
+    const waiting = this.store.taskRecordsOfRun(runId).find((t) => t.status === "blocked" && t.team?.role === "lead" && (!task || t.id === task.id));
+    if (waiting) {
+      this.store.append([taskStatus(runId, waiting.id, "blocked", "ready", waiting.attempt, "the user answered")]);
+      this.onReady();
+    }
     return this.store.listMessages(runId).find((m) => m.id === id)!;
   }
 

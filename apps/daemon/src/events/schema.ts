@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   uses TEXT,
   inputs TEXT,
   outputs TEXT,
+  team TEXT,
+  prefer TEXT,
+  subagents TEXT,
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS tasks_run ON tasks(run_id);

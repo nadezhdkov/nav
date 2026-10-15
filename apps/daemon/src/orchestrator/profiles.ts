@@ -78,6 +78,52 @@ export const reviewer: Profile = {
   ].join("\n"),
 };
 
+export const researcher: Profile = {
+  id: "researcher",
+  edits: false,
+  role: "Answer one focused question about the repository, with evidence.",
+  instructions: [
+    "You are a Navarch researcher agent, a member of a team. You read the repository in its git worktree; you do not change files.",
+    "Rules:",
+    "- Answer only the question in your brief. Read what you need, no more.",
+    "- Back each claim with evidence (file and symbol, command output) and mark it confirmed, inferred or gap.",
+    ...COMMON,
+    "- Finish with a short summary: the answer first, then the evidence.",
+  ].join("\n"),
+};
+
+/**
+ * The lead of a team (ADR 0022): it delegates to members in turns and ends every turn with a
+ * `navarch-team` block, which the Flow engine validates.
+ */
+export const lead: Profile = {
+  id: "lead",
+  edits: true,
+  role: "Lead a team of agents: split the work, delegate it, read the results, decide until it is done.",
+  instructions: [
+    "You are the Navarch lead agent. You lead a team of other agents working on this task in one shared git worktree.",
+    "You work in turns. In each turn you read the state of the team and decide what happens next; Navarch then runs",
+    "the members you add, one at a time in dependency order, runs the project's checks, and starts your next turn.",
+    "Rules:",
+    "- Delegate real parts of the work. A member gets only your brief and the summaries of the members it depends on,",
+    "  so each brief must stand alone: the goal, the files or modules involved, what done means, and what is out of scope.",
+    "- Member profiles: `researcher` answers a question (read-only), `planner` writes a plan (read-only),",
+    "  `implementer` changes files, `reviewer` reviews the change (read-only).",
+    "- `prefer` names an agent you think fits a member (an id from the agents input). Prefer agents with quota left;",
+    "  routing may still choose another one.",
+    "- Small fixes you may do yourself in this worktree. Keep members' work from overlapping.",
+    "- Say the work is done (`done: true`) only when it is complete; the checks must also pass.",
+    "- If something only the user can decide blocks you, ask one `question` and add no members in that turn.",
+    ...COMMON,
+    "- End every turn with exactly one block in this form (JSON, no comments):",
+    "```navarch-team",
+    '{ "summary": "what you did and decided this turn", "done": false, "question": null,',
+    '  "members": [ { "key": "short-key", "title": "…", "brief": "…", "profile": "implementer", "prefer": "codex", "depends_on": [] } ] }',
+    "```",
+    "  Keys are new lowercase words (a-z, 0-9, -); `depends_on` names keys of earlier members or earlier in this list.",
+  ].join("\n"),
+};
+
 /**
  * The triager's `Complexity: N` (1–5), from the last such line of its summary; undefined when it
  * is missing or out of range, and the Model Router then uses the profile's own tier.
@@ -87,7 +133,7 @@ export function parseComplexity(summary: string): number | undefined {
   return last ? Number(last) : undefined;
 }
 
-export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer].map((p) => [p.id, p]));
+export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer, researcher, lead].map((p) => [p.id, p]));
 
 /**
  * Profile rules, the commands the grant allows, the task, the user's instructions, then inputs
@@ -103,6 +149,22 @@ export function buildInstructions(
   const section = inputsSection(inputs);
   const operator = operatorSection(messages);
   return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+}
+
+/**
+ * A team lead's next turn in its resumed session (ADR 0022): only what changed since its last
+ * turn, then the user's instructions, and the reminder to end with a team plan.
+ */
+export function leadTurnPrompt(inputs: Record<string, string>, messages: string[] = []): string {
+  const operator = operatorSection(messages);
+  return [
+    "This is your next turn as the team lead. Here is what happened since your last turn.",
+    ...(operator ? ["", operator] : []),
+    "",
+    inputsSection(inputs),
+    "",
+    "Decide the next step and end this turn with one ```navarch-team block, as before.",
+  ].join("\n");
 }
 
 /** The new turn of a resumed session that carries the user's instructions (ADR 0019). */

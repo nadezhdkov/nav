@@ -3,7 +3,7 @@ import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
-import { buildInstructions, implementer, parseComplexity, PROFILES, resumeWithInstructions } from "../orchestrator/profiles.ts";
+import { buildInstructions, implementer, leadTurnPrompt, parseComplexity, PROFILES, resumeWithInstructions } from "../orchestrator/profiles.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
 const RETRYABLE = new Set(["transient", "interrupted"]);
@@ -171,7 +171,7 @@ export class Scheduler {
       return;
     }
     const profile = task.type === "agent" ? (PROFILES.get(task.profile) ?? implementer) : undefined;
-    const action = executor?.action ?? "task.start";
+    const action = executor?.action ?? (task.team?.role === "lead" ? "team.turn" : task.team?.role === "member" ? "team.delegate" : "task.start");
     const decision = this.policy.decide(scheduler, action, task.id, {
       autonomyLevel: run.autonomy_level ?? this.config.autonomy_level,
       budgetRemaining: run.budget - run.cost_total,
@@ -231,6 +231,8 @@ export class Scheduler {
     const texts = messages.map((m) => m.text);
 
     const tools = this.policy.taskGrant(run.allow_commands, profile?.edits ?? true);
+    const previousLead = this.previousLeadTurn(task);
+    const leadSession = previousLead?.adapter === task.adapter ? (previousLead.resume_token ?? undefined) : undefined;
     const sandboxSlug = run.flow_definition?.definition.metadata.name;
     const runSandboxId = sandboxSlug ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id)?.sandbox_id : undefined;
     const sandboxId = task.sandbox_id ?? runSandboxId;
@@ -261,6 +263,8 @@ export class Scheduler {
         },
         ...(task.resume_token ? { resumeToken: task.resume_token } : {}),
         ...(task.resume_token && texts.length ? { resumePrompt: resumeWithInstructions(texts) } : {}),
+        // A lead's next turn continues its own session with only what changed (ADR 0022).
+        ...(!task.resume_token && leadSession ? { resumeToken: leadSession, resumePrompt: leadTurnPrompt(task.inputs, texts) } : {}),
         ...(sandboxId ? { sandboxId } : {}),
         signal: abort.signal,
       });
@@ -354,6 +358,11 @@ export class Scheduler {
         events.push(...this.waitForQuota(task, attempt, run.status, error.retry_at));
       } else if (RETRYABLE.has(kind) && attempts < task.max_attempts && !isTerminalRun(run.status)) {
         events.push(taskStatus(runId, task.id, "failed", "ready", attempt, `retry after ${kind}`));
+      } else if (task.team?.role === "member" && kind !== "budget_exceeded" && !isTerminalRun(run.status)) {
+        // A member that failed does not fail the team: its lead reads the failure next turn (ADR 0022).
+        this.store.append(events);
+        this.onSucceeded(runId);
+        return;
       } else if (!isTerminalRun(run.status)) {
         const to = kind === "budget_exceeded" ? "budget_exceeded" : "failed";
         events.push(runStatus(runId, run.status, to, error.message));
@@ -368,6 +377,8 @@ export class Scheduler {
    */
   private routeTask(run: RunRecord, task: TaskRecord, exclude: string[] = []): NewEvent<"model.routed"> {
     const tasks = this.store.taskRecordsOfRun(run.id);
+    // A lead's later turns prefer the agent of its previous turn, so it can resume that session (ADR 0022).
+    const prefer = task.prefer ?? this.previousLeadTurn(task)?.model_id ?? undefined;
     const triage = tasks.filter((t) => t.profile === "triager" && t.status === "succeeded").at(-1);
     const complexity = typeof triage?.outputs?.complexity === "number" ? triage.outputs.complexity : undefined;
     const implementerProviders = [
@@ -380,6 +391,7 @@ export class Scheduler {
       implementerProviders,
       exhausted: this.store.exhaustedQuotas(),
       exclude,
+      ...(prefer ? { prefer } : {}),
     });
     const chosen: { id: string; adapter: string; model?: string; provider: string } = decision?.chosen ?? {
       id: task.model_id ?? task.adapter,
@@ -404,6 +416,12 @@ export class Scheduler {
         ...(exclude.length ? { fallback_from: exclude.at(-1)! } : {}),
       },
     };
+  }
+
+  /** The lead's previous turn, for a lead turn after the first. */
+  private previousLeadTurn(task: TaskRecord): TaskRecord | undefined {
+    if (task.team?.role !== "lead" || task.iteration < 2) return undefined;
+    return this.store.taskRecordsOfRun(task.run_id).find((t) => t.node_id === task.node_id && t.iteration === task.iteration - 1);
   }
 
   /** On a rate limit, the next usable candidate other than those this task already left (spec §6.4.2 step 5). */

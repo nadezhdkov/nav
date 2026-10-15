@@ -6,6 +6,7 @@ import {
   parsePayload,
   type DeviceView,
   type FleetAgent,
+  type TeamTaskRef,
   type RepoView,
   type FleetView,
   type FleetWindow,
@@ -45,7 +46,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team")) {
       this.rebuildProjections();
     }
   }
@@ -270,9 +271,11 @@ export class EventStore {
   }
 
   /** Undelivered instructions an attempt of this task should receive: those for the whole run or for the task. */
-  pendingMessagesFor(task: { id: string; run_id: string }): RunMessage[] {
+  pendingMessagesFor(task: { id: string; run_id: string; team?: TeamTaskRef | null }): RunMessage[] {
+    // In a team run, messages to the run go to the lead; members only get those sent to them (ADR 0022).
+    const toRun = !task.team || task.team.role === "lead";
     return this.db
-      .prepare("SELECT * FROM run_messages WHERE run_id = ? AND delivered_at IS NULL AND (task_id IS NULL OR task_id = ?) ORDER BY created_at, rowid")
+      .prepare(`SELECT * FROM run_messages WHERE run_id = ? AND delivered_at IS NULL AND (${toRun ? "task_id IS NULL OR " : ""}task_id = ?) ORDER BY created_at, rowid`)
       .all(task.run_id, task.id)
       .map(toRunMessage);
   }
@@ -459,6 +462,10 @@ export type TaskRecord = TaskView & {
   /** Catalog id the Model Router chose; null until routed (or for pinned tasks). */
   model_id: string | null;
   routing: "auto" | null;
+  /** The team this task is part of (ADR 0022). */
+  team: TeamTaskRef | null;
+  /** For team members: the lead's preferred adapter or catalog entry. */
+  prefer: string | null;
 };
 
 type Row = Record<string, unknown>;
@@ -560,6 +567,8 @@ function toTaskRecord(row: Row): TaskRecord {
     outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
     model_id: (row.model_id as string | null) ?? null,
     routing: row.routing === "auto" ? "auto" : null,
+    team: row.team ? (JSON.parse(String(row.team)) as TeamTaskRef) : null,
+    prefer: (row.prefer as string | null) ?? null,
   };
 }
 
