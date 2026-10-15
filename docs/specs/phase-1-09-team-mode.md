@@ -77,6 +77,7 @@ Navarch does not manage a CLI agent's internal context (each has its own harness
 - Orchestrator with fake agents: a fake lead (fake Claude scenario `lead`) that delegates to a member routed to the fake Codex, reads its summary, and finishes; `prefer` honoured when available and skipped when its quota is exhausted; member failure reaches the lead; policy denials for turn and member limits and budget; instruction to the run reaches the next lead turn.
 - Claude stream: `Task` tool_use and its result produce `task.subagent` events.
 - CLI `--flow team`, concierge `start_run` with `flow: team`.
+- Visual check (2026-10-15): demo daemon with the fake lead and fake Codex, Chromium 1440×900 and 390×844, dark and light: run detail with the team node, New run with "Work as a team" (and the note naming the team Flow); no console errors.
 
 ## 🔴 Open
 

@@ -168,7 +168,7 @@ export const de: Messages = {
     start: "Run starten",
     team: "Als Team arbeiten",
     teamHint: "Ein leitender Agent teilt die Arbeit auf, gibt Teile an andere Agenten (Codex, Gemini, …), liest ihre Ergebnisse und entscheidet, bis sie fertig ist. Braucht mehr Runden und Budget.",
-    note: "Führt den Flow task mit dem Standardbudget aus. Auf dem Handy sind nur registrierte Projekte und Repositorys früherer Runs verfügbar.",
+    note: "Führt den Flow {flow} mit dem Standardbudget aus. Auf dem Handy sind nur registrierte Projekte und Repositorys früherer Runs verfügbar.",
     noRepos: "Noch kein Repository: starte den ersten Run am Desktop.",
   },
   device: {

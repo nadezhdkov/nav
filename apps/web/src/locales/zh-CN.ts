@@ -168,7 +168,7 @@ export const zhCN: Messages = {
     start: "开始运行",
     team: "以团队方式工作",
     teamHint: "由一个主导智能体拆分工作，把各部分交给其他智能体（Codex、Gemini 等），阅读它们的结果并持续决策直到完成。会使用更多轮次和预算。",
-    note: "以默认预算运行 task Flow。在手机上只能使用已注册的项目和之前运行过的仓库。",
+    note: "以默认预算运行 {flow} Flow。在手机上只能使用已注册的项目和之前运行过的仓库。",
     noRepos: "还没有仓库：请先在桌面端开始第一个运行。",
   },
   device: {

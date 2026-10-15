@@ -70,7 +70,7 @@ async function start() {
           <span class="block text-xs text-muted">{{ t("newRun.teamHint") }}</span>
         </span>
       </label>
-      <p class="text-xs text-muted">{{ t("newRun.note") }}</p>
+      <p class="text-xs text-muted">{{ t("newRun.note", { flow: team && !isDevice ? "team" : "task" }) }}</p>
       <button type="submit" :disabled="busy || !prompt.trim() || !repo" class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-bg disabled:opacity-60">
         <Play :size="18" aria-hidden="true" />{{ t("newRun.start") }}
       </button>
