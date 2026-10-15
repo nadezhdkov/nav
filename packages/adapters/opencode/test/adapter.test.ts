@@ -31,6 +31,8 @@ describe("OpencodeAdapter (contract, fake CLI)", () => {
 
     const [call] = fake.calls() as Call[];
     expect(call?.cwd).toBe(ctx.sandbox.path);
+    // OpenCode takes its project from $PWD; the daemon's own PWD must not leak in.
+    expect(call?.env.pwd).toBe(ctx.sandbox.path);
     expect(call?.prompt).toBe("do the task");
     expect(call?.args.slice(0, 4)).toEqual(["run", "--standalone", "--format", "json"]);
     expect(call?.args).toEqual(expect.arrayContaining(["--model", "opencode/big-pickle"]));

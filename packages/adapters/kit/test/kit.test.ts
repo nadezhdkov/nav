@@ -1,5 +1,8 @@
+import { mkdtempSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText, scrubbedEnv } from "../src/index.ts";
+import { CliProcesses, classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText, scrubbedEnv } from "../src/index.ts";
 
 describe("command patterns", () => {
   it("matches exact commands and prefix wildcards on word boundaries", () => {
@@ -83,5 +86,24 @@ describe("scrubbedEnv", () => {
       delete process.env.GH_TOKEN;
       delete process.env.VECTR_SECRET_GITHUB_TOKEN;
     }
+  });
+});
+
+describe("CliProcesses", () => {
+  // OpenCode picks its project from $PWD, not the process cwd: an inherited PWD made agents work
+  // in the daemon's directory instead of their worktree (ADR 0015).
+  it("sets PWD to the working directory, whatever the environment says", async () => {
+    const cwd = realpathSync(mkdtempSync(join(tmpdir(), "navarch-cwd-")));
+    const lines: string[] = [];
+    await new CliProcesses().run({
+      taskId: "t",
+      command: process.execPath,
+      args: ["-e", "console.log(process.env.PWD)"],
+      cwd,
+      env: { ...process.env, PWD: "/somewhere/else" },
+      timeoutMs: 10_000,
+      onLine: (l) => lines.push(l),
+    });
+    expect(lines).toEqual([cwd]);
   });
 });

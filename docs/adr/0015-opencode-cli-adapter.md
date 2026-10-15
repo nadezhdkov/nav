@@ -28,6 +28,10 @@ The operator is logged in to the OpenCode CLI (2.0.29) with a Google account; no
 - `--session <id from step_start>` resumed the conversation (the model recalled a word from the first run); `--session ses_navarchprobe0001` failed with `FreeTierError`.
 - Free models report `cost: 0` and token counts per `step_finish`.
 
+## Incident: inherited PWD (2026-10-14, bake-off)
+
+The first bake-off runs on this adapter worked in the daemon's directory (the `free-models` development worktree) instead of their task worktrees: OpenCode takes its project directory from `$PWD`, not from the process cwd, and the adapter kit passed the daemon's `PWD` through. A `big-pickle` implementer committed three commits of new files there (nothing modified, nothing pushed; they were removed and kept as patches). The permission rules held: `external_directory` is relative to that wrong project, which is why the edits were allowed. Confirmed with a probe (cwd `pa`, `PWD=pb` → session recorded in `pb`). Fix: `CliProcesses` sets `PWD` to the task's cwd for every CLI adapter, with a kit test and an adapter assertion.
+
 ## Consequences
 
 - Zen's free models are usable with the operator's OpenCode login and no key.

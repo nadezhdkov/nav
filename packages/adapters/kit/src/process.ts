@@ -34,7 +34,10 @@ export class CliProcesses {
   }
 
   run(spec: CliRun): Promise<CliExit> {
-    const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ["pipe", "pipe", "pipe"] });
+    // PWD follows cwd: some CLIs (OpenCode) take their project directory from $PWD, and an
+    // inherited one points at the daemon's directory instead of the task's worktree.
+    const env = { ...spec.env, PWD: spec.cwd };
+    const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
     const entry: Entry = { child, cancelled: false };
     this.running.set(spec.taskId, entry);
 

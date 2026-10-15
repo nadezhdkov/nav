@@ -17,6 +17,7 @@ const env = {
   noProject: process.env.OPENCODE_DISABLE_PROJECT_CONFIG,
   operatorConfig: process.env.OPENCODE_CONFIG,
   githubToken: process.env.GITHUB_TOKEN,
+  pwd: process.env.PWD,
 };
 appendFileSync(join(stateDir, "calls.jsonl"), JSON.stringify({ args, cwd: process.cwd(), prompt, env }) + "\n");
 
