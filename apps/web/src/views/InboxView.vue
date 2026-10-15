@@ -162,17 +162,17 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
 
       <table v-if="items.length" class="w-full border-collapse text-sm">
         <caption class="sr-only">{{ t("inbox.title") }}</caption>
-        <thead class="text-left text-xs tracking-wide text-muted uppercase max-lg:hidden">
+        <thead class="text-left text-xs tracking-wide whitespace-nowrap text-muted uppercase max-lg:hidden">
           <tr class="border-b border-line">
-            <th scope="col" class="w-10 py-2 pl-6">
+            <th scope="col" class="py-2 pr-3 pl-6">
               <input type="checkbox" :checked="selected.size > 0 && selected.size === allShown.length" :aria-label="t('inbox.selectAll')" class="size-4" @change="toggleAll" />
             </th>
-            <th scope="col" class="py-2 font-medium">{{ t("inbox.cols.issue") }}</th>
-            <th scope="col" class="py-2 font-medium">{{ t("inbox.cols.kind") }}</th>
-            <th scope="col" class="py-2 text-center font-medium">{{ t("inbox.cols.complexity") }}</th>
-            <th scope="col" class="py-2 font-medium">{{ t("inbox.cols.area") }}</th>
-            <th scope="col" class="py-2 font-medium">{{ t("inbox.cols.action") }}</th>
-            <th scope="col" class="py-2 text-right font-medium">{{ t("inbox.cols.estimate") }}</th>
+            <th scope="col" class="w-full py-2 pr-3 font-medium">{{ t("inbox.cols.issue") }}</th>
+            <th scope="col" class="py-2 pr-3 font-medium">{{ t("inbox.cols.kind") }}</th>
+            <th scope="col" class="py-2 pr-3 text-center font-medium">{{ t("inbox.cols.complexity") }}</th>
+            <th scope="col" class="py-2 pr-3 font-medium">{{ t("inbox.cols.area") }}</th>
+            <th scope="col" class="py-2 pr-3 font-medium">{{ t("inbox.cols.action") }}</th>
+            <th scope="col" class="py-2 pr-3 text-right font-medium">{{ t("inbox.cols.estimate") }}</th>
             <th scope="col" class="py-2 pr-6 font-medium">{{ t("inbox.cols.status") }}</th>
           </tr>
         </thead>
@@ -183,7 +183,7 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
             class="border-b border-line hover:bg-surface max-lg:flex max-lg:flex-wrap max-lg:items-center max-lg:gap-x-3 max-lg:gap-y-1.5 max-lg:px-4 max-lg:py-3"
             :class="{ 'bg-surface': current?.id === item.id }"
           >
-            <td class="py-2.5 pl-6 align-top max-lg:p-0">
+            <td class="py-2.5 pr-3 pl-6 align-top max-lg:p-0">
               <input
                 type="checkbox"
                 class="size-4"
@@ -193,7 +193,7 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
                 @change="toggle(item)"
               />
             </td>
-            <td class="max-w-0 py-2.5 pr-3 max-lg:max-w-none max-lg:flex-1 max-lg:basis-[calc(100%-2.5rem)] max-lg:p-0">
+            <td class="w-full max-w-0 py-2.5 pr-3 max-lg:w-auto max-lg:max-w-none max-lg:flex-1 max-lg:basis-[calc(100%-2.5rem)] max-lg:p-0">
               <button type="button" class="block w-full min-w-0 text-left" @click="open(item)">
                 <span class="block truncate font-medium hover:text-accent">{{ item.title }}</span>
                 <span class="block truncate text-xs text-muted">
@@ -267,7 +267,10 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
           <dt class="text-muted">{{ t("inbox.cols.action") }}</dt>
           <dd>{{ current.triage.duplicate_of ? `${t("inbox.duplicateOf")} #${current.triage.duplicate_of}` : t(`inbox.actions.${current.triage.suggested_action}`) }}</dd>
           <dt class="text-muted">{{ t("inbox.cols.estimate") }}</dt>
-          <dd class="font-mono">{{ current.estimate ? `≈ ${money(current.estimate.usd)} · ${t("inbox.estimateHint", { n: current.estimate.runs })}` : t("inbox.noEstimate") }}</dd>
+          <dd>
+            <template v-if="current.estimate"><span class="font-mono">≈ {{ money(current.estimate.usd) }}</span> · {{ t("inbox.estimateHint", { n: current.estimate.runs }) }}</template>
+            <span v-else class="text-muted">{{ t("inbox.noEstimate") }}</span>
+          </dd>
         </dl>
         <p class="text-muted">“{{ current.triage.reason }}” <span class="text-xs">· {{ current.triage_model }}</span></p>
       </section>
@@ -308,7 +311,7 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
           </li>
         </ul>
         <p class="text-sm text-muted">{{ t("inbox.startHow") }}</p>
-        <p class="font-mono text-sm">
+        <p class="text-sm font-medium">
           {{ total.known ? t("inbox.total", { usd: money(total.usd), n: chosen.length }) : t("inbox.totalNone") }}
           <span v-if="total.unknown && total.known" class="text-muted">· {{ t("inbox.withoutEstimate", { n: total.unknown }) }}</span>
         </p>

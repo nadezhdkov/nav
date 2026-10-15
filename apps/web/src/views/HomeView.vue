@@ -100,11 +100,6 @@ function at(runId: string): string | null {
       </div>
     </div>
 
-    <div class="rounded-lg border border-line bg-surface p-4">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("quota.title") }}</h2>
-      <QuotaBars :quotas="projects.quotas" />
-    </div>
-
     <div>
       <h2 class="mb-2 text-sm font-medium tracking-wide text-muted uppercase">{{ t("home.active") }}</h2>
       <p v-if="runs.loaded && !active.length" class="rounded-lg border border-dashed border-line p-6 text-center text-muted">{{ t("home.empty") }}</p>
@@ -123,6 +118,11 @@ function at(runId: string): string | null {
           </RouterLink>
         </li>
       </ul>
+    </div>
+
+    <div class="rounded-lg border border-line bg-surface p-4">
+      <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("quota.title") }}</h2>
+      <QuotaBars :quotas="projects.quotas" />
     </div>
   </section>
 </template>
