@@ -8,7 +8,8 @@ import type { UsageRecord } from "@navarch/contracts";
  */
 
 export type StreamItem =
-  | { kind: "init"; sessionId: string; model?: string }
+  /** `apiKeySource` is `"none"` when Claude Code is signed in to a claude.ai plan (ADR 0023). */
+  | { kind: "init"; sessionId: string; model?: string; apiKeySource?: string }
   | { kind: "text"; text: string }
   | { kind: "tool"; name: string; summary: string }
   /** The agent started one of its own sub-agents (Claude Code's Task tool). */
@@ -64,7 +65,7 @@ export function parseLine(line: string): StreamItem[] {
   switch (data.type) {
     case "system":
       if (data.subtype === "init" && typeof data.session_id === "string") {
-        return [{ kind: "init", sessionId: data.session_id, model: str(data.model) || undefined }];
+        return [{ kind: "init", sessionId: data.session_id, model: str(data.model) || undefined, apiKeySource: str(data.apiKeySource) || undefined }];
       }
       return [{ kind: "other" }];
     case "assistant":

@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS runs (
   prompt TEXT NOT NULL,
   budget REAL NOT NULL,
   cost_total REAL NOT NULL DEFAULT 0,
+  plan_cost REAL NOT NULL DEFAULT 0,
   adapter TEXT NOT NULL,
   profile TEXT NOT NULL,
   allow_commands TEXT NOT NULL,
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   branch TEXT,
   resume_token TEXT,
   cost REAL NOT NULL DEFAULT 0,
+  plan_cost REAL NOT NULL DEFAULT 0,
   summary TEXT,
   error TEXT,
   not_before TEXT,
@@ -164,6 +166,58 @@ CREATE TABLE IF NOT EXISTS artifacts (
   summary TEXT NOT NULL,
   created_at TEXT NOT NULL
 );
+-- One row per model call or Inbox triage (ADR 0023): the Cost Ledger that budgets and metrics read.
+CREATE TABLE IF NOT EXISTS usage (
+  seq INTEGER PRIMARY KEY,
+  ts TEXT NOT NULL,
+  run_id TEXT,
+  task_id TEXT,
+  model TEXT NOT NULL,
+  billing TEXT NOT NULL,
+  tokens_in INTEGER NOT NULL,
+  tokens_out INTEGER NOT NULL,
+  cached_tokens INTEGER NOT NULL,
+  cost REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
+CREATE INDEX IF NOT EXISTS usage_run ON usage(run_id);
+-- One row per finished agent attempt, with the model it ran on and its share of usage: the
+-- observed metrics of spec §6.4.1 (ADR 0023).
+CREATE TABLE IF NOT EXISTS attempts (
+  seq INTEGER PRIMARY KEY,
+  ts TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  profile TEXT NOT NULL,
+  adapter TEXT NOT NULL,
+  model TEXT,
+  model_id TEXT,
+  status TEXT NOT NULL,
+  error_kind TEXT,
+  duration_ms INTEGER NOT NULL,
+  tokens_in INTEGER NOT NULL,
+  tokens_out INTEGER NOT NULL,
+  cached_tokens INTEGER NOT NULL,
+  cost REAL NOT NULL,
+  plan_cost REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS attempts_ts ON attempts(ts);
+-- Budget limits the user set (budget.set events); target '' is the global month.
+CREATE TABLE IF NOT EXISTS budget_overrides (
+  scope TEXT NOT NULL,
+  target TEXT NOT NULL,
+  usd REAL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (scope, target)
+);
+-- budget.threshold events already recorded, so each is notified once per period.
+CREATE TABLE IF NOT EXISTS budget_alerts (
+  scope TEXT NOT NULL,
+  target TEXT NOT NULL,
+  period TEXT NOT NULL,
+  ratio REAL NOT NULL,
+  PRIMARY KEY (scope, target, period, ratio)
+);
 `;
 
 export const dropProjections = `
@@ -176,6 +230,10 @@ DROP TABLE IF EXISTS run_messages;
 DROP TABLE IF EXISTS devices;
 DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS work_items;
+DROP TABLE IF EXISTS usage;
+DROP TABLE IF EXISTS attempts;
+DROP TABLE IF EXISTS budget_overrides;
+DROP TABLE IF EXISTS budget_alerts;
 `;
 
 /**

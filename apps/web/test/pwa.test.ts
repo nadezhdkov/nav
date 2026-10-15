@@ -93,6 +93,7 @@ describe("HomeView", () => {
     prompt: `Work ${id}`,
     budget: 2,
     cost_total: 0.25,
+    plan_cost: 0,
     created_at: "2026-10-15T00:00:00Z",
     updated_at: "2026-10-15T00:00:00Z",
     ended_at: null,

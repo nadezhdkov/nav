@@ -183,6 +183,12 @@ export function noticeFor(event: NavarchEvent): Notice | undefined {
     const p = (event as NavarchEvent<"approval.requested">).payload;
     return { kind: "approval", run_id: runId, critical: false, url: `/approvals?focus=${p.approval_id}`, subject: subjectOf(p.action) };
   }
+  if (event.type === "budget.threshold") {
+    // A run's own budget at 100 % shows as the run's budget_exceeded status; the others are news here (ADR 0023).
+    const p = (event as NavarchEvent<"budget.threshold">).payload;
+    if (p.ratio < 1) return { kind: "budget_warning", run_id: runId, critical: false, url: "/usage" };
+    return p.scope === "run" ? undefined : { kind: "budget_exceeded", run_id: runId, critical: true, url: "/usage" };
+  }
   if (event.type === "task.status_changed") {
     const p = (event as NavarchEvent<"task.status_changed">).payload;
     // A team lead asked the user something; the team waits for the answer (ADR 0022).

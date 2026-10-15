@@ -100,7 +100,7 @@ export class NativeAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: false, ownTools: false, resumable: false, enforcement: "exact" };
+    return { streaming: false, ownTools: false, resumable: false, enforcement: "exact", billing: "metered" };
   }
 
   async healthcheck(): Promise<HealthStatus> {

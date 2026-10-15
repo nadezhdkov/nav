@@ -73,6 +73,10 @@ const Routing = z
     profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", lead: "expert", researcher: "fast" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
     different_provider: z.array(z.string()).default(["reviewer"]),
+    /** A candidate whose quota window is at least this used goes after the others in its tier (ADR 0023). */
+    quota_reserve: z.number().min(0).max(1).default(0.9),
+    /** A candidate with at least 4 tasks in 24 h failing at this rate or more goes after the others. */
+    degraded_error_rate: z.number().min(0).max(1).default(0.5),
   })
   .prefault({});
 export type RoutingConfig = z.infer<typeof Routing>;
@@ -119,7 +123,21 @@ export const Config = z.object({
       vapid_subject: z.string().default("https://github.com/nadezhdkov/nav"),
     })
     .prefault({}),
-  budgets: z.object({ default_run: z.number().positive().default(2) }).prefault({}),
+  /**
+   * Budgets in USD (spec §6.1.4, ADR 0023). Only billed (`metered`) use counts; plan use is bounded
+   * by quotas. Periods use the PC's local time. `navarch budget set` overrides these.
+   */
+  budgets: z
+    .object({
+      default_run: z.number().positive().default(2),
+      /** Per registered project and local day; none by default. */
+      project_daily: z.number().positive().nullable().default(null),
+      /** Across everything, per local calendar month. */
+      global_monthly: z.number().positive().nullable().default(100),
+      /** Share of a limit that records `budget.threshold` and notifies, before the one at 100 %. */
+      alert_threshold: z.number().gt(0).lt(1).default(0.8),
+    })
+    .prefault({}),
   /**
    * The conversational CLI's agent (ADR 0016). Without `model`, profile `concierge` is routed
    * among the `native` entries of its tier (`routing.profiles.concierge`, default fast).

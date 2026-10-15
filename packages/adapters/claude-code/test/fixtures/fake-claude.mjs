@@ -34,7 +34,10 @@ const result = (ok, text, cost = 0.01, subtype = ok ? "success" : "error_during_
     modelUsage: { "fake-model": { inputTokens: 100, outputTokens: 20, cacheReadInputTokens: 5, costUSD: cost } },
   });
 
-out({ type: "system", subtype: "init", session_id: sessionId, model: "fake-model" });
+// Signed in to a claude.ai plan unless the test wrote another key source into the state dir.
+const keySourceFile = join(stateDir, "api-key-source");
+const apiKeySource = existsSync(keySourceFile) ? readFileSync(keySourceFile, "utf8").trim() : "none";
+out({ type: "system", subtype: "init", session_id: sessionId, model: "fake-model", apiKeySource });
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

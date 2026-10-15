@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { TaskError, UsageRecord } from "./events.ts";
+import { TaskError, UsageRecord, type Billing } from "./events.ts";
 
 /** Agent adapter contract, spec §9.3. */
 
@@ -110,6 +110,11 @@ export type AdapterCapabilities = {
    *   worktree and blocks network instead.
    */
   enforcement: "exact" | "sandbox";
+  /**
+   * How the adapter's use is paid for, for usage records that do not say (ADR 0023): `metered`
+   * per call (API keys) or `plan` (subscription or free tier). Budgets count `metered` only.
+   */
+  billing: Billing;
 };
 
 export type HealthStatus = { ok: boolean; detail: string };

@@ -41,6 +41,7 @@ function task(node_id: string, status: TaskView["status"], extra: Partial<TaskVi
     sandbox_path: null,
     branch: null,
     cost: 0,
+    plan_cost: 0,
     summary: null,
     error: null,
     not_before: null,

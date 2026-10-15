@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AdapterEvent, TaskContext } from "@navarch/contracts";
@@ -72,6 +72,14 @@ describe("stream-json parser", () => {
 });
 
 describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
+  it("records usage as metered when Claude Code runs on an API key (ADR 0023)", async () => {
+    const fake = fakeClaude("flow");
+    writeFileSync(join(fake.stateDir, "api-key-source"), "ANTHROPIC_API_KEY");
+    const result = await new ClaudeCodeAdapter(fake.options).run(context(), collect().io);
+    expect(result.usage.map((u) => u.billing)).toEqual(["metered"]);
+    expect(new ClaudeCodeAdapter(fake.options).capabilities().billing).toBe("plan");
+  });
+
   it("runs in the sandbox with the granted tools and returns a normalized result", async () => {
     const fake = fakeClaude("edit");
     const adapter = new ClaudeCodeAdapter(fake.options);
@@ -82,7 +90,7 @@ describe("ClaudeCodeAdapter (contract, fake CLI)", () => {
 
     expect(result.status).toBe("succeeded");
     expect(result.summary).toBe("Created hello.txt with a greeting.");
-    expect(result.usage).toEqual([{ model: "fake-model", tokens_in: 100, tokens_out: 20, cached_tokens: 5, cost: 0.01 }]);
+    expect(result.usage).toEqual([{ model: "fake-model", tokens_in: 100, tokens_out: 20, cached_tokens: 5, cost: 0.01, billing: "plan" }]);
     expect(existsSync(join(ctx.sandbox.path, "hello.txt"))).toBe(true);
 
     const [call] = fake.calls();

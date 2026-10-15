@@ -47,6 +47,12 @@ export const TaskError = z.object({
 });
 export type TaskError = z.infer<typeof TaskError>;
 
+export const Billing = z.enum(["metered", "plan"]);
+export type Billing = z.infer<typeof Billing>;
+
+export const BudgetScope = z.enum(["run", "project_daily", "global_monthly"]);
+export type BudgetScope = z.infer<typeof BudgetScope>;
+
 export const UsageRecord = z.object({
   model: z.string(),
   tokens_in: z.number().int().nonnegative(),
@@ -54,6 +60,12 @@ export const UsageRecord = z.object({
   cached_tokens: z.number().int().nonnegative(),
   cost: z.number().nonnegative(),
   latency_ms: z.number().int().nonnegative().optional(),
+  /**
+   * `metered`: billed per use (API keys); `plan`: included in a subscription or free tier, where
+   * `cost` is only an API-equivalent figure. Budgets count `metered` only; absent means `metered`
+   * (records from before ADR 0023).
+   */
+  billing: Billing.optional(),
 });
 export type UsageRecord = z.infer<typeof UsageRecord>;
 
@@ -195,6 +207,26 @@ export const EventPayloads = {
   }),
   /** An instruction reached an agent: it was in the prompt of this task's attempt. */
   "run.message.delivered": z.object({ message_id: z.string(), task_id: z.string(), attempt: z.number().int().positive() }),
+  /**
+   * The user set or removed a budget limit (ADR 0023). `target` is the run or project id, null for
+   * the global month; `usd: null` removes a project or global limit.
+   */
+  "budget.set": z.object({
+    scope: BudgetScope,
+    target: z.string().nullable(),
+    usd: z.number().positive().nullable(),
+    previous: z.number().nullable(),
+  }),
+  /** A budget scope's billed cost reached a threshold of its limit, recorded once per period and ratio. */
+  "budget.threshold": z.object({
+    scope: BudgetScope,
+    target: z.string().nullable(),
+    /** The run id, the local day (`YYYY-MM-DD`) or the local month (`YYYY-MM`). */
+    period: z.string(),
+    ratio: z.number().positive(),
+    used: z.number().nonnegative(),
+    limit: z.number().positive(),
+  }),
   /** Quota state an agent reported for its account (e.g. Claude's 5-hour and weekly windows). */
   "quota.observed": QuotaObservation,
   /**

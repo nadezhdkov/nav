@@ -70,13 +70,19 @@ export class AgentRuntime {
   }
 
   /** Asks the Model Router where an agent task should run, among the adapters this runtime has. */
-  route(req: Omit<RouteRequest, "adapters" | "unavailable">): RouteDecision | undefined {
+  route(req: Omit<RouteRequest, "adapters" | "unavailable" | "billing">): RouteDecision | undefined {
     if (!this.deps.router) return undefined;
     return route(this.deps.router, {
       ...req,
       adapters: new Set(this.deps.adapters.keys()),
       unavailable: (entry) => this.deps.adapters.get(entry.adapter)?.unavailableReason?.(entry.model),
+      billing: (entry) => this.billing(entry.adapter),
     });
+  }
+
+  /** How an adapter's use is paid for, as it declares it (ADR 0023); unknown adapters count as billed. */
+  billing(adapter: string): "metered" | "plan" {
+    return this.deps.adapters.get(adapter)?.capabilities().billing ?? "metered";
   }
 
   async execute(spec: TaskSpec): Promise<TaskOutcome> {
@@ -156,7 +162,9 @@ export class AgentRuntime {
       spec.signal?.addEventListener("abort", stopAgent, { once: true });
       const result = await running;
 
-      for (const usage of result.usage) this.publish(spec, actor, "model.call.completed", usage);
+      // Records that do not say how they are paid for take the adapter's own billing (ADR 0023).
+      const billing = adapter.capabilities().billing;
+      for (const usage of result.usage) this.publish(spec, actor, "model.call.completed", { ...usage, billing: usage.billing ?? billing });
       const artifacts = [...result.artifacts];
       if (spec.summaryArtifact && result.status === "succeeded" && result.summary.trim()) {
         artifacts.push(await this.saveArtifact(spec, spec.summaryArtifact, "md", redact(result.summary), result.summary.split("\n")[0]!.slice(0, 120)));

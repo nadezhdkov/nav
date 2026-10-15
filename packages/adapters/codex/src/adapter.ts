@@ -52,7 +52,7 @@ export class CodexAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: true, ownTools: true, resumable: true, enforcement: "sandbox" };
+    return { streaming: true, ownTools: true, resumable: true, enforcement: "sandbox", billing: "plan" };
   }
 
   healthcheck(): Promise<HealthStatus> {

@@ -95,7 +95,7 @@ export class OpencodeAdapter implements AgentAdapter {
   }
 
   capabilities(): AdapterCapabilities {
-    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact" };
+    return { streaming: true, ownTools: true, resumable: true, enforcement: "exact", billing: "metered" };
   }
 
   healthcheck(): Promise<HealthStatus> {

@@ -31,6 +31,7 @@ import {
   DismissItemRequest,
   StartInboxRequest,
   SyncInboxRequest,
+  SetBudgetRequest,
   WorkItemStatus,
   type SyncInboxResult,
 } from "@navarch/contracts";
@@ -42,6 +43,7 @@ import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 import { ConciergeError } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
+import { BudgetError } from "../budgets/budgets.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
@@ -79,6 +81,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
+    if (err instanceof BudgetError) return reply.code(404).send({ error: err.code, message: err.message });
     if (err instanceof InboxError) {
       const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
@@ -234,6 +237,24 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
 
   app.get("/api/v1/quotas", async () => daemon.store.quotas());
+
+  // Budgets and observed metrics (ADR 0023). Devices may read them; only the user sets budgets.
+  app.get("/api/v1/usage", async (req, reply) => {
+    const q = req.query as { days?: string; profile?: string };
+    const days = q.days === undefined ? 30 : Number(q.days);
+    if (!Number.isInteger(days) || days < 1 || days > 90) return badRequest(reply, "days must be a whole number from 1 to 90");
+    return daemon.usage({ days, ...(q.profile ? { profile: q.profile } : {}) });
+  });
+
+  app.get("/api/v1/budgets", async () => daemon.budgets.views());
+
+  app.put("/api/v1/budgets", async (req, reply) => {
+    if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot set budgets");
+    const parsed = SetBudgetRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    daemon.setBudget(parsed.data, actorOf(req));
+    return daemon.budgets.views();
+  });
 
   app.get("/api/v1/health", async () => ({
     ok: true,
@@ -506,6 +527,8 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/inbox/:id/dismiss",
   "POST /api/v1/inbox/:id/restore",
   "GET /api/v1/quotas",
+  "GET /api/v1/usage",
+  "GET /api/v1/budgets",
   "POST /api/v1/stop",
   "GET /api/v1/devices/me",
   "DELETE /api/v1/devices/:id",
