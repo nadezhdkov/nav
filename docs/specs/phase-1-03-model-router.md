@@ -16,7 +16,7 @@ Default `routing` (in `~/.navarch/config.yaml`):
 
 | Profile | Tier | Tier candidates (in order) |
 |---|---|---|
-| `triager` | fast | copilot, claude-code |
+| `triager` | fast | grok, copilot, claude-code (grok since ADR 0024) |
 | `planner` | expert (fast when triage complexity ≤ 2) | expert: claude-code, copilot |
 | `implementer` | standard (fast when complexity ≤ 2; one tier up from the 2nd fix iteration) | standard: claude-code, copilot |
 | `reviewer` | standard, on a provider other than the implementer's | standard: claude-code, copilot |
