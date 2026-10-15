@@ -2,7 +2,7 @@
 # Targets are thin wrappers over pnpm; Node >= 22.18 runs the TypeScript sources directly.
 
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck test verify audit secrets lint-workflows ci daemon cli chat doctor clean
+.PHONY: help install typecheck test verify web-build web-dev web audit secrets lint-workflows ci daemon cli chat doctor clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  make %-10s %s\n", $$1, $$2}'
@@ -10,13 +10,22 @@ help: ## List targets
 install: ## Install dependencies (pnpm workspaces)
 	pnpm install --frozen-lockfile
 
-typecheck: ## Type-check every package (tsc, no emit)
+typecheck: ## Type-check every package (tsc; vue-tsc for apps/web)
 	pnpm typecheck
 
 test: ## Run the test suite (Vitest)
 	pnpm test
 
 verify: typecheck test ## Typecheck + tests, the check before committing
+
+web-build: ## Build the Web UI into apps/web/dist (navarchd serves it at /)
+	pnpm build:web
+
+web-dev: ## Vite dev server for the Web UI, proxying /api to a running navarchd
+	pnpm dev:web
+
+web: ## Open the Web UI in the browser (needs a running daemon and make web-build)
+	node apps/cli/src/main.ts web
 
 audit: ## Fail on known high or critical vulnerabilities in dependencies
 	pnpm audit --audit-level high
@@ -27,7 +36,7 @@ secrets: ## Scan the git history for committed secrets (needs gitleaks)
 lint-workflows: ## Lint the GitHub Actions workflows (needs actionlint)
 	actionlint
 
-ci: verify audit secrets lint-workflows ## Every quality gate the CI pipelines run
+ci: verify web-build audit secrets lint-workflows ## Every quality gate the CI pipelines run
 
 daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch)
 	node apps/daemon/src/main.ts
@@ -51,4 +60,4 @@ doctor: ## Check the toolchain Navarch needs
 	@ollama --version || echo "ollama not found: native runs need another provider"
 
 clean: ## Remove installed dependencies and caches
-	rm -rf node_modules apps/*/node_modules packages/*/node_modules packages/adapters/*/node_modules
+	rm -rf node_modules apps/*/node_modules packages/*/node_modules packages/adapters/*/node_modules apps/web/dist

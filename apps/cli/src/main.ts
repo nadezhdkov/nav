@@ -8,6 +8,7 @@ import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { formatApprovals, formatEvent, formatRunDetail, formatRunList } from "./format.ts";
+import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
 
@@ -15,6 +16,7 @@ Usage:
   navarch                                  talk to the concierge (same as \`navarch chat\`, in a terminal)
   navarch chat                             ask in plain language; actions are proposed and need your yes
   navarch ask <question...>                one question to the concierge; proposals are shown, not run
+  navarch web [--print]                    open the Web UI (runs, live graph, approvals) in the browser
   navarch daemon start|stop|status
   navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt...>
                                          flow \`task\`: implement, then verify and fix until the checks pass
@@ -64,6 +66,7 @@ async function main(argv: string[]): Promise<number> {
       flow: { type: "string" },
       reason: { type: "string" },
       all: { type: "boolean", default: false },
+      print: { type: "boolean", default: false },
     },
   });
   const [command, ...rest] = positionals;
@@ -88,6 +91,16 @@ async function main(argv: string[]): Promise<number> {
       if (json) return print(turn, json);
       console.log(turn.reply);
       for (const p of turn.proposals) console.log(`\nProposed (not run): ${p.summary}\nUse \`navarch chat\` to confirm actions.`);
+      return EXIT.ok;
+    }
+    case "web": {
+      const url = await webUrl(new ApiClient(home));
+      if (json) return print({ url }, json);
+      if (!values.print && (await openInBrowser(url))) {
+        console.log("Opened the Web UI in your browser (the sign-in link works once, for 60 s).");
+        return EXIT.ok;
+      }
+      console.log(`Open within 60 s (works once): ${url}`);
       return EXIT.ok;
     }
     case "daemon":

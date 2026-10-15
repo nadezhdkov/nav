@@ -31,6 +31,7 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: make typecheck
       - run: make test
+      - run: make web-build
 
   lint-workflows:
     runs-on: ubuntu-latest

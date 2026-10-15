@@ -1,0 +1,113 @@
+@import "tailwindcss";
+@import "@vue-flow/core/dist/style.css";
+
+/*
+ * Tokens (spec §15.4): dark by default, light when the system asks for it. Tones always pair with
+ * an icon and a label. Contrast of text tokens on their surfaces is AA or better.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #05080f;
+  --surface: #0b1220;
+  --surface-2: #111a2c;
+  --border: #1e2a40;
+  --grid: rgb(148 163 184 / 0.07);
+  --text: #e6edf7;
+  --text-muted: #9fb0c8;
+  --accent: #22d3ee;
+  --tone-neutral: #a5b4cb;
+  --tone-info: #38bdf8;
+  --tone-success: #34d399;
+  --tone-danger: #fb7185;
+  --tone-warning: #f59e0b;
+  --tone-muted: #8494ad;
+  --glow: 0 0 0 1px var(--tone), 0 0 18px -2px color-mix(in srgb, var(--tone) 55%, transparent);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --surface-2: #f1f5f9;
+    --border: #d5dde8;
+    --grid: rgb(15 23 42 / 0.06);
+    --text: #0f172a;
+    --text-muted: #475569;
+    --accent: #0e7490;
+    --tone-neutral: #475569;
+    --tone-info: #0369a1;
+    --tone-success: #047857;
+    --tone-danger: #be123c;
+    --tone-warning: #b45309;
+    --tone-muted: #64748b;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", monospace;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tone-neutral { --tone: var(--tone-neutral); }
+.tone-info { --tone: var(--tone-info); }
+.tone-success { --tone: var(--tone-success); }
+.tone-danger { --tone: var(--tone-danger); }
+.tone-warning { --tone: var(--tone-warning); }
+.tone-muted { --tone: var(--tone-muted); }
+
+.grid-canvas {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: var(--glow); }
+  50% { box-shadow: 0 0 0 1px var(--tone), 0 0 28px 2px color-mix(in srgb, var(--tone) 45%, transparent); }
+}
+
+.pulse { animation: pulse-glow 2s ease-in-out infinite; }
+.spin { animation: spin 1.2s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse, .spin { animation: none; }
+  .vue-flow__edge.animated path { animation: none; }
+}
+
+.vue-flow__edge-path { stroke: var(--border); stroke-width: 1.5; }
+.vue-flow__edge.active .vue-flow__edge-path { stroke: var(--accent); }
+.vue-flow__edge.loop-back .vue-flow__edge-path { stroke: var(--tone-warning); stroke-dasharray: 6 5; }
+.vue-flow__handle { opacity: 0; pointer-events: none; }
+.vue-flow__node { cursor: default; }
+.vue-flow__node.selected > * { outline: 2px solid var(--accent); outline-offset: 3px; }

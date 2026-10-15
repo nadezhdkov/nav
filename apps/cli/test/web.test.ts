@@ -1,0 +1,17 @@
+import { describe, expect, it } from "vitest";
+import { webUrl, type WebApi } from "../src/web.ts";
+
+describe("navarch web", () => {
+  it("asks the daemon for a single-use code and puts it in the URL fragment, not the token", async () => {
+    const calls: string[] = [];
+    const api: WebApi = {
+      url: "http://127.0.0.1:7420",
+      async request<T>(method: string, path: string): Promise<T> {
+        calls.push(`${method} ${path}`);
+        return { code: "c0de_abc", expires_at: "2026-10-15T00:01:00Z" } as T;
+      },
+    };
+    expect(await webUrl(api)).toBe("http://127.0.0.1:7420/#code=c0de_abc");
+    expect(calls).toEqual(["POST /api/v1/web/codes"]);
+  });
+});

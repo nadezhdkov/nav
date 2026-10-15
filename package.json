@@ -8,10 +8,12 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @navarch/web typecheck",
     "test": "vitest run",
     "dev:daemon": "node apps/daemon/src/main.ts",
-    "navarch": "node apps/cli/src/main.ts"
+    "navarch": "node apps/cli/src/main.ts",
+    "build:web": "pnpm --filter @navarch/web build",
+    "dev:web": "pnpm --filter @navarch/web dev"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
