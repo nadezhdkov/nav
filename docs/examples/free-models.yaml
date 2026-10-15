@@ -46,7 +46,11 @@ routing:
       provider: xiaomi
   tiers:
     # Free first; the router falls back on rate limits and missing keys, and a failed
-    # verification moves the implementer up to `standard`.
-    fast: [laguna-s-free, zen-mimo-flash, copilot, claude-code]
+    # verification moves the implementer up to `standard`. Order from the 2026-10-14
+    # bake-off (ADR 0015): big-pickle wrote correct code but took ~4 min per small task;
+    # north-mini-code passed the one task it finished; laguna-s was rate-limited upstream
+    # all evening. Expect free models to be 5-10x slower than Copilot or Claude Code and
+    # to run out after a handful of tasks per day.
+    fast: [zen-big-pickle, north-mini-code-free, copilot, claude-code]
     standard: [claude-code, copilot]
     expert: [claude-code, copilot]
