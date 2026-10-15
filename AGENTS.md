@@ -8,7 +8,7 @@ Instructions for AI agents working in this repository. Product source of truth: 
 
 ## Current state
 
-**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `navarchd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants and the CLI. Six agent adapters run tasks in a worktree, chosen per run with `--adapter` (ADR 0004, ADR 0012):
+**Phase 0** (spec §16) is implemented. It has a pnpm monorepo, `packages/contracts`, an SQLite event store with projections, and a minimal `navarchd` (REST + WebSocket). It also has the Policy Engine rules for task start and tool grants and the CLI. Seven agent adapters run tasks in a worktree, chosen per run with `--adapter` (ADR 0004, ADR 0012, ADR 0015):
 
 | Adapter | Runs | Login / key | Resume |
 |---|---|---|---|
@@ -17,9 +17,10 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
 | `copilot` | `copilot -p` | `copilot login` (Copilot plan; each prompt costs premium requests) | yes |
-| `native` | Navarch's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` (`OPENROUTER_API_KEY`) | no, a retry restarts the conversation |
+| `opencode` | `opencode run --standalone` | `opencode auth login` (OpenCode account; Zen's free models need no key). Set `adapters.opencode.command` if `~/.opencode/bin` is not on PATH | yes |
+| `native` | Navarch's own tool loop over an OpenAI-compatible API | `ollama/<model>` (local), `openrouter/<model>` and `opencode-zen/<model>` (paid Zen models only), keys in the Vault (`navarch secret set openrouter/api_key`, `opencode/api_key`) or `OPENROUTER_API_KEY` (ADR 0014) | no, a retry restarts the conversation |
 
-Agents run with Navarch's configuration, not the operator's: Claude Code without user-level settings (`--setting-sources project,local`), gemini-cli with a per-task home. The task prompt lists the allowed commands, and `--setup <cmd>` prepares the worktree (e.g. `npm ci`) before the agent starts (ADR 0006). After a restart, interrupted tasks are dispatched first.
+Agents run with Navarch's configuration, not the operator's: Claude Code without user-level settings (`--setting-sources project,local`), gemini-cli with a per-task home, opencode with an empty config directory and no project config. The task prompt lists the allowed commands, and `--setup <cmd>` prepares the worktree (e.g. `npm ci`) before the agent starts (ADR 0006). After a restart, interrupted tasks are dispatched first.
 
 When an agent runs out of quota, the task waits for the reset time the agent reported (or a backoff), and a reset more than 12 hours away pauses the run until `navarch run resume` (ADR 0005). Claude Code and Codex quota windows are recorded as `quota.observed` events; Copilot running out of premium requests waits for the monthly reset (1st, 00:00 UTC).
 
@@ -34,7 +35,7 @@ Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 
 - The GitHub Integration (`packages/github`) is the only GitHub client. It reads issues and opens draft PRs with a fine-grained PAT kept in the OS keychain as `secret://github/token` (ADR 0007), and pushes only `navarch/*` branches, never forced.
 - Below autonomy level 3, opening a PR waits for a human (`navarch approvals`, `navarch approve|reject`, API `/api/v1/approvals`).
 
-Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): without `--adapter`/`--model`, each agent task is routed at dispatch through the Agent Runtime to a catalog entry (adapter + model) from `routing` in the config. Tiers per profile, `fast` for triage and for planner/implementer when the triage says `Complexity: ≤ 2` (Copilot first by default), Claude Code first otherwise; the reviewer goes to a provider other than the implementer's; exhausted quotas are skipped and a rate limit falls back to the next candidate at once. Every decision is a `model.routed` event. Tests run with stub agent CLIs first on PATH (`test/no-real-agents.ts`), so no test can reach a real agent.
+Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): without `--adapter`/`--model`, each agent task is routed at dispatch through the Agent Runtime to a catalog entry (adapter + model) from `routing` in the config. Tiers per profile, `fast` for triage and for planner/implementer when the triage says `Complexity: ≤ 2` (Copilot first by default), Claude Code first otherwise; the reviewer goes to a provider other than the implementer's; exhausted quotas are skipped and a rate limit falls back to the next candidate at once. Every decision is a `model.routed` event. Free models are catalog entries: OpenRouter `:free` on the `native` adapter, OpenCode Zen's free models on the `opencode` adapter, since Zen's API serves them only to the OpenCode client (ADR 0015), merged from `routing.models` (example: `docs/examples/free-models.yaml`); an entry whose provider has no key is skipped, and a free daily limit is a quota scoped to that provider's models (ADR 0014). Tests run with stub agent CLIs first on PATH (`test/no-real-agents.ts`, also `secret-tool`), so no test can reach a real agent or the keychain.
 
 Not yet: budget-aware routing and observed metrics, branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
 
@@ -52,13 +53,13 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 | `make ci` | verify + audit + secrets + lint-workflows, everything CI runs |
 | `make daemon` | run `navarchd` in the foreground |
 | `make cli ARGS="…"` | run the `navarch` CLI, e.g. `ARGS="run list"` |
-| `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, copilot, ollama) |
+| `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, copilot, opencode, ollama) |
 
 CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
 
 CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/model-router`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,native}`, `flows/`, `docs/adr`, `docs/specs`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/model-router`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,opencode,native}`, `flows/`, `docs/adr`, `docs/specs`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

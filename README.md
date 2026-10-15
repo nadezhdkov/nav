@@ -19,6 +19,7 @@ Status: **Phase 1** in progress. A run can start from a GitHub issue and end in 
   - the Antigravity CLI (`agy`), logged in with a Google account;
   - the `codex` CLI after `codex login`;
   - the GitHub Copilot CLI (`copilot`), logged in with an account that has a Copilot plan;
+  - the OpenCode CLI (`opencode`) after `opencode auth login`, for OpenCode Zen's free models;
   - Ollama with a model that supports tool calls.
 
 ## Quick start
@@ -43,7 +44,8 @@ navarch run --adapter antigravity --model gemini-3.8-flash-medium "Fix the typo 
 navarch run --adapter codex "Add a unit test for parse_date"
 navarch run --adapter copilot "Add a unit test for parse_date"   # one premium request per prompt
 navarch run --adapter native --model ollama/qwen2.5:7b "Update the usage section in README.md"
-navarch run --adapter native --model openrouter/<model>:free "…"   # needs OPENROUTER_API_KEY
+navarch run --adapter native --model openrouter/<model>:free "…"   # key: navarch secret set openrouter/api_key
+navarch run --adapter opencode --model opencode/big-pickle "…"      # OpenCode Zen free model, after `opencode auth login`
 ```
 
 Small local models are free but make more mistakes. Always read the diff (`navarch run show <id>`).

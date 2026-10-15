@@ -10,6 +10,10 @@ export type Provider = {
   /** Base URL ending before `/chat/completions`, e.g. `http://127.0.0.1:11434/v1`. */
   baseUrl: string;
   apiKey?: string;
+  /** Reads the key when a task starts (e.g. from the Vault), so a key stored later is picked up. */
+  getApiKey?: () => Promise<string | undefined>;
+  /** The provider refuses requests without a key (OpenRouter, OpenCode Zen); Ollama does not. */
+  requiresKey?: boolean;
   headers?: Record<string, string>;
   /** Extra JSON merged into every request body (e.g. OpenRouter `usage: { include: true }`). */
   extraBody?: Record<string, unknown>;
@@ -30,10 +34,13 @@ export type ChatResponse = {
 
 export class ModelError extends Error {
   readonly kind: ErrorKind;
+  /** On a rate limit with a known reset: when it resets (ISO 8601) and the limit's name. */
+  readonly limit?: { resetsAt: string; window: string };
 
-  constructor(kind: ErrorKind, message: string) {
+  constructor(kind: ErrorKind, message: string, limit?: { resetsAt: string; window: string }) {
     super(message);
     this.kind = kind;
+    if (limit) this.limit = limit;
   }
 }
 
@@ -76,7 +83,7 @@ export async function chat(
     const after = res.headers.get("retry-after");
     const seconds = after && /^\d+$/.test(after.trim()) ? Number(after) : after ? Math.max(0, (Date.parse(after) - Date.now()) / 1_000) : NaN;
     const hint = Number.isFinite(seconds) ? ` (retry after ${Math.ceil(seconds)}s)` : "";
-    throw new ModelError(kind, `HTTP ${res.status} from ${provider.baseUrl}: ${detail}${hint}`);
+    throw new ModelError(kind, `HTTP ${res.status} from ${provider.baseUrl}: ${detail}${hint}`, kind === "rate_limited" ? rateLimit(res.headers, text, detail) : undefined);
   }
 
   let data: Record<string, unknown>;
@@ -104,6 +111,28 @@ export async function chat(
       cost: num(usage.cost),
     },
   };
+}
+
+/**
+ * A rate limit's reset from `X-RateLimit-Reset` (epoch ms or s), in the response headers or, as
+ * OpenRouter sends it for its free-model daily limit, in `error.metadata.headers` of the body.
+ * The window name comes from the message (`free-models-per-day`), else `requests`.
+ */
+export function rateLimit(headers: Headers, body: string, detail: string): { resetsAt: string; window: string } | undefined {
+  let raw = headers.get("x-ratelimit-reset") ?? undefined;
+  if (!raw) {
+    try {
+      const meta = (JSON.parse(body) as { error?: { metadata?: { headers?: Record<string, unknown> } } }).error?.metadata?.headers ?? {};
+      const value = Object.entries(meta).find(([k]) => k.toLowerCase() === "x-ratelimit-reset")?.[1];
+      raw = value === undefined ? undefined : String(value);
+    } catch {
+      // Not JSON: no reset in the body.
+    }
+  }
+  const epoch = raw && /^\d+$/.test(raw.trim()) ? Number(raw) : NaN;
+  if (!Number.isFinite(epoch)) return undefined;
+  const window = /free-models-per-(day|min)/i.exec(detail)?.[0].toLowerCase() ?? "requests";
+  return { resetsAt: new Date(epoch < 1e12 ? epoch * 1_000 : epoch).toISOString(), window };
 }
 
 function num(v: unknown): number {

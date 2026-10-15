@@ -6,6 +6,7 @@ import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@navarch/adapter-clau
 import { CodexAdapter, type CodexOptions } from "@navarch/adapter-codex";
 import { CopilotAdapter, type CopilotOptions } from "@navarch/adapter-copilot";
 import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini-cli";
+import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode";
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
 import { registerSecret, type AdapterId, type AgentAdapter } from "@navarch/contracts";
@@ -30,6 +31,7 @@ export type DaemonOptions = {
     antigravity?: AntigravityOptions;
     codex?: CodexOptions;
     copilot?: CopilotOptions;
+    opencode?: OpencodeOptions;
     native?: Partial<NativeOptions>;
   };
   port?: number;
@@ -59,7 +61,8 @@ export class Daemon {
     if (options.port !== undefined) this.config.daemon.port = options.port;
 
     this.store = new EventStore(homeFiles(this.home).db);
-    this.adapters = buildAdapters(this.config, options.adapters ?? {}, this.home);
+    this.vault = options.vault ?? new Vault();
+    this.adapters = buildAdapters(this.config, options.adapters ?? {}, this.home, this.vault);
     const adapters = this.adapters;
     const runtime = new AgentRuntime({
       home: this.home,
@@ -71,7 +74,6 @@ export class Daemon {
       },
     });
     const policy = new PolicyEngine();
-    this.vault = options.vault ?? new Vault();
     const github = new GitHubIntegration(this.config, this.vault, policy);
     this.scheduler = new Scheduler({
       store: this.store,
@@ -121,11 +123,16 @@ export class Daemon {
   }
 }
 
-/** Enabled adapters, keyed by id. Provider API keys are read from the environment and registered for redaction. */
+/**
+ * Enabled adapters, keyed by id. A native provider's API key comes from its `api_key_env`
+ * variable, else from the Vault (`api_key: secret://…`), read when a task starts and registered
+ * for redaction.
+ */
 export function buildAdapters(
   config: Config,
   overrides: NonNullable<DaemonOptions["adapters"]>,
   home: string,
+  vault?: Vault,
 ): Map<string, AgentAdapter> {
   const a = config.adapters;
   const all: [AdapterId, boolean, () => AgentAdapter][] = [
@@ -152,17 +159,23 @@ export function buildAdapters(
     ],
     ["codex", a.codex.enabled, () => new CodexAdapter({ command: a.codex.command, ...overrides.codex })],
     ["copilot", a.copilot.enabled, () => new CopilotAdapter({ command: a.copilot.command, ...overrides.copilot })],
+    ["opencode", a.opencode.enabled, () => new OpencodeAdapter({ command: a.opencode.command, ...overrides.opencode })],
     [
       "native",
       a.native.enabled,
       () => {
         const providers: Record<string, Provider> = {};
         for (const [name, p] of Object.entries(a.native.providers)) {
-          const apiKey = p.api_key_env ? process.env[p.api_key_env] : undefined;
-          if (apiKey) registerSecret(apiKey);
+          const ref = p.api_key;
+          const getApiKey = async (): Promise<string | undefined> => {
+            const fromEnv = p.api_key_env ? process.env[p.api_key_env] : undefined;
+            const key = fromEnv || (ref && vault ? await vault.get(ref).catch(() => undefined) : undefined);
+            if (key) registerSecret(key);
+            return key;
+          };
           providers[name] = {
             baseUrl: p.base_url,
-            ...(apiKey ? { apiKey } : {}),
+            ...(p.api_key_env || ref ? { getApiKey, requiresKey: true } : {}),
             ...(p.headers ? { headers: p.headers } : {}),
             ...(p.extra_body ? { extraBody: p.extra_body } : {}),
           };

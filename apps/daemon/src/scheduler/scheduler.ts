@@ -335,7 +335,7 @@ export class Scheduler {
       ...(complexity !== undefined ? { complexity } : {}),
       iteration: task.iteration,
       implementerProviders,
-      exhausted: this.store.exhaustedAdapters(),
+      exhausted: this.store.exhaustedQuotas(),
       exclude,
     });
     const chosen: { id: string; adapter: string; model?: string; provider: string } = decision?.chosen ?? {

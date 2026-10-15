@@ -56,6 +56,49 @@ describe("NativeAdapter", () => {
     expect(await auth.adapter.run(auth.ctx, collect().io)).toMatchObject({ status: "failed", error: { kind: "fatal" } });
   });
 
+  it("reads a provider's key when the task starts, and reports a provider without one as unavailable", async () => {
+    const server = await fakeModelServer([{ content: "done" }]);
+    servers.push(server);
+    let key: string | undefined;
+    const adapter = new NativeAdapter({
+      providers: {
+        paid: { baseUrl: server.baseUrl, requiresKey: true, getApiKey: async () => key },
+        local: { baseUrl: server.baseUrl },
+      },
+    });
+    const ctx = taskContext({ model: "paid/coder-1", sandbox: { id: "s", kind: "worktree", path: makeRepo(), branch: "b", baseCommit: "c" } });
+    expect(await adapter.run(ctx, collect().io)).toMatchObject({ status: "failed", error: { kind: "fatal", message: "no API key for provider paid" } });
+    expect(server.requests).toHaveLength(0);
+    expect(adapter.unavailableReason("paid/coder-1")).toBe("no API key for provider paid");
+    expect(adapter.unavailableReason("local/coder-1")).toBeUndefined();
+    expect(adapter.unavailableReason("other/coder-1")).toContain("provider one of: paid, local");
+
+    key = "sk-test"; // stored later with `navarch secret set`: the next task picks it up
+    expect(await adapter.run(ctx, collect().io)).toMatchObject({ status: "succeeded" });
+    expect(adapter.unavailableReason("paid/coder-1")).toBeUndefined();
+  });
+
+  it("turns OpenRouter's free-model daily limit into a quota scoped to the provider's models", async () => {
+    // 🟡 Shape of OpenRouter's documented 429 for `:free` models (reset in error.metadata.headers, epoch ms).
+    const reset = Date.parse("2026-10-16T00:00:00.000Z");
+    const { adapter, ctx } = await setup([
+      {
+        status: 429,
+        body: {
+          error: {
+            code: 429,
+            message: "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day",
+            metadata: { headers: { "X-RateLimit-Limit": "50", "X-RateLimit-Remaining": "0", "X-RateLimit-Reset": String(reset) } },
+          },
+        },
+      },
+    ]);
+    const { events, io } = collect();
+    const result = await adapter.run(ctx, io);
+    expect(result.error).toMatchObject({ kind: "rate_limited", retry_at: "2026-10-16T00:00:00.000Z" });
+    expect(events).toContainEqual({ kind: "quota", window: "free-models-per-day", resetsAt: "2026-10-16T00:00:00.000Z", exhausted: true, modelPrefix: "fake/" });
+  });
+
   it("stops at the budget and at the turn limit", async () => {
     const pricey = await setup([{ tool_calls: [{ name: "list_files", args: {} }], cost: 5 }]);
     expect(await pricey.adapter.run(pricey.ctx, collect().io)).toMatchObject({ error: { kind: "budget_exceeded" } });

@@ -86,7 +86,7 @@ export type AdapterEvent =
   | { kind: "log"; line: string }
   | { kind: "resume_token"; token: string }
   | { kind: "denied"; tool: string; input: string }
-  | { kind: "quota"; window: string; utilization?: number; resetsAt?: string; exhausted?: boolean };
+  | { kind: "quota"; window: string; utilization?: number; resetsAt?: string; exhausted?: boolean; modelPrefix?: string };
 
 export type AdapterIO = {
   emit(event: AdapterEvent): void;
@@ -113,6 +113,11 @@ export interface AgentAdapter {
   healthcheck(): Promise<HealthStatus>;
   run(ctx: TaskContext, io: AdapterIO): Promise<TaskResult>;
   cancel(taskId: string): Promise<void>;
+  /**
+   * Why this adapter cannot run `model` right now (e.g. its provider has no API key), or
+   * undefined when it can. Synchronous and cheap: the Model Router asks it for every candidate.
+   */
+  unavailableReason?(model?: string): string | undefined;
   /** Stops every running task without marking it cancelled (daemon shutdown). */
   stopAll(): Promise<void>;
 }

@@ -1,0 +1,52 @@
+# Free models for the Model Router (ADR 0014). Merge into ~/.navarch/config.yaml.
+#
+# OpenRouter keys live in the Vault, never here:
+#   navarch secret set openrouter/api_key   # https://openrouter.ai/keys
+# An entry whose provider has no key is skipped by the router ("no API key for provider …").
+#
+# OpenCode Zen's free models answer only to the OpenCode client (the API returns FreeTierError
+# to anyone else), so they run on the `opencode` adapter (ADR 0015): install the CLI, log in
+# once (`opencode auth login`, a Google account works) and no key is needed. The installer puts
+# it in ~/.opencode/bin; if that is not on the daemon's PATH, set the command:
+#   adapters:
+#     opencode:
+#       command: /home/<you>/.opencode/bin/opencode
+#
+# Free offers change often and are not guaranteed; check before relying on them:
+#   OpenRouter: ids ending in `:free`, 20 requests/min and 50/day (1,000/day after buying 10 credits once).
+#   OpenCode Zen: ids ending in `-free` (plus big-pickle), limits not published, often time-limited.
+# Data terms differ per model: several free models log prompts or use them for training.
+# Keep them out of the tiers for private or confidential repositories.
+
+routing:
+  models:
+    laguna-s-free:
+      adapter: native
+      model: openrouter/poolside/laguna-s-2.1:free
+      provider: poolside
+    north-mini-code-free:
+      adapter: native
+      model: openrouter/cohere/north-mini-code:free
+      provider: cohere
+    nemotron-ultra-free:
+      adapter: native
+      model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
+      provider: nvidia
+    zen-big-pickle:
+      adapter: opencode
+      model: opencode/big-pickle
+      provider: opencode
+    zen-nemotron-lightning:
+      adapter: opencode
+      model: opencode/nemotron-3.5-lightning-free
+      provider: nvidia
+    zen-mimo-flash:
+      adapter: opencode
+      model: opencode/mimo-v2.6-flash-free
+      provider: xiaomi
+  tiers:
+    # Free first; the router falls back on rate limits and missing keys, and a failed
+    # verification moves the implementer up to `standard`.
+    fast: [laguna-s-free, zen-mimo-flash, copilot, claude-code]
+    standard: [claude-code, copilot]
+    expert: [claude-code, copilot]

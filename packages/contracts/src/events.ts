@@ -54,6 +54,8 @@ export const QuotaObservation = z.object({
   resets_at: z.string().optional(),
   /** True when this window is exhausted and requests are refused. */
   exhausted: z.boolean().optional(),
+  /** When the limit covers only some of the adapter's models: their id prefix, e.g. `openrouter/` (ADR 0014). */
+  model_prefix: z.string().optional(),
 });
 export type QuotaObservation = z.infer<typeof QuotaObservation>;
 

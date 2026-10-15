@@ -42,13 +42,46 @@ export function resolveModel(id: string, providers: Record<string, Provider>): {
   return { provider, model: id.slice(slash + 1), name };
 }
 
+const KEY_RECHECK_MS = 60_000;
+
 export class NativeAdapter implements AgentAdapter {
   readonly id = "native";
   private readonly options: NativeOptions;
   private readonly controllers = new Map<string, { controller: AbortController; cancelled: boolean }>();
+  /** Whether each provider read through `getApiKey` had a key at the last check, and when. */
+  private readonly keys = new Map<string, { present: boolean; checked: number }>();
 
   constructor(options: NativeOptions) {
     this.options = options;
+    void this.checkKeys();
+  }
+
+  /** Re-reads every provider's key in the background (for `unavailableReason`). */
+  private async checkKeys(): Promise<void> {
+    await Promise.all(
+      Object.entries(this.options.providers)
+        .filter(([, p]) => p.getApiKey)
+        .map(async ([name, p]) => {
+          const key = await p.getApiKey!().catch(() => undefined);
+          this.keys.set(name, { present: Boolean(key), checked: Date.now() });
+        }),
+    );
+  }
+
+  unavailableReason(model?: string): string | undefined {
+    const id = model ?? this.options.defaultModel;
+    if (!id) return "no model given";
+    let name: string;
+    let provider: Provider;
+    try {
+      ({ name, provider } = resolveModel(id, this.options.providers));
+    } catch (err) {
+      return (err as Error).message;
+    }
+    if (!provider.requiresKey || provider.apiKey) return undefined;
+    const state = this.keys.get(name);
+    if (!state || Date.now() - state.checked > KEY_RECHECK_MS) void this.checkKeys();
+    return state?.present ? undefined : `no API key for provider ${name}`;
   }
 
   capabilities(): AdapterCapabilities {
@@ -65,10 +98,17 @@ export class NativeAdapter implements AgentAdapter {
     this.controllers.set(ctx.taskId, entry);
     const usage = new Map<string, UsageRecord>();
     let lastText = "";
+    let providerName = "";
     try {
       const modelId = ctx.model ?? this.options.defaultModel;
       if (!modelId) return failed("fatal", "the native adapter needs a model, e.g. --model ollama/qwen2.5:7b");
-      const { provider, model } = resolveModel(modelId, this.options.providers);
+      const resolved = resolveModel(modelId, this.options.providers);
+      const { model, name } = resolved;
+      const apiKey = resolved.provider.apiKey ?? (await resolved.provider.getApiKey?.().catch(() => undefined));
+      if (resolved.provider.getApiKey) this.keys.set(name, { present: Boolean(apiKey), checked: Date.now() });
+      if (resolved.provider.requiresKey && !apiKey) return failed("fatal", `no API key for provider ${name}`);
+      const provider: Provider = { ...resolved.provider, ...(apiKey ? { apiKey } : {}) };
+      providerName = name;
       const tools = new SandboxTools(ctx.sandbox.path, ctx.tools);
       const specs = toolSpecs(ctx.tools);
       const retryNote =
@@ -121,7 +161,13 @@ export class NativeAdapter implements AgentAdapter {
       if (entry.cancelled) return failed("cancelled", "cancelled by user", lastText, [...usage.values()]);
       if (err instanceof ModelError) {
         const result = failed(err.kind, err.message, lastText, [...usage.values()]);
-        return err.kind === "rate_limited" ? withRetryAt(result, retryAtFromText(err.message)) : result;
+        if (err.kind !== "rate_limited") return result;
+        if (err.limit) {
+          // Scoped to this provider's models: other providers of the native adapter stay usable.
+          io.emit({ kind: "quota", window: err.limit.window, resetsAt: err.limit.resetsAt, exhausted: true, modelPrefix: `${providerName}/` });
+          return withRetryAt(result, err.limit.resetsAt);
+        }
+        return withRetryAt(result, retryAtFromText(err.message));
       }
       return failed("fatal", err instanceof Error ? err.message : String(err), lastText, [...usage.values()]);
     } finally {

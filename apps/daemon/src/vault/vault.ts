@@ -72,6 +72,9 @@ export class Vault {
   private run(args: string[], stdin?: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = execFile(this.command, args, { timeout: 15_000 }, (err, stdout) => (err ? reject(err) : resolve(stdout)));
+      child.stdin?.on("error", () => {
+        // secret-tool may exit before reading stdin; its exit status reports why.
+      });
       child.stdin?.end(stdin ?? "");
     });
   }

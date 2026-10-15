@@ -6,7 +6,7 @@ import { ISSUE_REF, WorkItemRef } from "./work.ts";
 /** Core API contracts, spec §9.1. */
 
 /** Agent adapters Navarch can run (spec §6.3.2). */
-export const AdapterId = z.enum(["claude-code", "gemini-cli", "antigravity", "codex", "copilot", "native"]);
+export const AdapterId = z.enum(["claude-code", "gemini-cli", "antigravity", "codex", "copilot", "opencode", "native"]);
 export type AdapterId = z.infer<typeof AdapterId>;
 
 export const CreateRunRequest = z

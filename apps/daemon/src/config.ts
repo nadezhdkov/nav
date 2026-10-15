@@ -8,7 +8,10 @@ import { z } from "zod";
 /** An OpenAI-compatible endpoint for the native adapter. Keys are read from an environment variable, never stored here. */
 const Provider = z.object({
   base_url: z.string().url(),
+  /** Environment variable with the key; it wins over `api_key`. */
   api_key_env: z.string().optional(),
+  /** The key in the Vault (ADR 0007), e.g. `secret://openrouter/api_key`, stored with `navarch secret set`. */
+  api_key: z.string().regex(/^secret:\/\/[a-z0-9][a-z0-9/_.-]*$/).optional(),
   headers: z.record(z.string(), z.string()).optional(),
   extra_body: z.record(z.string(), z.unknown()).optional(),
 });
@@ -19,12 +22,25 @@ const defaultProviders: Record<string, ProviderConfig> = {
   openrouter: {
     base_url: "https://openrouter.ai/api/v1",
     api_key_env: "OPENROUTER_API_KEY",
+    api_key: "secret://openrouter/api_key",
     headers: { "X-Title": "Navarch" },
     extra_body: { usage: { include: true } },
   },
+  /** OpenCode Zen (ADR 0014): OpenAI-compatible models, some of them free. */
+  "opencode-zen": { base_url: "https://opencode.ai/inference/v1", api_key: "secret://opencode/api_key" },
 };
 
 const Tier = z.enum(["fast", "standard", "expert"]);
+
+/** One catalog entry per CLI adapter, with the adapter's own default model. Model ids belong in config. */
+const BUILTIN_MODELS = {
+  "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
+  copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
+  opencode: { adapter: "opencode", provider: "opencode", status: "active" },
+  codex: { adapter: "codex", provider: "openai", status: "active" },
+  "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
+  antigravity: { adapter: "antigravity", provider: "google", status: "active" },
+} satisfies Record<string, z.infer<typeof CatalogEntry>>;
 const CatalogEntry = z.object({
   adapter: AdapterId,
   /** The adapter's model id; absent means the adapter's default. */
@@ -42,13 +58,11 @@ const Routing = z
   .object({
     /** When false, runs use `default_adapter` as before. `--adapter`/`--model` always pin a run. */
     enabled: z.boolean().default(true),
-    models: z.record(z.string(), CatalogEntry).default({
-      "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
-      copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
-      codex: { adapter: "codex", provider: "openai", status: "active" },
-      "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
-      antigravity: { adapter: "antigravity", provider: "google", status: "active" },
-    }),
+    /** Added to (or replacing by id) the built-in entries, one per CLI adapter. */
+    models: z
+      .record(z.string(), CatalogEntry)
+      .default({})
+      .transform((models): Record<string, z.infer<typeof CatalogEntry>> => ({ ...BUILTIN_MODELS, ...models })),
     tiers: z
       .object({
         fast: z.array(z.string()).default(["copilot", "claude-code"]),
@@ -121,6 +135,10 @@ export const Config = z.object({
         .prefault({}),
       copilot: z
         .object({ enabled: z.boolean().default(true), command: z.string().default("copilot"), model: z.string().optional() })
+        .prefault({}),
+      /** OpenCode CLI (ADR 0015); the installer puts it in ~/.opencode/bin, which may not be on PATH. */
+      opencode: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("opencode"), model: z.string().optional() })
         .prefault({}),
       native: z
         .object({

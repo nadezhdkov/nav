@@ -8,7 +8,8 @@ import { delimiter, join } from "node:path";
  * first on PATH and fail loudly; tests use fake CLIs by absolute path instead. Provider keys are
  * removed so the native adapter cannot reach a paid API either.
  */
-const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "ollama"];
+/** `secret-tool` too: a test must not read the operator's keychain (provider keys, the GitHub token). */
+const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "ollama", "secret-tool"];
 
 const dir = mkdtempSync(join(tmpdir(), "navarch-no-agents-"));
 for (const name of AGENT_COMMANDS) {
@@ -17,4 +18,4 @@ for (const name of AGENT_COMMANDS) {
   chmodSync(stub, 0o755);
 }
 process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ""}`;
-for (const key of ["OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN"]) delete process.env[key];
+for (const key of ["OPENCODE_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN"]) delete process.env[key];
