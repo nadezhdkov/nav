@@ -1,6 +1,6 @@
 # Phase 1, slice 8: projects, Inbox and desktop Home
 
-Status: in progress · Branch: `feat/inbox` · Spec: §4 (WorkSource, WorkItem), §6.7.3, §6.14, §8.2, §9.1, §15.1, §15.3, §16 (Phase 1 "Web UI: Inbox") · ADR: 0021
+Status: implemented · Branch: `feat/inbox` · Spec: §4 (WorkSource, WorkItem), §6.7.3, §6.14, §8.2, §9.1, §15.1, §15.3, §16 (Phase 1 "Web UI: Inbox") · ADR: 0021
 
 Phase 1 asks for an Inbox in the Web UI: every open issue of the user's repositories in one list, triaged, with a suggested action and a cost estimate, and a way to start runs from it (§15.3). Today a run starts only from an issue reference typed by hand, the GitHub Integration reads one issue at a time, and triage happens only inside a run. This slice adds a project registry, a GitHub sync by polling, automatic triage on a cheap API model, the Inbox screen, and the desktop Home of §15.1 with the agents' quota windows.
 
@@ -85,7 +85,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
   - **Cost today** (sum of `cost_usd` of today's tasks) and the default budget.
   - **Inbox summary**: counts by suggested action and a link to `/inbox`.
   - **Alerts**: failed runs, budget stops and quota pauses of the last 24 hours, plus "Triage unavailable" and "Daily triage limit reached".
-- The phone's Home gets the same quota rows in a compact form below the active runs.
+- The quota rows sit below the active runs, so on a phone what needs the user comes first.
 
 ### Sidebar: projects with their agents
 
@@ -124,7 +124,7 @@ User decisions (2026-10-15): repositories come from a **project registry**; tria
 - Inbox start: three items start three runs with the fake Claude in their project's clone; a policy denial on one is reported per item; items go to `in_run` and then `done`.
 - CLI: `navarch project add|list|remove` (origin detection and mismatch), `navarch sync`, `navarch inbox`, `navarch inbox start|dismiss`.
 - Web: the Inbox list, filters, multi-select dialog with the total estimate, the item panel rendering the body as text, desktop Home with quota rows (bar plus text), the sidebar projects tree, and complete locales.
-- Visual check with `ctk shoot web`: a demo daemon with two projects, a fake GitHub with a dozen issues, and a fake model. Desktop 1440×900 in dark and light mode (Home, Inbox, the start dialog, the sidebar tree) and the phone at 390×844 (Home with quotas, Inbox).
+- Visual check (2026-10-15): a demo daemon with two projects, a fake GitHub with eight issues, a fake model answering per issue, and quota observations for Claude Code, Codex and an exhausted OpenRouter free limit. Shots: Chromium at 1440×900 in dark and light (Inbox, selection bar, start dialog, item panel, sidebar tree, Home) and at 390×844 (Home, Inbox). The issue column was squeezed by the other columns and two headers ran together; both were fixed. On phones the quotas moved below the active runs. No console errors.
 
 ## References
 
