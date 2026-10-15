@@ -3,6 +3,7 @@ import {
   canTransitionRun,
   canTransitionTask,
   INSTRUCTION_INTERRUPT,
+  PAUSE_INTERRUPT,
   isTerminalRun,
   type RunStatus,
   type TaskStatus,
@@ -109,7 +110,7 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.error ? `${p.error.kind}: ${p.error.message}` : null,
         p.not_before ?? null,
         p.not_before ? 1 : 0,
-        p.from === "interrupted" && p.to === "ready" && p.reason === INSTRUCTION_INTERRUPT ? 1 : 0,
+        p.from === "interrupted" && p.to === "ready" && (p.reason === INSTRUCTION_INTERRUPT || p.reason === PAUSE_INTERRUPT) ? 1 : 0,
         ts,
         event.task_id,
       );

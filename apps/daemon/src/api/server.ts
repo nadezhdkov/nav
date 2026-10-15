@@ -13,6 +13,7 @@ import {
   DecideProposalRequest,
   StreamClientMessage,
   WebExchangeRequest,
+  type StopResult,
   type StreamServerMessage,
   type WebCode,
   type WebExchangeResponse,
@@ -115,6 +116,17 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/runs/:id/resume", async (req) => {
     const id = (req.params as { id: string }).id;
     return daemon.orchestrator.resumeRun(id, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  app.post("/api/v1/runs/:id/pause", async (req) => {
+    const id = (req.params as { id: string }).id;
+    return daemon.pauseRun(id, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  // The kill switch (spec §6.12.4): pauses every active run; nothing is cancelled.
+  app.post("/api/v1/stop", async (req) => {
+    const body: StopResult = { paused: daemon.stopAll({ kind: "user", via: viaOf(req.headers) }) };
+    return body;
   });
 
   app.get("/api/v1/runs/:id/messages", async (req, reply) => {

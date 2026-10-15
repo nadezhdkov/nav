@@ -10,7 +10,7 @@ import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
 import { ConciergeService } from "./concierge/service.ts";
-import { registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type SendRunMessage } from "@navarch/contracts";
+import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RunView, type SendRunMessage } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
@@ -90,7 +90,7 @@ export class Daemon {
       actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
       onSucceeded: (runId) => this.orchestrator.advance(runId),
     });
-    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github);
+    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github, undefined, policy);
     this.concierge = new ConciergeService({
       config: this.config,
       store: this.store,
@@ -117,6 +117,15 @@ export class Daemon {
   }
 
   /** An instruction from the user to a run (ADR 0019, `POST /api/v1/runs/:id/messages`). */
+  pauseRun(runId: string, actor: Actor): RunView {
+    return this.orchestrator.pauseRun(runId, actor, (taskId) => this.scheduler.requestInterrupt(taskId, PAUSE_INTERRUPT));
+  }
+
+  /** The kill switch: pauses every active run. */
+  stopAll(actor: Actor): string[] {
+    return this.orchestrator.stopAll(actor, (taskId) => this.scheduler.requestInterrupt(taskId, PAUSE_INTERRUPT));
+  }
+
   sendRunMessage(runId: string, req: SendRunMessage, actor: Actor): RunMessage {
     return this.orchestrator.sendMessage(runId, req, actor, {
       decide: (who, resource) => this.policy.decide(who, "run.message", resource, { autonomyLevel: this.config.autonomy_level }),

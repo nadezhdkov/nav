@@ -158,6 +158,58 @@ export type WebExchangeRequest = z.infer<typeof WebExchangeRequest>;
 export const WebExchangeResponse = z.object({ token: z.string() });
 export type WebExchangeResponse = z.infer<typeof WebExchangeResponse>;
 
+/** A paired phone (ADR 0020, spec §6.12.3). */
+export const DeviceView = z.object({
+  id: z.string(),
+  name: z.string(),
+  paired_at: z.string(),
+  last_seen_at: z.string().nullable(),
+  revoked_at: z.string().nullable(),
+  /** Web Push is on for this device. */
+  push: z.boolean(),
+});
+export type DeviceView = z.infer<typeof DeviceView>;
+
+/** A single-use pairing code, shown as a QR code of `url` on the desktop. */
+export const DevicePairing = z.object({ code: z.string(), url: z.string(), expires_at: z.string() });
+export type DevicePairing = z.infer<typeof DevicePairing>;
+
+export const PairDeviceRequest = z.object({
+  code: z.string().min(1).max(256),
+  name: z.string().trim().min(1).max(80),
+});
+export type PairDeviceRequest = z.infer<typeof PairDeviceRequest>;
+
+export const RefreshDeviceRequest = z.object({ refresh_token: z.string().min(1).max(256) });
+export type RefreshDeviceRequest = z.infer<typeof RefreshDeviceRequest>;
+
+/** A short-lived access token and a rotating refresh token for one device. */
+export const DeviceSession = z.object({
+  device: DeviceView,
+  access_token: z.string(),
+  access_expires_at: z.string(),
+  refresh_token: z.string(),
+});
+export type DeviceSession = z.infer<typeof DeviceSession>;
+
+/** A browser's Web Push subscription (`PushSubscription.toJSON()`). */
+export const PushSubscriptionRequest = z.object({
+  endpoint: z.string().url().max(2048),
+  keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(64) }),
+});
+export type PushSubscriptionRequest = z.infer<typeof PushSubscriptionRequest>;
+
+export const PushKey = z.object({ public_key: z.string() });
+export type PushKey = z.infer<typeof PushKey>;
+
+/** The kill switch's result: the runs it paused. */
+export const StopResult = z.object({ paused: z.array(z.string()) });
+export type StopResult = z.infer<typeof StopResult>;
+
+/** A repository earlier runs used; a phone can start runs only in these. */
+export const RepoView = z.object({ path: z.string(), last_run_at: z.string() });
+export type RepoView = z.infer<typeof RepoView>;
+
 /** An instruction from the user to a run (ADR 0019, spec §9.1 `/runs/:id/messages`). */
 export const MessageDelivery = z.enum(["next", "now"]);
 export type MessageDelivery = z.infer<typeof MessageDelivery>;

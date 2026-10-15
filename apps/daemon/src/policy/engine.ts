@@ -83,6 +83,22 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "run.message", effect: "deny", reason: "only the user sends instructions to a run" },
   {
+    match: (r) => (r.action === "run.pause" || r.action === "run.resume" || r.action === "fleet.stop") && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user may pause, resume and stop their own runs (ADR 0020)",
+  },
+  {
+    match: (r) => r.action === "run.pause" || r.action === "run.resume" || r.action === "fleet.stop",
+    effect: "deny",
+    reason: "only the user pauses, resumes or stops runs",
+  },
+  {
+    match: (r) => r.action === "notification.send" && r.actor.kind === "system",
+    effect: "allow",
+    reason: "the daemon notifies the user's paired devices (ADR 0020)",
+  },
+  { match: (r) => r.action === "notification.send", effect: "deny", reason: "only the daemon sends notifications" },
+  {
     match: (r) => r.action === "flow.approval",
     effect: "require_approval",
     reason: "the flow asks a human at this step",
