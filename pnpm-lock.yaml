@@ -262,6 +262,9 @@ importers:
       pinia:
         specifier: 4.0.3
         version: 4.0.3(@vue/devtools-api@8.2.1)(typescript@6.0.3)(vue@3.5.44(typescript@6.0.3))
+      uqr:
+        specifier: 0.1.3
+        version: 0.1.3
       vue:
         specifier: 3.5.44
         version: 3.5.44(typescript@6.0.3)
@@ -1712,6 +1715,9 @@ packages:
       webpack:
         optional: true
 
+  uqr@0.1.3:
+    resolution: {integrity: sha512-0rjE8iEJe4YmT9TOhwsZtqCMRLc5DXZUI2UEYUUg63ikBkqqE5EYWaI0etFe/5KUcmcYwLih2RND1kq+hrUJXA==}
+
   util-deprecate@1.0.2:
     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
 
@@ -3016,6 +3022,8 @@ snapshots:
     optionalDependencies:
       rolldown: 1.2.13
       vite: 8.3.4(@types/node@26.6.5)(jiti@2.7.0)(yaml@2.9.1)
+
+  uqr@0.1.3: {}
 
   util-deprecate@1.0.2: {}
 

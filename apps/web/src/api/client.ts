@@ -1,6 +1,13 @@
 import type {
   ApprovalStatus,
   ApprovalView,
+  DevicePairing,
+  DeviceView,
+  Locale,
+  PushKey,
+  RemoteStatus,
+  RepoView,
+  StopResult,
   FleetView,
   FleetWindow,
   NavarchEvent,
@@ -10,6 +17,7 @@ import type {
   WebExchangeResponse,
 } from "@navarch/contracts";
 import { ref } from "vue";
+import { bearer, forgetDevice, isDevice, refresh } from "./session.ts";
 import { clearToken, getToken, setToken } from "./token.ts";
 
 /** Core API client (spec §9.1). The SPA talks to nothing else (architecture rule 1). */
@@ -24,8 +32,14 @@ export class ApiError extends Error {
   }
 }
 
-/** False once the daemon refused the token; the app then shows the token screen. */
-export const authorized = ref(getToken() !== null);
+/** False once the daemon refused the token; the app then shows the sign-in or pairing screen. */
+export const authorized = ref(getToken() !== null || isDevice.value);
+
+/** A pairing code from `#pair=…` (the desktop's QR code), waiting for the device's name. */
+export const pendingPair = ref<string | null>(null);
+
+/** Who this browser is to the daemon: the desktop (local token) or a paired phone. */
+export const client = () => (isDevice.value && !getToken() ? "mobile" : "web");
 
 /**
  * Reads `#code=…` (from `navarch web`) or `#token=…` from the address, then removes it. The
@@ -35,11 +49,17 @@ export async function signInFromFragment(location: Location = window.location, h
   const params = new URLSearchParams(location.hash.slice(1));
   const code = params.get("code");
   const token = params.get("token");
-  if (!code && !token) return;
+  const pair = params.get("pair");
+  if (!code && !token && !pair) return;
   params.delete("code");
   params.delete("token");
+  params.delete("pair");
   const rest = params.toString();
   history.replaceState(history.state, "", `${location.pathname}${location.search}${rest ? `#${rest}` : ""}`);
+  if (pair) {
+    pendingPair.value = pair;
+    return;
+  }
   if (token) {
     setToken(token);
     authorized.value = true;
@@ -55,8 +75,8 @@ export async function signInFromFragment(location: Location = window.location, h
   authorized.value = true;
 }
 
-async function request<T>(method: string, path: string, body?: unknown, as: "json" | "text" = "json"): Promise<T> {
-  const token = getToken();
+async function request<T>(method: string, path: string, body?: unknown, as: "json" | "text" = "json", retried = false): Promise<T> {
+  const token = await bearer();
   if (!token) {
     authorized.value = false;
     throw new ApiError(401, "unauthorized", "no token");
@@ -65,13 +85,16 @@ async function request<T>(method: string, path: string, body?: unknown, as: "jso
     method,
     headers: {
       authorization: `Bearer ${token}`,
-      "x-navarch-client": "web",
+      "x-navarch-client": client(),
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   if (res.status === 401) {
-    clearToken();
+    // A device's access token may have just expired or been signed by an old key: refresh once.
+    if (isDevice.value && !getToken() && !retried && (await refresh())) return request<T>(method, path, body, as, true);
+    if (getToken()) clearToken();
+    else forgetDevice();
     authorized.value = false;
   }
   if (!res.ok) {
@@ -79,6 +102,7 @@ async function request<T>(method: string, path: string, body?: unknown, as: "jso
     throw new ApiError(res.status, err.error ?? "error", err.message ?? res.statusText);
   }
   authorized.value = true;
+  if (res.status === 204) return undefined as T;
   return (as === "text" ? await res.text() : await res.json()) as T;
 }
 
@@ -101,4 +125,17 @@ export const api = {
     request<RunMessage>("POST", `/api/v1/runs/${encodeURIComponent(runId)}/messages`, body),
   decide: (id: string, decision: "approve" | "reject", reason?: string) =>
     request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}) }),
+  pause: (id: string) => request<RunView>("POST", `/api/v1/runs/${encodeURIComponent(id)}/pause`),
+  stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
+  startRun: (body: { repo_path: string; prompt: string }) => request<RunView>("POST", "/api/v1/runs", body),
+  repos: () => request<RepoView[]>("GET", "/api/v1/repos"),
+  remote: () => request<RemoteStatus>("GET", "/api/v1/remote"),
+  devices: () => request<DeviceView[]>("GET", "/api/v1/devices"),
+  me: () => request<DeviceView>("GET", "/api/v1/devices/me"),
+  pairing: () => request<DevicePairing>("POST", "/api/v1/devices/pairings"),
+  revokeDevice: (id: string) => request<DeviceView>("DELETE", `/api/v1/devices/${encodeURIComponent(id)}`),
+  pushKey: () => request<PushKey>("GET", "/api/v1/push/key"),
+  subscribePush: (sub: PushSubscriptionJSON, locale: Locale) =>
+    request<void>("PUT", "/api/v1/push/subscription", { endpoint: sub.endpoint, keys: sub.keys, locale }),
+  unsubscribePush: () => request<void>("DELETE", "/api/v1/push/subscription"),
 };

@@ -454,7 +454,10 @@ async function serveWeb(app: FastifyInstance, dir: string): Promise<void> {
       wildcard: true,
       index: "index.html",
       setHeaders: (reply, path) => {
-        reply.header("cache-control", path.endsWith(".html") ? "no-cache" : "public, max-age=31536000, immutable");
+        // Only hashed build files are immutable; the page, the service worker and the manifest must update.
+        const fixedName = path.endsWith(".html") || path.endsWith("sw.js") || path.endsWith(".webmanifest") || path.includes("/icons/");
+        reply.header("cache-control", fixedName ? "no-cache" : "public, max-age=31536000, immutable");
+        if (path.endsWith(".webmanifest")) reply.header("content-type", "application/manifest+json");
       },
     });
   }

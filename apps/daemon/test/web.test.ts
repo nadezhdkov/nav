@@ -50,6 +50,20 @@ describe("Web UI serving", () => {
     expect(asset.headers.get("content-type")).toContain("javascript");
   });
 
+  it("serves the PWA manifest and service worker so they can update (ADR 0020)", async () => {
+    const dir = webBuild();
+    writeFileSync(join(dir, "manifest.webmanifest"), '{"name":"Navarch"}');
+    writeFileSync(join(dir, "sw.js"), "self.addEventListener('push', () => {})");
+    const { daemon } = await start(dir);
+    const manifest = await fetch(`${daemon.url}/manifest.webmanifest`);
+    expect(manifest.headers.get("content-type")).toContain("application/manifest+json");
+    expect(manifest.headers.get("cache-control")).toBe("no-cache");
+    const sw = await fetch(`${daemon.url}/sw.js`);
+    expect(sw.headers.get("content-type")).toContain("javascript");
+    expect(sw.headers.get("cache-control")).toBe("no-cache");
+    expect((await fetch(`${daemon.url}/assets/app.js`)).headers.get("cache-control")).toContain("immutable");
+  });
+
   it("falls back to index.html for client routes, but not for the API or missing assets", async () => {
     const { daemon } = await start(webBuild());
     const route = await fetch(`${daemon.url}/runs/run_123`);

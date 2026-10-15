@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { ApprovalView } from "@navarch/contracts";
 import { Check, Hand, X } from "@lucide/vue";
-import { computed, reactive } from "vue";
+import { computed, nextTick, reactive, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute } from "vue-router";
 import { ago, money } from "../lib/status.ts";
 import { useApprovalsStore, useRunsStore } from "../stores/runs.ts";
 
@@ -13,6 +14,19 @@ const runs = useRunsStore();
 const reasons = reactive<Record<string, string>>({});
 const busy = reactive<Record<string, boolean>>({});
 const errors = reactive<Record<string, string>>({});
+
+// A notification opens `/approvals?focus=<id>` (ADR 0020): bring that approval into view.
+const route = useRoute();
+const focus = computed(() => (typeof route?.query.focus === "string" ? route.query.focus : null));
+watch(
+  () => [focus.value, store.pending.length] as const,
+  async ([id]) => {
+    if (!id) return;
+    await nextTick();
+    document.getElementById(`approval-${id}`)?.scrollIntoView({ block: "start" });
+  },
+  { immediate: true },
+);
 
 const decided = computed(() => store.approvals.filter((a) => a.status !== "pending").slice(0, 20));
 const runOf = (a: ApprovalView) => runs.runs.find((r) => r.id === a.run_id);
@@ -41,8 +55,10 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
     </p>
     <article
       v-for="a in store.pending"
+      :id="`approval-${a.id}`"
       :key="a.id"
-      class="tone-warning mb-3 rounded-lg border bg-surface p-4"
+      class="tone-warning mb-3 scroll-mt-4 rounded-lg border bg-surface p-4"
+      :class="{ 'ring-2 ring-accent': a.id === focus }"
       style="border-color: color-mix(in srgb, var(--tone) 50%, transparent)"
       :aria-labelledby="`apr-${a.id}`"
     >
@@ -68,11 +84,11 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
       </dl>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <label :for="`reason-${a.id}`" class="sr-only">{{ t("approvals.reason") }}</label>
-        <input :id="`reason-${a.id}`" v-model="reasons[a.id]" :placeholder="t('approvals.reason')" class="min-h-10 min-w-48 flex-1 rounded-md border border-line bg-bg px-3 text-sm" />
-        <button :disabled="busy[a.id]" class="tone-success inline-flex min-h-10 items-center gap-1.5 rounded-md px-4 font-medium disabled:opacity-60" style="background: var(--tone); color: var(--bg)" @click="decide(a, 'approve')">
+        <input :id="`reason-${a.id}`" v-model="reasons[a.id]" :placeholder="t('approvals.reason')" class="min-h-11 min-w-48 flex-1 rounded-md border border-line bg-bg px-3 text-sm" />
+        <button :disabled="busy[a.id]" class="tone-success inline-flex min-h-11 items-center max-sm:flex-1 max-sm:justify-center gap-1.5 rounded-md px-4 font-medium disabled:opacity-60" style="background: var(--tone); color: var(--bg)" @click="decide(a, 'approve')">
           <Check :size="16" aria-hidden="true" />{{ t("approvals.approve") }}
         </button>
-        <button :disabled="busy[a.id]" class="tone-danger inline-flex min-h-10 items-center gap-1.5 rounded-md border px-4 font-medium disabled:opacity-60" style="color: var(--tone); border-color: var(--tone)" @click="decide(a, 'reject')">
+        <button :disabled="busy[a.id]" class="tone-danger inline-flex min-h-11 items-center max-sm:flex-1 max-sm:justify-center gap-1.5 rounded-md border px-4 font-medium disabled:opacity-60" style="color: var(--tone); border-color: var(--tone)" @click="decide(a, 'reject')">
           <X :size="16" aria-hidden="true" />{{ t("approvals.reject") }}
         </button>
       </div>
