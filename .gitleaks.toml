@@ -1,0 +1,10 @@
+# Extends gitleaks' default rules (used by `make secrets` and CI).
+[extend]
+useDefault = true
+
+# Public test vectors, not secrets: the Web Push subscription keys of
+# RFC 8291 Appendix A, used by the daemon's push tests.
+[[allowlists]]
+description = "RFC 8291 Appendix A test vector"
+regexTarget = "match"
+regexes = ['''BTBZMqHH6r4Tts7J_aSIgg''']
