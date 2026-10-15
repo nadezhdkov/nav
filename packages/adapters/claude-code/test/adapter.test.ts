@@ -42,6 +42,15 @@ describe("stream-json parser", () => {
     expect(res).toMatchObject({ kind: "result", result: { ok: true, costUsd: 0.5, usage: [{ model: "m", cost: 0.5 }] } });
   });
 
+  it("reads the agent's own sub-agents: a Task tool use starts one, its tool result finishes it (ADR 0022)", () => {
+    const use = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_1", name: "Task", input: { description: "Explore the API", subagent_type: "Explore", prompt: "…" } }] } });
+    expect(parseLine(use)).toContainEqual({ kind: "subagent", id: "toolu_1", description: "Explore the API", status: "started" });
+    const done = JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_1", content: "found it" }] } });
+    expect(parseLine(done)).toEqual([{ kind: "tool_result", toolUseId: "toolu_1" }]);
+    const other = JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_2", name: "Read", input: { file_path: "a.ts" } }] } });
+    expect(parseLine(other).some((i) => i.kind === "subagent")).toBe(false);
+  });
+
   it("reads subscription limits from rate_limit_event (captured from claude 2.x)", () => {
     const line =
       '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1792400400,"rateLimitType":"seven_day","utilization":0.92,"overageStatus":"rejected","isUsingOverage":false,"surpassedThreshold":0.75,"unifiedWindows":{"five_hour":{"utilization":0.5,"resetsAt":1792005600},"seven_day":{"utilization":0.92,"resetsAt":1792400400}},"overageEnabled":false}}';

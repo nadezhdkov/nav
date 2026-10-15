@@ -127,6 +127,8 @@ export class ClaudeCodeAdapter implements AgentAdapter {
     let result: ClaudeResult | undefined;
     let limit: ClaudeLimit | undefined;
     let lastText = "";
+    /** Sub-agents started in this attempt and not finished yet, by tool use id. */
+    const subagents = new Map<string, string>();
     const exit = await this.processes.run({
       taskId: ctx.taskId,
       command: this.options.command,
@@ -143,6 +145,12 @@ export class ClaudeCodeAdapter implements AgentAdapter {
             io.emit({ kind: "progress", message: item.text.slice(0, 500) });
           } else if (item.kind === "tool") {
             io.emit({ kind: "progress", message: item.summary, tool: item.name });
+          } else if (item.kind === "subagent") {
+            subagents.set(item.id, item.description);
+            io.emit({ kind: "subagent", id: item.id, description: item.description, status: "started" });
+          } else if (item.kind === "tool_result" && subagents.has(item.toolUseId)) {
+            io.emit({ kind: "subagent", id: item.toolUseId, description: subagents.get(item.toolUseId)!, status: "finished" });
+            subagents.delete(item.toolUseId);
           } else if (item.kind === "result") {
             result = item.result;
             for (const denial of item.result.denials) io.emit({ kind: "denied", ...denial });

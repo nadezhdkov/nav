@@ -70,6 +70,7 @@ export const es: Messages = {
       github: "GitHub",
       approval: "Puerta de aprobación",
       loop: "Bucle",
+      team: "Equipo",
     },
   },
   fleet: {
@@ -165,6 +166,8 @@ export const es: Messages = {
     prompt: "¿Qué deben hacer los agentes?",
     placeholder: "Describe el cambio…",
     start: "Iniciar run",
+    team: "Trabajar en equipo",
+    teamHint: "Un agente líder divide el trabajo, pasa partes a otros agentes (Codex, Gemini, …), lee sus resultados y decide hasta terminar. Usa más turnos y presupuesto.",
     note: "Ejecuta el Flow task con el presupuesto por defecto. En el móvil solo están disponibles los proyectos registrados y los repositorios de runs anteriores.",
     noRepos: "Aún no hay repositorios: inicia la primera run desde el escritorio.",
   },

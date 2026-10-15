@@ -91,7 +91,9 @@ export type AdapterEvent =
   | { kind: "log"; line: string }
   | { kind: "resume_token"; token: string }
   | { kind: "denied"; tool: string; input: string }
-  | { kind: "quota"; window: string; utilization?: number; resetsAt?: string; exhausted?: boolean; modelPrefix?: string };
+  | { kind: "quota"; window: string; utilization?: number; resetsAt?: string; exhausted?: boolean; modelPrefix?: string }
+  /** A sub-agent the agent started on its own (ADR 0022); part of the task, observed only. */
+  | { kind: "subagent"; id: string; description: string; status: "started" | "finished" };
 
 export type AdapterIO = {
   emit(event: AdapterEvent): void;

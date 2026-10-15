@@ -41,6 +41,8 @@ const LOOP_HEADER = 36;
 export const ROW_WIDTH = 1000;
 const ROW_GAP = 72;
 
+const TEAM_ACTIVE = new Set(["running", "waiting_approval", "blocked", "paused", "interrupted", "ready"]);
+
 export function buildGraph(
   flow: FlowDefinition,
   tasks: readonly TaskView[],
@@ -53,8 +55,9 @@ export function buildGraph(
   const started = tasks.length > 0;
 
   const leaf = (node: FlowNode, parent: string | null, position: { x: number; y: number }): GraphNode => {
-    const own = byNode.get(node.id) ?? [];
-    const latest = latestTask(own);
+    // A team node (ADR 0022) stands for its lead's turns, members, checks and approval.
+    const own = node.type === "team" ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
+    const latest = node.type === "team" ? (own.find((t) => TEAM_ACTIVE.has(t.status)) ?? latestTask(own)) : latestTask(own);
     let state: NodeState = latest?.status ?? "not_started";
     if (!latest && skippedSet.has(node.id)) state = "skipped";
     if (!latest && node.type === "trigger" && started) state = "succeeded";
@@ -62,7 +65,7 @@ export function buildGraph(
       id: node.id,
       kind: node.type,
       label: node.name ?? node.id,
-      detail: node.type === "agent" ? node.profile : "uses" in node ? node.uses : null,
+      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : "uses" in node ? node.uses : null,
       state,
       task: latest,
       tasks: own,

@@ -418,10 +418,16 @@ export class Scheduler {
     };
   }
 
-  /** The lead's previous turn, for a lead turn after the first. */
+  /**
+   * The lead's latest earlier turn that holds its session, for a lead turn after the first. A
+   * resumed turn continues the same session and records no token of its own.
+   */
   private previousLeadTurn(task: TaskRecord): TaskRecord | undefined {
     if (task.team?.role !== "lead" || task.iteration < 2) return undefined;
-    return this.store.taskRecordsOfRun(task.run_id).find((t) => t.node_id === task.node_id && t.iteration === task.iteration - 1);
+    return this.store
+      .taskRecordsOfRun(task.run_id)
+      .filter((t) => t.node_id === task.node_id && t.iteration < task.iteration && t.resume_token)
+      .sort((a, b) => b.iteration - a.iteration)[0];
   }
 
   /** On a rate limit, the next usable candidate other than those this task already left (spec §6.4.2 step 5). */
