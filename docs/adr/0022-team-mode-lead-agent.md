@@ -1,6 +1,6 @@
 # 0022 — Team mode: a lead agent that delegates to other agents in turns
 
-- Status: proposed
+- Status: accepted
 - Date: 2026-10-15
 - Spec: §4 (TaskGraph "can grow dynamically"), §6.3, §6.5.2, §8.3, §8.4, §9.4, §16 (Phase 2 `parallel`/`join`/`subflow`), §19 ideas 14–15
 - Slices: [`docs/specs/phase-1-09-team-mode.md`](../specs/phase-1-09-team-mode.md), [`docs/specs/phase-1-10-fleet-tree.md`](../specs/phase-1-10-fleet-tree.md)

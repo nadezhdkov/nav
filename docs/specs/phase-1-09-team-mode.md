@@ -1,6 +1,6 @@
 # Phase 1, slice 9: Team mode (a lead agent and its members)
 
-Status: draft · Branch: `feat/team-mode` · Spec: §4, §6.3, §8.3, §8.4, §9.4, §19 idea 14 · ADR: 0022
+Status: implemented · Branch: `feat/team-mode` · Spec: §4, §6.3, §8.3, §8.4, §9.4, §19 idea 14 · ADR: 0022
 
 A run whose work is led by one agent. The **lead** reads the goal, writes a team plan, hands each part to a **member** (an agent on any adapter, chosen by the Model Router with the lead's preference first), reads their results and the checks, and decides the next turn, until it says the work is done. The user talks to the lead. The Fleet tree that shows this is slice 10.
 

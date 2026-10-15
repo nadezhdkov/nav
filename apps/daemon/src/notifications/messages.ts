@@ -5,7 +5,7 @@ import type { Locale } from "@navarch/contracts";
  * notification is shown by the phone's system, not by the app; the device's locale comes with
  * its push subscription. `{n}` is a count.
  */
-export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "paused_quota" | "pr_opened" | "run_done";
+export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "paused_quota" | "pr_opened" | "run_done" | "question";
 export type ApprovalSubject = "plan" | "pr" | "verification" | "agent";
 
 interface Texts {
@@ -24,6 +24,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       paused_quota: "Run paused: quota",
       pr_opened: "Draft PR opened",
       run_done: "Run done",
+      question: "An agent is waiting for you",
     },
     approval: { plan: "Plan", pr: "Pull request", verification: "Verification", agent: "Agent start" },
     more: "{n} more in this run",
@@ -37,6 +38,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       paused_quota: "Run pausada: cota",
       pr_opened: "PR rascunho aberto",
       run_done: "Run concluída",
+      question: "Um agente está esperando você",
     },
     approval: { plan: "Plano", pr: "Pull request", verification: "Verificação", agent: "Início do agente" },
     more: "mais {n} nesta run",
@@ -50,6 +52,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       paused_quota: "Run en pausa: cuota",
       pr_opened: "PR borrador abierto",
       run_done: "Run terminada",
+      question: "Un agente te está esperando",
     },
     approval: { plan: "Plan", pr: "Pull request", verification: "Verificación", agent: "Inicio del agente" },
     more: "{n} más en esta run",
@@ -63,6 +66,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       paused_quota: "Run pausiert: Kontingent",
       pr_opened: "Entwurfs-PR geöffnet",
       run_done: "Run fertig",
+      question: "Ein Agent wartet auf dich",
     },
     approval: { plan: "Plan", pr: "Pull Request", verification: "Prüfung", agent: "Agent-Start" },
     more: "{n} weitere in diesem Run",
@@ -76,6 +80,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       paused_quota: "运行已暂停：配额",
       pr_opened: "已打开草稿 PR",
       run_done: "运行完成",
+      question: "有智能体在等你回复",
     },
     approval: { plan: "计划", pr: "拉取请求", verification: "验证", agent: "启动代理" },
     more: "此运行中还有 {n} 项",

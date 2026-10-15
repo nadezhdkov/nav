@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { NavarchEvent, RunDetail, RunMessage, RunView } from "@navarch/contracts";
+import type { FleetView, NavarchEvent, RunDetail, RunMessage, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude, type FakeScenario } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -80,6 +80,18 @@ describe("team runs (ADR 0022)", () => {
     const routed = (daemon.store.events({ runId: run.id }) as NavarchEvent[]).filter((e) => e.type === "model.routed") as NavarchEvent<"model.routed">[];
     expect(routed.find((e) => e.task_id === byNode("team.api").id)?.payload.reason).toContain("preferred by the lead (codex)");
 
+    expect(detail.team).toMatchObject({
+      node_id: "team",
+      turn: 2,
+      max_turns: 8,
+      lead_task_id: byNode("team.lead", 2).id,
+      question: null,
+      summary: "Team finished: codex.txt added by the api member.",
+      plan_errors: [],
+      members: [{ key: "api", profile: "implementer", prefer: "codex", turn: 1, task_id: byNode("team.api").id, status: "succeeded", summary: "Added codex.txt." }],
+      subagents: [{ task_id: byNode("team.lead").id, tool_use_id: "toolu_lead1", description: "Survey the repository", status: "finished" }],
+    });
+
     // The lead's own sub-agent is observed on its first turn.
     const subagents = (daemon.store.events({ runId: run.id }) as NavarchEvent[]).filter((e) => e.type === "task.subagent") as NavarchEvent<"task.subagent">[];
     expect(subagents.map((e) => [e.task_id, e.payload.description, e.payload.status])).toEqual([
@@ -109,6 +121,10 @@ describe("team runs (ADR 0022)", () => {
       (r) => r.body.tasks.some((t) => t.node_id === "team.lead" && t.iteration === 2 && t.status === "blocked"),
     );
     expect(blocked.body.status).not.toBe("failed");
+    expect(blocked.body.team).toMatchObject({ turn: 2, question: "Which file name?" });
+    const fleet = await api<FleetView>("GET", "/api/v1/fleet");
+    const lead = fleet.body.runs.find((r) => r.id === run.id)!.agents.find((a) => a.team_role === "lead")!;
+    expect(lead).toMatchObject({ status: "blocked", waiting: { kind: "question" }, iteration: 2 });
 
     const sent = await api<RunMessage>("POST", `/api/v1/runs/${run.id}/messages`, { text: "Call it codex.txt." });
     expect(sent.status).toBe(201);

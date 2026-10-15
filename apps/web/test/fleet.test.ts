@@ -43,6 +43,8 @@ function agent(over: Partial<FleetAgent> = {}): FleetAgent {
     waiting: null,
     resumable: true,
     pending_messages: 0,
+    team_role: null,
+    team_key: null,
     ...over,
   };
 }
@@ -66,6 +68,7 @@ const view: FleetView = {
       pr_url: null,
       flow: "task",
       autonomy_level: 2,
+      team: null,
       agents: [
         agent(),
         agent({ id: "task_rev", node_id: "review", profile: "reviewer", status: "waiting_approval", waiting: { kind: "approval" }, last_activity: null }),
