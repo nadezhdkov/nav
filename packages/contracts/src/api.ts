@@ -110,6 +110,34 @@ export const DecideApprovalRequest = z.object({
 });
 export type DecideApprovalRequest = z.infer<typeof DecideApprovalRequest>;
 
+/** Concierge (ADR 0016): a conversation in the daemon; act tools become proposals the operator decides. */
+export const CreateConversationRequest = z.object({
+  /** The operator's working directory; the default repository for runs started from the conversation. */
+  cwd: z.string().min(1).optional(),
+});
+export type CreateConversationRequest = z.infer<typeof CreateConversationRequest>;
+
+export const ConciergeMessageRequest = z.object({ text: z.string().trim().min(1).max(8_000) });
+export type ConciergeMessageRequest = z.infer<typeof ConciergeMessageRequest>;
+
+export const ProposalView = z.object({
+  id: z.string(),
+  tool: z.string(),
+  args: z.record(z.string(), z.unknown()),
+  summary: z.string(),
+  status: z.enum(["pending", "approved", "rejected", "failed"]),
+});
+export type ProposalView = z.infer<typeof ProposalView>;
+
+export const ConciergeTurn = z.object({ reply: z.string(), proposals: z.array(ProposalView), model: z.string() });
+export type ConciergeTurn = z.infer<typeof ConciergeTurn>;
+
+export const DecideProposalRequest = z.object({ decision: z.enum(["approve", "reject"]) });
+export type DecideProposalRequest = z.infer<typeof DecideProposalRequest>;
+
+export const ProposalDecision = z.object({ reply: z.string(), proposal: ProposalView });
+export type ProposalDecision = z.infer<typeof ProposalDecision>;
+
 export const ApiError = z.object({ error: z.string(), message: z.string() });
 export type ApiError = z.infer<typeof ApiError>;
 

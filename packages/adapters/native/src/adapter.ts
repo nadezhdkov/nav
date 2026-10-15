@@ -86,6 +86,19 @@ export class NativeAdapter implements AgentAdapter {
     return state?.present ? undefined : `no API key for provider ${name}`;
   }
 
+  /**
+   * Resolves `<provider>/<model>` to its provider with the API key read now. Also used by the
+   * concierge's chat engine (ADR 0016), so both share the providers and keys of the config.
+   */
+  async connect(modelId: string): Promise<{ provider: Provider; model: string; name: string }> {
+    const resolved = resolveModel(modelId, this.options.providers);
+    const { model, name } = resolved;
+    const apiKey = resolved.provider.apiKey ?? (await resolved.provider.getApiKey?.().catch(() => undefined));
+    if (resolved.provider.getApiKey) this.keys.set(name, { present: Boolean(apiKey), checked: Date.now() });
+    if (resolved.provider.requiresKey && !apiKey) throw new ModelError("fatal", `no API key for provider ${name}`);
+    return { provider: { ...resolved.provider, ...(apiKey ? { apiKey } : {}) }, model, name };
+  }
+
   capabilities(): AdapterCapabilities {
     return { streaming: false, ownTools: false, resumable: false, enforcement: "exact" };
   }
@@ -104,12 +117,7 @@ export class NativeAdapter implements AgentAdapter {
     try {
       const modelId = ctx.model ?? this.options.defaultModel;
       if (!modelId) return failed("fatal", "the native adapter needs a model, e.g. --model ollama/qwen2.5:7b");
-      const resolved = resolveModel(modelId, this.options.providers);
-      const { model, name } = resolved;
-      const apiKey = resolved.provider.apiKey ?? (await resolved.provider.getApiKey?.().catch(() => undefined));
-      if (resolved.provider.getApiKey) this.keys.set(name, { present: Boolean(apiKey), checked: Date.now() });
-      if (resolved.provider.requiresKey && !apiKey) return failed("fatal", `no API key for provider ${name}`);
-      const provider: Provider = { ...resolved.provider, ...(apiKey ? { apiKey } : {}) };
+      const { provider, model, name } = await this.connect(modelId);
       providerName = name;
       const tools = new SandboxTools(ctx.sandbox.path, ctx.tools);
       const specs = toolSpecs(ctx.tools);

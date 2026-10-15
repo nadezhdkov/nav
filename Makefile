@@ -2,7 +2,7 @@
 # Targets are thin wrappers over pnpm; Node >= 22.18 runs the TypeScript sources directly.
 
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck test verify audit secrets lint-workflows ci daemon cli doctor clean
+.PHONY: help install typecheck test verify audit secrets lint-workflows ci daemon cli chat doctor clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  make %-10s %s\n", $$1, $$2}'
@@ -34,6 +34,9 @@ daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch)
 
 cli: ## Run the CLI: make cli ARGS="run list"
 	node apps/cli/src/main.ts $(ARGS)
+
+chat: ## Talk to the concierge (needs a running daemon and concierge.model)
+	node apps/cli/src/main.ts chat
 
 doctor: ## Check the toolchain Navarch needs
 	@node --version

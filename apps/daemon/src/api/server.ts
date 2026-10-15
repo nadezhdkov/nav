@@ -5,8 +5,11 @@ import { join } from "node:path";
 import websocket from "@fastify/websocket";
 import {
   ApprovalStatus,
+  ConciergeMessageRequest,
+  CreateConversationRequest,
   CreateRunRequest,
   DecideApprovalRequest,
+  DecideProposalRequest,
   StreamClientMessage,
   type StreamServerMessage,
   type NavarchEvent,
@@ -15,6 +18,7 @@ import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
+import { ConciergeError } from "../concierge/service.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
@@ -31,6 +35,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof ConciergeError) {
+      const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
+    }
     if (err instanceof OrchestratorError) {
       const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "github_error" ? 502 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
@@ -87,6 +95,26 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const id = (req.params as { id: string }).id;
     return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, { kind: "user", via: viaOf(req.headers) });
+  });
+
+  // Concierge (ADR 0016): act tools only propose; a proposal runs when the operator decides it here.
+  app.post("/api/v1/concierge/conversations", async (req, reply) => {
+    const parsed = CreateConversationRequest.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(daemon.concierge.create(parsed.data.cwd, viaOf(req.headers)));
+  });
+
+  app.post("/api/v1/concierge/conversations/:id/messages", async (req, reply) => {
+    const parsed = ConciergeMessageRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.concierge.send((req.params as { id: string }).id, parsed.data.text, viaOf(req.headers));
+  });
+
+  app.post("/api/v1/concierge/conversations/:id/proposals/:pid", async (req, reply) => {
+    const parsed = DecideProposalRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const { id, pid } = req.params as { id: string; pid: string };
+    return daemon.concierge.decide(id, pid, parsed.data.decision, viaOf(req.headers));
   });
 
   // Secrets are write-only through the API (ADR 0007): values are never returned.

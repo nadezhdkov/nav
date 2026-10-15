@@ -3,14 +3,18 @@ import { mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isTerminalRun, type ApprovalView, type RunDetail, type RunView, type NavarchEvent } from "@navarch/contracts";
+import { isTerminalRun, type ApprovalView, type ConciergeTurn, type RunDetail, type RunView, type NavarchEvent } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
+import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { formatApprovals, formatEvent, formatRunDetail, formatRunList } from "./format.ts";
 
 const USAGE = `navarch — Navarch command line
 
 Usage:
+  navarch                                  talk to the concierge (same as \`navarch chat\`, in a terminal)
+  navarch chat                             ask in plain language; actions are proposed and need your yes
+  navarch ask <question...>                one question to the concierge; proposals are shown, not run
   navarch daemon start|stop|status
   navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt...>
                                          flow \`task\`: implement, then verify and fix until the checks pass
@@ -63,6 +67,9 @@ async function main(argv: string[]): Promise<number> {
     },
   });
   const [command, ...rest] = positionals;
+  if (!command && !values.help && process.stdin.isTTY && process.stdout.isTTY) {
+    return chat(new ApiClient(home), { input: process.stdin, output: process.stdout, cwd: process.cwd() });
+  }
   if (values.help || !command) {
     process.stdout.write(USAGE);
     return values.help ? EXIT.ok : EXIT.usage;
@@ -70,6 +77,19 @@ async function main(argv: string[]): Promise<number> {
   const json = values.json;
 
   switch (command) {
+    case "chat":
+      return chat(new ApiClient(home), { input: process.stdin, output: process.stdout, cwd: process.cwd() });
+    case "ask": {
+      const text = rest.join(" ").trim();
+      if (!text) throw new CliError("missing question", EXIT.usage);
+      const api = new ApiClient(home);
+      const { id } = await api.request<{ id: string }>("POST", "/api/v1/concierge/conversations", { cwd: process.cwd() });
+      const turn = await api.request<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text });
+      if (json) return print(turn, json);
+      console.log(turn.reply);
+      for (const p of turn.proposals) console.log(`\nProposed (not run): ${p.summary}\nUse \`navarch chat\` to confirm actions.`);
+      return EXIT.ok;
+    }
     case "daemon":
       return daemonCommand(rest[0], json);
     case "run": {

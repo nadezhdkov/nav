@@ -217,6 +217,9 @@ importers:
       '@navarch/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
+      '@navarch/concierge':
+        specifier: workspace:*
+        version: link:../../packages/concierge
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -325,6 +328,12 @@ importers:
       '@navarch/runner':
         specifier: workspace:*
         version: link:../runner
+
+  packages/concierge:
+    dependencies:
+      '@navarch/adapter-native':
+        specifier: workspace:*
+        version: link:../adapters/native
 
   packages/contracts:
     dependencies:
