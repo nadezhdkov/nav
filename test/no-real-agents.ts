@@ -9,7 +9,7 @@ import { delimiter, join } from "node:path";
  * removed so the native adapter cannot reach a paid API either.
  */
 /** `secret-tool` too: a test must not read the operator's keychain (provider keys, the GitHub token); `tailscale` reads the operator's tailnet. */
-const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "ollama", "secret-tool", "tailscale"];
+const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "grok", "ollama", "secret-tool", "tailscale"];
 
 const dir = mkdtempSync(join(tmpdir(), "navarch-no-agents-"));
 for (const name of AGENT_COMMANDS) {
@@ -18,4 +18,6 @@ for (const name of AGENT_COMMANDS) {
   chmodSync(stub, 0o755);
 }
 process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ""}`;
-for (const key of ["OPENCODE_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN"]) delete process.env[key];
+for (const key of ["OPENCODE_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN", "XAI_API_KEY"]) delete process.env[key];
+// The operator's Grok login must not make the grok adapter routable in tests (ADR 0024).
+process.env.GROK_HOME = join(dir, "grok-home");

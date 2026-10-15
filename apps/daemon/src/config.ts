@@ -37,6 +37,7 @@ const BUILTIN_MODELS = {
   "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
   copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
   opencode: { adapter: "opencode", provider: "opencode", status: "active" },
+  grok: { adapter: "grok", provider: "xai", status: "active" },
   codex: { adapter: "codex", provider: "openai", status: "active" },
   "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
   antigravity: { adapter: "antigravity", provider: "google", status: "active" },
@@ -51,8 +52,8 @@ const CatalogEntry = z.object({
 
 /**
  * Model Router v1 (spec §6.4, ADR 0013). The catalog lists adapter + model pairs the router may
- * use; prices and quotas are not in code. The defaults send triage and simple issues to Copilot
- * and the rest to Claude Code, each falling back to the other.
+ * use; prices and quotas are not in code. The defaults send triage and simple issues to Grok (free
+ * with a grok.com sign-in, ADR 0024), then Copilot, and the rest to Claude Code, falling back to Copilot.
  */
 const Routing = z
   .object({
@@ -65,7 +66,7 @@ const Routing = z
       .transform((models): Record<string, z.infer<typeof CatalogEntry>> => ({ ...BUILTIN_MODELS, ...models })),
     tiers: z
       .object({
-        fast: z.array(z.string()).default(["copilot", "claude-code"]),
+        fast: z.array(z.string()).default(["grok", "copilot", "claude-code"]),
         standard: z.array(z.string()).default(["claude-code", "copilot"]),
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
@@ -224,6 +225,10 @@ export const Config = z.object({
       /** OpenCode CLI (ADR 0015); the installer puts it in ~/.opencode/bin, which may not be on PATH. */
       opencode: z
         .object({ enabled: z.boolean().default(true), command: z.string().default("opencode"), model: z.string().optional() })
+        .prefault({}),
+      /** Grok CLI (ADR 0024), signed in with `grok login`. */
+      grok: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("grok"), model: z.string().optional() })
         .prefault({}),
       native: z
         .object({

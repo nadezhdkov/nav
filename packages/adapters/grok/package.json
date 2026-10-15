@@ -1,0 +1,13 @@
+{
+  "name": "@navarch/adapter-grok",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@navarch/adapter-kit": "workspace:*",
+    "@navarch/contracts": "workspace:*"
+  }
+}

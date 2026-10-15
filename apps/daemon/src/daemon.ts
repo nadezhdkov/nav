@@ -6,6 +6,7 @@ import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@navarch/adapter-clau
 import { CodexAdapter, type CodexOptions } from "@navarch/adapter-codex";
 import { CopilotAdapter, type CopilotOptions } from "@navarch/adapter-copilot";
 import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini-cli";
+import { GrokAdapter, type GrokOptions } from "@navarch/adapter-grok";
 import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode";
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
@@ -39,6 +40,7 @@ export type DaemonOptions = {
     codex?: CodexOptions;
     copilot?: CopilotOptions;
     opencode?: OpencodeOptions;
+    grok?: GrokOptions;
     native?: Partial<NativeOptions>;
   };
   port?: number;
@@ -281,6 +283,7 @@ export function buildAdapters(
     ["codex", a.codex.enabled, () => new CodexAdapter({ command: a.codex.command, ...overrides.codex })],
     ["copilot", a.copilot.enabled, () => new CopilotAdapter({ command: a.copilot.command, ...overrides.copilot })],
     ["opencode", a.opencode.enabled, () => new OpencodeAdapter({ command: a.opencode.command, ...overrides.opencode })],
+    ["grok", a.grok.enabled, () => new GrokAdapter({ command: a.grok.command, homeRoot: join(home, "agents", "grok"), ...overrides.grok })],
     [
       "native",
       a.native.enabled,
