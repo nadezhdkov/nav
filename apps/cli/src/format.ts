@@ -1,4 +1,4 @@
-import type { ApprovalView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, DeviceView, RemoteStatus, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -145,4 +145,26 @@ function table(header: string[], rows: string[][]): string {
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
   const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] ?? 0)).join("  ").trimEnd();
   return [line(header), ...rows.map(line)].join("\n");
+}
+
+/** `navarch remote status`: what the phone opens and what is missing (ADR 0020). */
+export function formatRemote(s: RemoteStatus): string {
+  if (s.mode === "off") return "remote access is off (daemon.remote.mode: off in config.yaml)";
+  const lines = [
+    `tailscale: ${!s.installed ? "not installed (https://tailscale.com/download)" : s.running ? "running" : "installed, not logged in (run: tailscale up)"}`,
+    `phone URL: ${s.url ?? "unknown (set daemon.remote.url, or log in to Tailscale)"}`,
+    `tailscale serve: ${s.serving ? "proxies to this daemon" : `not set up; run: ${s.setup_command}`}`,
+  ];
+  if (s.url && s.serving) lines.push("pair a phone from the Web UI: Settings → Devices → Pair a phone");
+  return lines.join("\n");
+}
+
+export function formatDevices(devices: DeviceView[]): string {
+  if (!devices.length) return "no paired devices; pair a phone from the Web UI: Settings → Devices";
+  return devices
+    .map((d) => {
+      const state = d.revoked_at ? `revoked ${d.revoked_at.slice(0, 16).replace("T", " ")}` : `last seen ${d.last_seen_at?.slice(0, 16).replace("T", " ") ?? "never"}`;
+      return `${d.id}  ${d.name}  paired ${d.paired_at.slice(0, 10)}  ${state}  push ${d.push ? "on" : "off"}`;
+    })
+    .join("\n");
 }
