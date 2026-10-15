@@ -47,6 +47,8 @@ export type RouteRequest = {
   unavailable?: (entry: CatalogEntry) => string | undefined;
   /** Catalog ids not to use, e.g. the one that just hit its rate limit. */
   exclude?: string[];
+  /** A team lead's preference for this member (ADR 0022): a catalog id or an adapter, tried first when usable. */
+  prefer?: string;
 };
 
 export type RouteDecision = {
@@ -76,25 +78,48 @@ export function tierFor(config: RouterConfig, req: Pick<RouteRequest, "profile" 
   return { tier, why };
 }
 
+function unusable(config: RouterConfig, req: RouteRequest, id: string): string | undefined {
+  const entry = config.models[id];
+  const quota = entry && req.exhausted.find((q) => q.adapter === entry.adapter && (!q.modelPrefix || (entry.model ?? "").startsWith(q.modelPrefix)));
+  return !entry
+    ? "not in the catalog"
+    : entry.status !== "active"
+      ? `status ${entry.status}`
+      : !req.adapters.has(entry.adapter)
+        ? `adapter ${entry.adapter} not enabled`
+        : req.exclude?.includes(id)
+          ? "rate limited"
+          : quota
+            ? `quota exhausted until ${quota.resetsAt}`
+            : req.unavailable?.(entry);
+}
+
 export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
   const { tier, why } = tierFor(config, req);
   const candidates = config.tiers[tier] ?? [];
   const skipped: RouteDecision["skipped"] = [];
+  if (req.prefer) {
+    const preferred = config.models[req.prefer] ? [req.prefer] : Object.keys(config.models).filter((id) => config.models[id]!.adapter === req.prefer);
+    for (const id of preferred) {
+      const skip = unusable(config, req, id);
+      if (skip) {
+        skipped.push({ id, reason: `preferred by the lead; ${skip}` });
+        continue;
+      }
+      const entry = config.models[id]!;
+      return {
+        chosen: { id, adapter: entry.adapter, ...(entry.model ? { model: entry.model } : {}), provider: entry.provider },
+        tier,
+        reason: `preferred by the lead (${req.prefer})`,
+        candidates: [id, ...candidates.filter((c) => c !== id)],
+        skipped,
+      };
+    }
+  }
   const usable: string[] = [];
   for (const id of candidates) {
     const entry = config.models[id];
-    const quota = entry && req.exhausted.find((q) => q.adapter === entry.adapter && (!q.modelPrefix || (entry.model ?? "").startsWith(q.modelPrefix)));
-    const skip = !entry
-      ? "not in the catalog"
-      : entry.status !== "active"
-        ? `status ${entry.status}`
-        : !req.adapters.has(entry.adapter)
-          ? `adapter ${entry.adapter} not enabled`
-          : req.exclude?.includes(id)
-            ? "rate limited"
-            : quota
-              ? `quota exhausted until ${quota.resetsAt}`
-              : req.unavailable?.(entry);
+    const skip = entry ? unusable(config, req, id) : "not in the catalog";
     if (skip) skipped.push({ id, reason: skip });
     else usable.push(id);
   }

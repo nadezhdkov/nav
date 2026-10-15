@@ -36,6 +36,9 @@ export type PolicyRule = {
   reason: string;
 };
 
+/** Starting an agent: a Flow task, a team lead's turn or a team member (ADR 0022). */
+const startsAgent = (action: string): boolean => action === "task.start" || action === "team.turn" || action === "team.delegate";
+
 const glob = (pattern: string, value: string | undefined): boolean => {
   if (value === undefined) return false;
   const re = new RegExp(`^${pattern.split("*").map(escapeRegExp).join(".*")}$`);
@@ -132,21 +135,21 @@ export const defaultRules: PolicyRule[] = [
     reason: "the flow asks a human at this step",
   },
   {
-    match: (r) => r.action === "task.start" && (r.context.budgetRemaining ?? 1) <= 0,
+    match: (r) => startsAgent(r.action) && (r.context.budgetRemaining ?? 1) <= 0,
     effect: "deny",
     reason: "run budget exhausted",
   },
   {
-    match: (r) => r.action === "task.start" && r.context.autonomyLevel < 1,
+    match: (r) => startsAgent(r.action) && r.context.autonomyLevel < 1,
     effect: "require_approval",
     reason: "autonomy level 0 (observe) requires approval for any agent execution",
   },
   {
-    match: (r) => r.action === "task.start" && r.context.edits === true && r.context.autonomyLevel < 2,
+    match: (r) => startsAgent(r.action) && r.context.edits === true && r.context.autonomyLevel < 2,
     effect: "require_approval",
     reason: "autonomy level 1 (analyse) requires approval to edit files",
   },
-  { match: (r) => r.action === "task.start", effect: "allow", reason: "agent task within budget" },
+  { match: (r) => startsAgent(r.action), effect: "allow", reason: "agent task within budget" },
   {
     match: (r) =>
       r.action === "cmd.exec" &&

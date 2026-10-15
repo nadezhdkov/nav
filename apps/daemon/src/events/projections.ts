@@ -74,8 +74,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       // The run's model belongs to the run's adapter; a routed task gets its own with model.routed.
       const model = p.type === "agent" && p.adapter === run.adapter ? run.model : null;
       db.prepare(
-        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, team, prefer, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.task_id,
         event.run_id,
@@ -90,8 +90,21 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.stage ?? null,
         p.uses ?? null,
         p.inputs ? JSON.stringify(p.inputs) : null,
+        p.team ? JSON.stringify(p.team) : null,
+        p.prefer ?? null,
         ts,
       );
+      return;
+    }
+    case "task.subagent": {
+      const p = (event as NavarchEvent<"task.subagent">).payload;
+      const row = db.prepare("SELECT subagents FROM tasks WHERE id = ?").get(event.task_id) as { subagents: string | null } | undefined;
+      if (!row) return;
+      const list = (row.subagents ? JSON.parse(row.subagents) : []) as { tool_use_id: string; description: string; status: string }[];
+      const found = list.find((x) => x.tool_use_id === p.tool_use_id);
+      if (found) found.status = p.status;
+      else list.push({ ...p });
+      db.prepare("UPDATE tasks SET subagents = ? WHERE id = ?").run(JSON.stringify(list), event.task_id);
       return;
     }
     case "task.status_changed": {

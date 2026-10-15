@@ -6,5 +6,6 @@
 - Use the `new-worktree` skill for each phase or feature, with worktrees under `.worktree/<name>` (already in `.gitignore`).
 - Project skills go in `.claude/skills/` and are mirrored in `.agents/skills/`.
 - Run project commands through the `Makefile` with `ctk runq -- make <target>`. When you add a command, add a target and update "Current state" in `AGENTS.md`.
+- When a slice or feature is done, publish it with the `new-pr` skill: push and open a draft PR without asking (standing permission from the user). Never merge.
 - Never enable or perform an auto-merge on your own; see "Merge policy" in `AGENTS.md`.
 - Do not claim tests pass without a fresh `ctk verify`.

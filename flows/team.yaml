@@ -1,0 +1,35 @@
+# A lead agent and the members it delegates to, turn by turn (ADR 0022): the lead plans, members
+# (routed to any adapter) do the parts in dependency order, the checks run, and the lead decides
+# the next turn until it says the work is done and the checks pass. Then a review, and a draft PR
+# for issue runs.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: team
+  description: A lead agent splits the work, delegates it to other agents, reads their results and the checks, and decides until it is done.
+params:
+  max_turns: { type: int, default: 8 }
+  max_members: { type: int, default: 12 }
+
+nodes:
+  - id: team
+    type: team
+    lead: { profile: lead }
+    max_turns: ${{ params.max_turns }}
+    max_members: ${{ params.max_members }}
+    approve_first_plan: ${{ project.autonomy_level < 3 }}
+
+  - id: review
+    type: agent
+    profile: reviewer
+    inputs:
+      implementation: ${{ nodes.team.outputs.summary }}
+
+  - id: open_pr
+    type: github
+    when: ${{ project.work_item }}
+    uses: pr.create
+    with: { draft: true }
+
+edges:
+  - team -> review -> open_pr

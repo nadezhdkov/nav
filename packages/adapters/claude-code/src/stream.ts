@@ -11,6 +11,10 @@ export type StreamItem =
   | { kind: "init"; sessionId: string; model?: string }
   | { kind: "text"; text: string }
   | { kind: "tool"; name: string; summary: string }
+  /** The agent started one of its own sub-agents (Claude Code's Task tool). */
+  | { kind: "subagent"; id: string; description: string; status: "started" }
+  /** A tool call finished; the adapter matches it to a sub-agent it saw start. */
+  | { kind: "tool_result"; toolUseId: string }
   | { kind: "result"; result: ClaudeResult }
   | { kind: "quota"; limit: ClaudeLimit }
   | { kind: "other" };
@@ -43,6 +47,9 @@ const isObject = (v: unknown): v is Json => typeof v === "object" && v !== null 
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 
+/** Tools with which Claude Code starts a sub-agent of its own. */
+const SUBAGENT_TOOLS = new Set(["Task", "Agent"]);
+
 export function parseLine(line: string): StreamItem[] {
   const trimmed = line.trim();
   if (!trimmed.startsWith("{")) return [];
@@ -62,6 +69,12 @@ export function parseLine(line: string): StreamItem[] {
       return [{ kind: "other" }];
     case "assistant":
       return assistantItems(data);
+    case "user": {
+      const message = isObject(data.message) ? data.message : {};
+      const content = Array.isArray(message.content) ? message.content : [];
+      const results = content.filter((b): b is Json => isObject(b) && b.type === "tool_result" && !!str(b.tool_use_id));
+      return results.length ? results.map((b) => ({ kind: "tool_result" as const, toolUseId: str(b.tool_use_id) })) : [{ kind: "other" }];
+    }
     case "result":
       return [{ kind: "result", result: toResult(data) }];
     case "rate_limit_event":
@@ -81,6 +94,10 @@ function assistantItems(data: Json): StreamItem[] {
       items.push({ kind: "text", text: str(block.text) });
     } else if (block.type === "tool_use") {
       items.push({ kind: "tool", name: str(block.name), summary: toolSummary(str(block.name), block.input) });
+      if (SUBAGENT_TOOLS.has(str(block.name)) && str(block.id)) {
+        const input = isObject(block.input) ? block.input : {};
+        items.push({ kind: "subagent", id: str(block.id), description: str(input.description) || str(input.subagent_type) || "sub-agent", status: "started" });
+      }
     }
   }
   return items;

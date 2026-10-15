@@ -96,6 +96,11 @@ describe("notifications (ADR 0020)", () => {
     expect(noticeFor(ev(status("run_1", "executing", "paused", "user")))).toBeUndefined();
     expect(noticeFor(ev(status("run_1", "executing", "paused", "kill switch")))).toBeUndefined();
     expect(noticeFor(ev(status("run_1", "planning", "executing")))).toBeUndefined();
+    // A team lead's question waits for the user (ADR 0022); other blocked tasks are not news.
+    const blocked = (reason: string) =>
+      ({ type: "task.status_changed", run_id: "run_1", task_id: "task_1", actor: system, payload: { from: "ready", to: "blocked", attempt: 0, reason } }) as NewEvent;
+    expect(noticeFor(ev(blocked("question")))).toMatchObject({ kind: "question", url: "/runs/run_1", critical: false });
+    expect(noticeFor(ev(blocked("run budget exhausted")))).toBeUndefined();
   });
 
   it("writes the notification in the device's language, with deep links only", () => {

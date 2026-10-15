@@ -170,7 +170,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         repo_path: str("Local clone to work in; defaults to the operator's current directory."),
         adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, native)."),
         model: str("Pin the model, e.g. openrouter/<id> with the native adapter."),
-        flow: str("Flow name; defaults to fix-issue for issues and task for prompts."),
+        flow: str("Flow name: fix-issue (default for issues), task (default for prompts) or team (a lead agent that delegates parts to other agents)."),
       }),
       kind: "act",
       summarize: (args) => {

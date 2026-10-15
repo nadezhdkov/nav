@@ -70,6 +70,7 @@ export const ptBR: Messages = {
       github: "GitHub",
       approval: "Portão de aprovação",
       loop: "Loop",
+      team: "Equipe",
     },
   },
   fleet: {
@@ -165,7 +166,9 @@ export const ptBR: Messages = {
     prompt: "O que os agentes devem fazer?",
     placeholder: "Descreva a mudança…",
     start: "Iniciar run",
-    note: "Executa o Flow task com o orçamento padrão. No celular, só ficam disponíveis os projetos registrados e os repositórios de runs anteriores.",
+    team: "Trabalhar em equipe",
+    teamHint: "Um agente líder divide o trabalho, passa partes a outros agentes (Codex, Gemini, …), lê os resultados e decide até terminar. Usa mais rodadas e orçamento.",
+    note: "Executa o Flow {flow} com o orçamento padrão. No celular, só ficam disponíveis os projetos registrados e os repositórios de runs anteriores.",
     noRepos: "Nenhum repositório ainda: inicie a primeira run pelo desktop.",
   },
   device: {

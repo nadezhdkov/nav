@@ -5,7 +5,7 @@ import { z } from "zod";
  * instance is a TaskGraph (§6.2), made of tasks the Orchestrator creates as nodes become due.
  *
  * Phase 1 runs linear flows (an `edges` chain) with `trigger`, `agent`, `action`, `approval`,
- * `loop` and `github` nodes; `switch`, `parallel`, `join`, `judge`, `subflow` and `llm` arrive
+ * `loop`, `github` and `team` (ADR 0022) nodes; `switch`, `parallel`, `join`, `judge`, `subflow` and `llm` arrive
  * with Phase 2 and are refused when a flow is loaded (ADR 0011).
  */
 
@@ -80,7 +80,24 @@ export const LoopNode = z.strictObject({
   body: z.array(BodyNode).min(1),
 });
 
-export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode]);
+/**
+ * A lead agent and the members it delegates to, turn by turn (ADR 0022). Its tasks are the lead's
+ * turns (`<id>.lead`), one per member (`<id>.<key>`), a verification per turn (`<id>.verify`)
+ * and the approval of the first plan (`<id>.approve_plan`).
+ */
+export const TeamNode = z.strictObject({
+  ...base,
+  type: z.literal("team"),
+  lead: z.strictObject({ profile: z.string().min(1) }),
+  /** A number or an expression; the node fails after this many lead turns. */
+  max_turns: z.union([z.number().int().positive(), Expr]),
+  /** A number or an expression; a plan that would take the team past this many members fails the node. */
+  max_members: z.union([z.number().int().positive(), Expr]).default(12),
+  /** When true, the first plan that adds members waits for a human. */
+  approve_first_plan: z.union([z.boolean(), Expr]).default(false),
+});
+
+export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode]);
 export type FlowNode = z.infer<typeof FlowNode>;
 
 export const FlowParam = z.strictObject({

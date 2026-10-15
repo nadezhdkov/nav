@@ -145,6 +145,8 @@ export class AgentRuntime {
                 ...(event.exhausted !== undefined ? { exhausted: event.exhausted } : {}),
                 ...(event.modelPrefix ? { model_prefix: event.modelPrefix } : {}),
               });
+            } else if (event.kind === "subagent") {
+              this.publish(spec, actor, "task.subagent", { tool_use_id: event.id, description: redact(event.description), status: event.status });
             } else {
               this.publish(spec, actor, "task.resume_token", { adapter: adapter.id, token: event.token });
             }

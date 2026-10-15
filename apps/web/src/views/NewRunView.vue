@@ -5,6 +5,7 @@ import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { api } from "../api/client.ts";
+import { isDevice } from "../api/session.ts";
 
 /** A prompt run in a registered project or a repository of earlier runs (spec §6.12.4 "new work", ADR 0020, 0021). */
 const { t } = useI18n();
@@ -12,6 +13,8 @@ const router = useRouter();
 const repos = ref<RepoView[]>([]);
 const repo = ref("");
 const prompt = ref("");
+/** Team mode (ADR 0022): a lead agent delegates to other agents. Phones keep the daemon's defaults (ADR 0020). */
+const team = ref(false);
 const busy = ref(false);
 const error = ref<string | null>(null);
 const loaded = ref(false);
@@ -35,7 +38,7 @@ async function start() {
   busy.value = true;
   error.value = null;
   try {
-    const run = await api.startRun({ repo_path: repo.value, prompt: prompt.value.trim() });
+    const run = await api.startRun({ repo_path: repo.value, prompt: prompt.value.trim(), ...(team.value && !isDevice.value ? { flow: "team" } : {}) });
     await router.push(`/runs/${run.id}`);
   } catch (err) {
     error.value = (err as Error).message;
@@ -60,7 +63,14 @@ async function start() {
         <label for="prompt" class="mb-1 block text-sm text-muted">{{ t("newRun.prompt") }}</label>
         <textarea id="prompt" v-model="prompt" rows="6" :placeholder="t('newRun.placeholder')" class="w-full rounded-md border border-line bg-bg px-3 py-2 text-base" />
       </div>
-      <p class="text-xs text-muted">{{ t("newRun.note") }}</p>
+      <label v-if="!isDevice" class="flex min-h-11 items-start gap-3 rounded-md border border-line px-3 py-2">
+        <input v-model="team" type="checkbox" class="mt-1 size-4" />
+        <span>
+          <span class="block text-sm font-medium">{{ t("newRun.team") }}</span>
+          <span class="block text-xs text-muted">{{ t("newRun.teamHint") }}</span>
+        </span>
+      </label>
+      <p class="text-xs text-muted">{{ t("newRun.note", { flow: team && !isDevice ? "team" : "task" }) }}</p>
       <button type="submit" :disabled="busy || !prompt.trim() || !repo" class="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-bg disabled:opacity-60">
         <Play :size="18" aria-hidden="true" />{{ t("newRun.start") }}
       </button>

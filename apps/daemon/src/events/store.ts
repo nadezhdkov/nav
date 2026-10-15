@@ -6,6 +6,8 @@ import {
   parsePayload,
   type DeviceView,
   type FleetAgent,
+  type TeamTaskRef,
+  type TeamView,
   type RepoView,
   type FleetView,
   type FleetWindow,
@@ -23,6 +25,7 @@ import {
   type VerifyCommand,
   type WorkItemTriage,
 } from "@navarch/contracts";
+import { evaluate, parseExpr, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
 import { credentialTables, dropProjections, eventsTable, projectionTables } from "./schema.ts";
 
@@ -45,7 +48,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team")) {
       this.rebuildProjections();
     }
   }
@@ -198,11 +201,57 @@ export class EventStore {
       .prepare("SELECT id, task_id, kind, uri, summary FROM artifacts WHERE run_id = ? ORDER BY created_at")
       .all(id) as RunDetail["artifacts"];
     const flow = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(id) as { flow: string | null }).flow;
+    const definition = flow ? (JSON.parse(flow) as RunFlow) : null;
     return {
       ...run,
-      flow_definition: flow ? (JSON.parse(flow) as RunFlow) : null,
+      flow_definition: definition,
       tasks: this.tasksOfRun(id),
       artifacts: artifacts.map((a) => ({ ...a })),
+      team: this.teamOf(id, definition),
+    };
+  }
+
+  /** A run's team (ADR 0022), derived from its tasks with the Flow engine's own reading. */
+  teamOf(runId: string, flow: RunFlow | null): TeamView | null {
+    const node = flow?.definition.nodes.find((n) => n.type === "team");
+    if (!flow || !node || node.type !== "team") return null;
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE run_id = ? AND node_id LIKE ? ORDER BY rowid").all(runId, `${node.id}.%`) as TaskRow[]).map(toTaskRecord);
+    const subagentRows = this.db.prepare("SELECT id, subagents FROM tasks WHERE run_id = ? AND subagents IS NOT NULL ORDER BY rowid").all(runId) as { id: string; subagents: string }[];
+    const state = teamState(node.id, rows.map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })));
+    const lead = rows.filter((t) => t.node_id === teamTaskId.lead(node.id)).sort((a, b) => b.iteration - a.iteration)[0];
+    const lastPlan = state.turns.filter((t) => t.plan).at(-1)?.plan;
+    let maxTurns: number | null = null;
+    try {
+      const v = typeof node.max_turns === "number" ? node.max_turns : Number(evaluate(parseExpr(node.max_turns), { nodes: {}, params: flow.params, project: {} }));
+      maxTurns = Number.isFinite(v) ? v : null;
+    } catch {
+      maxTurns = null;
+    }
+    return {
+      node_id: node.id,
+      turn: state.turns.length,
+      max_turns: maxTurns,
+      lead_task_id: lead?.id ?? null,
+      members: state.members.map((m) => {
+        const task = rows.filter((t) => t.node_id === teamTaskId.member(node.id, m.key)).at(-1);
+        return {
+          key: m.key,
+          title: m.title,
+          profile: m.profile,
+          prefer: m.prefer ?? null,
+          depends_on: m.depends_on,
+          turn: m.turn,
+          task_id: task?.id ?? null,
+          status: m.skipped ? "skipped" : m.status,
+          summary: m.summary ?? null,
+        };
+      }),
+      question: lead?.status === "blocked" && lastPlan?.question ? lastPlan.question : null,
+      summary: state.summary ?? null,
+      plan_errors: state.turns.flatMap((t) => (t.error ? [{ turn: t.iteration, error: t.error }] : [])),
+      subagents: subagentRows.flatMap((r) =>
+        (JSON.parse(r.subagents) as { tool_use_id: string; description: string; status: "started" | "finished" }[]).map((x) => ({ task_id: r.id, ...x })),
+      ),
     };
   }
 
@@ -270,9 +319,11 @@ export class EventStore {
   }
 
   /** Undelivered instructions an attempt of this task should receive: those for the whole run or for the task. */
-  pendingMessagesFor(task: { id: string; run_id: string }): RunMessage[] {
+  pendingMessagesFor(task: { id: string; run_id: string; team?: TeamTaskRef | null }): RunMessage[] {
+    // In a team run, messages to the run go to the lead; members only get those sent to them (ADR 0022).
+    const toRun = !task.team || task.team.role === "lead";
     return this.db
-      .prepare("SELECT * FROM run_messages WHERE run_id = ? AND delivered_at IS NULL AND (task_id IS NULL OR task_id = ?) ORDER BY created_at, rowid")
+      .prepare(`SELECT * FROM run_messages WHERE run_id = ? AND delivered_at IS NULL AND (${toRun ? "task_id IS NULL OR " : ""}task_id = ?) ORDER BY created_at, rowid`)
       .all(task.run_id, task.id)
       .map(toRunMessage);
   }
@@ -297,9 +348,12 @@ export class EventStore {
         const task = toTaskView(row);
         const activity = row.last_activity ? (JSON.parse(String(row.last_activity)) as FleetAgent["last_activity"]) : null;
         const fallback = task.error ?? task.summary;
+        const team = row.team ? (JSON.parse(String(row.team)) as TeamTaskRef) : null;
         const waiting: FleetAgent["waiting"] =
           task.status === "waiting_approval"
             ? { kind: "approval" }
+            : task.status === "blocked" && team?.role === "lead"
+              ? { kind: "question" }
             : task.status === "ready" && task.not_before && task.not_before > nowIso
               ? { kind: "quota", until: task.not_before }
               : null;
@@ -312,10 +366,13 @@ export class EventStore {
           last_activity: activity ?? (fallback ? { text: firstLine(fallback), ts: task.updated_at } : null),
           waiting,
           resumable: resumable(task.adapter),
-          pending_messages: pending.filter((m) => m.task_id === task.id || (m.task_id === null && !isTerminalTask(task.status))).length,
+          pending_messages: pending.filter((m) => m.task_id === task.id || (m.task_id === null && (!team || team.role === "lead") && !isTerminalTask(task.status))).length,
+          team_role: team?.role === "lead" || team?.role === "member" ? team.role : null,
+          team_key: team?.key ?? null,
         };
       });
-      return { ...run, agents };
+      const flow = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(run.id) as { flow: string | null }).flow;
+      return { ...run, agents, team: this.teamOf(run.id, flow ? (JSON.parse(flow) as RunFlow) : null) };
     });
     return { generated_at: nowIso, counts, runs: out };
   }
@@ -459,6 +516,10 @@ export type TaskRecord = TaskView & {
   /** Catalog id the Model Router chose; null until routed (or for pinned tasks). */
   model_id: string | null;
   routing: "auto" | null;
+  /** The team this task is part of (ADR 0022). */
+  team: TeamTaskRef | null;
+  /** For team members: the lead's preferred adapter or catalog entry. */
+  prefer: string | null;
 };
 
 type Row = Record<string, unknown>;
@@ -560,6 +621,8 @@ function toTaskRecord(row: Row): TaskRecord {
     outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
     model_id: (row.model_id as string | null) ?? null,
     routing: row.routing === "auto" ? "auto" : null,
+    team: row.team ? (JSON.parse(String(row.team)) as TeamTaskRef) : null,
+    prefer: (row.prefer as string | null) ?? null,
   };
 }
 

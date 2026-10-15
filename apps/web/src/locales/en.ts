@@ -68,6 +68,7 @@ export const en = {
       github: "GitHub",
       approval: "Approval gate",
       loop: "Loop",
+      team: "Team",
     },
   },
   fleet: {
@@ -163,7 +164,9 @@ export const en = {
     prompt: "What should the agents do?",
     placeholder: "Describe the change…",
     start: "Start run",
-    note: "Runs the task Flow with the default budget. On a phone, only registered projects and repositories of earlier runs are available.",
+    team: "Work as a team",
+    teamHint: "A lead agent splits the work, hands parts to other agents (Codex, Gemini, …), reads their results and decides until it is done. Uses more turns and budget.",
+    note: "Runs the {flow} Flow with the default budget. On a phone, only registered projects and repositories of earlier runs are available.",
     noRepos: "No repository yet: start the first run from the desktop.",
   },
   device: {

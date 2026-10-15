@@ -84,6 +84,39 @@ export const RunFlow = z.object({
 });
 export type RunFlow = z.infer<typeof RunFlow>;
 
+/** A member of a team as the run's tasks show it (ADR 0022). */
+export const TeamMemberView = z.object({
+  key: z.string(),
+  title: z.string(),
+  profile: z.string(),
+  prefer: z.string().nullable(),
+  depends_on: z.array(z.string()),
+  /** The lead turn that added it. */
+  turn: z.number().int(),
+  task_id: z.string().nullable(),
+  /** The task's status; `planned` before it starts, `skipped` when a dependency did not succeed. */
+  status: z.string(),
+  summary: z.string().nullable(),
+});
+export type TeamMemberView = z.infer<typeof TeamMemberView>;
+
+/** A run's team: its lead's turns, members, open question and the lead's own sub-agents. */
+export const TeamView = z.object({
+  node_id: z.string(),
+  turn: z.number().int(),
+  max_turns: z.number().int().nullable(),
+  lead_task_id: z.string().nullable(),
+  members: z.array(TeamMemberView),
+  /** The lead's question while the team waits for the user. */
+  question: z.string().nullable(),
+  /** The latest valid plan's summary. */
+  summary: z.string().nullable(),
+  /** Turns whose plan was invalid, with the reason given back to the lead. */
+  plan_errors: z.array(z.object({ turn: z.number().int(), error: z.string() })),
+  subagents: z.array(z.object({ task_id: z.string(), tool_use_id: z.string(), description: z.string(), status: z.enum(["started", "finished"]) })),
+});
+export type TeamView = z.infer<typeof TeamView>;
+
 export const RunDetail = RunView.extend({
   /** Null for runs created before Flows. */
   flow_definition: RunFlow.nullable(),
@@ -91,6 +124,8 @@ export const RunDetail = RunView.extend({
   artifacts: z.array(
     z.object({ id: z.string(), task_id: z.string(), kind: z.string(), uri: z.string(), summary: z.string() }),
   ),
+  /** Set for runs whose Flow has a `team` node (ADR 0022). */
+  team: TeamView.nullable(),
 });
 export type RunDetail = z.infer<typeof RunDetail>;
 
@@ -259,15 +294,18 @@ export const FleetAgent = TaskView.extend({
   /** The agent's latest progress line, else its summary or error. */
   last_activity: z.object({ text: z.string(), tool: z.string().optional(), ts: z.string() }).nullable(),
   /** Why the task is not running when it could be. */
-  waiting: z.object({ kind: z.enum(["approval", "quota"]), until: z.string().optional() }).nullable(),
+  waiting: z.object({ kind: z.enum(["approval", "quota", "question"]), until: z.string().optional() }).nullable(),
   /** Whether its adapter can resume a session, so `now` instructions are possible. */
   resumable: z.boolean(),
   /** Instructions waiting for this agent (targeted at it, or at the whole run). */
   pending_messages: z.number().int().nonnegative(),
+  /** Its part in a team (ADR 0022), and the member key. */
+  team_role: z.enum(["lead", "member"]).nullable(),
+  team_key: z.string().nullable(),
 });
 export type FleetAgent = z.infer<typeof FleetAgent>;
 
-export const FleetRun = RunView.extend({ agents: z.array(FleetAgent) });
+export const FleetRun = RunView.extend({ agents: z.array(FleetAgent), team: TeamView.nullable() });
 export type FleetRun = z.infer<typeof FleetRun>;
 
 export const FleetWindow = z.enum(["active", "24h"]);

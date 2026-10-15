@@ -100,5 +100,14 @@ describe("route", () => {
     const d = route({ ...config, tiers: { ...config.tiers, fast: ["qwen"] } }, req({ profile: "triager" }));
     expect(d.chosen).toEqual({ id: "qwen", adapter: "native", model: "ollama/qwen2.5:7b", provider: "ollama" });
   });
-});
 
+  it("tries a team lead's preference first, by catalog id or adapter, when it is usable", () => {
+    expect(route(config, req({ prefer: "copilot" }))).toMatchObject({ chosen: { id: "copilot" }, reason: expect.stringContaining("preferred by the lead") });
+    expect(route(config, req({ prefer: "native" })).chosen?.id).toBe("qwen");
+    const exhausted = route(config, req({ prefer: "copilot", exhausted: [{ adapter: "copilot", resetsAt: "2026-10-16T00:00:00Z" }] }));
+    expect(exhausted.chosen?.id).toBe("claude-code");
+    expect(exhausted.skipped).toContainEqual({ id: "copilot", reason: expect.stringMatching(/preferred by the lead; quota exhausted/) });
+    expect(route(config, req({ prefer: "codex" })).skipped).toContainEqual({ id: "codex", reason: "preferred by the lead; status disabled" });
+    expect(route(config, req({ prefer: "nope" })).chosen?.id).toBe("claude-code");
+  });
+});

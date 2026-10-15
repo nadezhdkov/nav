@@ -183,6 +183,12 @@ export function noticeFor(event: NavarchEvent): Notice | undefined {
     const p = (event as NavarchEvent<"approval.requested">).payload;
     return { kind: "approval", run_id: runId, critical: false, url: `/approvals?focus=${p.approval_id}`, subject: subjectOf(p.action) };
   }
+  if (event.type === "task.status_changed") {
+    const p = (event as NavarchEvent<"task.status_changed">).payload;
+    // A team lead asked the user something; the team waits for the answer (ADR 0022).
+    if (p.to === "blocked" && p.reason === "question") return { kind: "question", run_id: runId, critical: false, url: `/runs/${runId}` };
+    return undefined;
+  }
   if (event.type !== "run.status_changed") return undefined;
   const p = (event as NavarchEvent<"run.status_changed">).payload;
   const url = `/runs/${runId}`;

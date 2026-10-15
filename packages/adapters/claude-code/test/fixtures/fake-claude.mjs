@@ -57,6 +57,33 @@ switch (scenario) {
     }
     break;
   }
+  case "lead":
+  case "lead-question": {
+    // A team lead (ADR 0022): turn 1 delegates to a Codex member (or asks first), a resumed turn
+    // finishes once it sees the member's result (or the user's answer).
+    const team = (plan) => "```navarch-team\n" + JSON.stringify(plan) + "\n```";
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1];
+    if (resume && prompt.includes("This is your next turn as the team lead")) {
+      if (scenario === "lead-question" && !prompt.includes('<input name="team">') && !prompt.includes("<operator_instruction>")) {
+        result(true, team({ summary: "Still waiting for an answer.", done: false, question: "Which file name?" }));
+      } else if (scenario === "lead-question" && !prompt.includes('<input name="team">')) {
+        result(true, "Got the answer.\n" + team({ summary: "Delegating with the answer.", done: false, members: [{ key: "api", title: "Add codex.txt", brief: "Create codex.txt.", profile: "implementer", prefer: "codex" }] }));
+      } else {
+        result(true, "The member finished.\n" + team({ summary: "Team finished: codex.txt added by the api member.", done: true }));
+      }
+    } else if (profile === "lead") {
+      // The lead uses one sub-agent of its own before planning.
+      out({ type: "assistant", message: { content: [{ type: "tool_use", id: "toolu_lead1", name: "Task", input: { description: "Survey the repository" } }] } });
+      out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_lead1", content: "small repo" }] } });
+      const plan = scenario === "lead-question"
+        ? { summary: "I need to ask first.", done: false, question: "Which file name?" }
+        : { summary: "One member adds the file.", done: false, members: [{ key: "api", title: "Add codex.txt", brief: "Create codex.txt.", profile: "implementer", prefer: "codex" }] };
+      result(true, "Planning the team.\n" + team(plan));
+    } else {
+      result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });
