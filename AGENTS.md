@@ -164,6 +164,7 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
 | `agent-brief` | write the contract an unattended agent works from (the prompt of a `navarch run`, a ready-for-agent issue) |
 | `review-two-axis` | review a branch on Standards (AGENTS.md, ADRs) and Spec (spec section, ADR, brief) separately |
 | `domain-modeling` | sharpen terms against the spec glossary (§4) and decide whether something deserves an ADR |
+| `new-pr` | publish a finished slice: fresh checks, push the feature branch and open a draft PR without asking again; the user reviews and merges |
 
 ### Makefile
 
