@@ -7,40 +7,46 @@
  */
 :root {
   color-scheme: dark;
-  --bg: #05080f;
-  --surface: #0b1220;
-  --surface-2: #111a2c;
-  --border: #1e2a40;
-  --grid: rgb(148 163 184 / 0.07);
-  --text: #e6edf7;
-  --text-muted: #9fb0c8;
+  --bg: #0f1114;
+  --surface: #181b20;
+  --surface-2: #22262d;
+  --border: #2e333b;
+  --edge: #4b525e;
+  --grid: rgb(161 168 181 / 0.06);
+  --vignette: radial-gradient(ellipse at 50% 0%, rgb(148 163 184 / 0.07), transparent 70%);
+  --text: #e7e9ed;
+  --text-muted: #a3aab6;
   --accent: #22d3ee;
   --tone-neutral: #a5b4cb;
   --tone-info: #38bdf8;
   --tone-success: #34d399;
   --tone-danger: #fb7185;
   --tone-warning: #f59e0b;
-  --tone-muted: #8494ad;
+  --tone-muted: #8b93a1;
+  --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --glow: 0 0 0 1px var(--tone), 0 0 18px -2px color-mix(in srgb, var(--tone) 55%, transparent);
 }
 
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg: #f8fafc;
+    --bg: #f3f4f6;
     --surface: #ffffff;
-    --surface-2: #f1f5f9;
-    --border: #d5dde8;
-    --grid: rgb(15 23 42 / 0.06);
-    --text: #0f172a;
-    --text-muted: #475569;
+    --surface-2: #eceef1;
+    --border: #d4d7dd;
+    --edge: #9aa1ad;
+    --grid: rgb(17 19 24 / 0.06);
+    --vignette: none;
+    --text: #15171c;
+    --text-muted: #4a505c;
     --accent: #0e7490;
     --tone-neutral: #475569;
     --tone-info: #0369a1;
     --tone-success: #047857;
     --tone-danger: #be123c;
-    --tone-warning: #b45309;
-    --tone-muted: #64748b;
+    --tone-warning: #a14a07;
+    --tone-muted: #5f6673;
+    --card-shadow: 0 1px 2px rgb(17 19 24 / 0.06);
   }
 }
 
@@ -86,9 +92,10 @@ body {
 .grid-canvas {
   background-color: var(--bg);
   background-image:
+    var(--vignette),
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
-  background-size: 24px 24px;
+  background-size: 100% 100%, 24px 24px, 24px 24px;
 }
 
 @keyframes pulse-glow {
@@ -105,8 +112,11 @@ body {
   .vue-flow__edge.animated path { animation: none; }
 }
 
-.vue-flow__edge-path { stroke: var(--border); stroke-width: 1.5; }
-.vue-flow__edge.active .vue-flow__edge-path { stroke: var(--accent); }
+.vue-flow__edge-path { stroke: var(--edge); stroke-width: 1.5; }
+.vue-flow__edge.active .vue-flow__edge-path {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 70%, transparent));
+}
 .vue-flow__edge.loop-back .vue-flow__edge-path { stroke: var(--tone-warning); stroke-dasharray: 6 5; }
 .vue-flow__handle { opacity: 0; pointer-events: none; }
 .vue-flow__node { cursor: default; }

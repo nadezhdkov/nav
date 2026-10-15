@@ -12,7 +12,7 @@ import { canCancel, canResume, money, runLook, runTitle } from "../lib/status.ts
 import { useRunStore } from "../stores/runs.ts";
 
 const props = defineProps<{ id: string }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const store = useRunStore();
 const selected = ref<string | null>(null);
 const tab = ref<"timeline" | "logs">("timeline");
@@ -130,7 +130,7 @@ async function act(kind: "cancel" | "resume") {
         <ol v-if="tab === 'timeline'" class="min-h-0 flex-1 overflow-auto px-4 py-2 font-mono text-xs" aria-live="polite">
           <li v-if="!shownEvents.length" class="text-muted">{{ t("run.noEvents") }}</li>
           <li v-for="e in shownEvents" :key="e.id" class="flex gap-3 py-0.5">
-            <time :datetime="e.ts" class="shrink-0 text-muted">{{ new Date(e.ts).toLocaleTimeString() }}</time>
+            <time :datetime="e.ts" class="shrink-0 text-muted">{{ new Date(e.ts).toLocaleTimeString(locale) }}</time>
             <span class="w-44 shrink-0 truncate text-accent">{{ e.type }}</span>
             <span class="min-w-0 truncate">{{ describe(e.payload as Record<string, unknown>) }}</span>
           </li>

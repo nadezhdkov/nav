@@ -11,7 +11,7 @@ import StatusBadge from "./StatusBadge.vue";
 /** The selected node's "passport": agent, model and why, cost, output, artifacts (spec §15.2). */
 const props = defineProps<{ node: GraphNode; run: RunDetail; events: NavarchEvent[] }>();
 const emit = defineEmits<{ close: [] }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const task = computed(() => props.node.task);
 const taskIds = computed(() => new Set(props.node.tasks.map((x) => x.id)));
@@ -60,7 +60,7 @@ watch(
         <dt class="text-muted">{{ t("node.attempt") }}</dt><dd>{{ task.attempt }} / {{ task.max_attempts }}</dd>
         <template v-if="node.parent"><dt class="text-muted">{{ t("node.iteration") }}</dt><dd>{{ task.iteration }}</dd></template>
         <dt class="text-muted">{{ t("node.cost") }}</dt><dd class="font-mono text-xs">{{ money(node.tasks.reduce((s, x) => s + x.cost, 0)) }}</dd>
-        <template v-if="task.not_before"><dt class="text-muted">{{ t("node.retryAt") }}</dt><dd><time :datetime="task.not_before">{{ new Date(task.not_before).toLocaleString() }}</time></dd></template>
+        <template v-if="task.not_before"><dt class="text-muted">{{ t("node.retryAt") }}</dt><dd><time :datetime="task.not_before">{{ new Date(task.not_before).toLocaleString(locale) }}</time></dd></template>
       </dl>
       <section v-if="routing">
         <h3 class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ t("node.routing") }}</h3>
