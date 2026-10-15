@@ -93,6 +93,8 @@ export const Config = z.object({
         .object({
           mode: z.enum(["tailscale", "off"]).default("tailscale"),
           url: z.string().url().optional(),
+          /** The Tailscale CLI, read-only (`status`, `serve status`); tests point it at a fake. */
+          tailscale_command: z.string().default("tailscale"),
         })
         .prefault({}),
     })

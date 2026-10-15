@@ -164,7 +164,7 @@ export class Daemon {
       return { mode: "off", installed: false, running: false, url: null, serving: false, setup_command: `tailscale serve --bg ${port}` };
     }
     if (this.remoteCache && Date.now() - this.remoteCache.at < 30_000) return this.remoteCache.status;
-    const detected = await tailscaleStatus(port);
+    const detected = await tailscaleStatus(port, remote.tailscale_command);
     const status: RemoteStatus = { ...detected, url: remote.url?.replace(/\/+$/, "") ?? detected.url };
     this.remoteCache = { at: Date.now(), status };
     return status;

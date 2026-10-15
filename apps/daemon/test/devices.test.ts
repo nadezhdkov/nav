@@ -21,7 +21,8 @@ afterEach(async () => {
 async function start(extra: Record<string, unknown> = {}) {
   const home = tempHome();
   const fake = fakeClaude("flow");
-  const config = Config.parse({ daemon: { port: 0, remote: { url: REMOTE } }, routing: { enabled: false }, ...extra });
+  // A Tailscale CLI that does not exist: tests never read the operator's tailnet.
+  const config = Config.parse({ daemon: { port: 0, remote: { url: REMOTE, tailscale_command: "/nonexistent/tailscale" } }, routing: { enabled: false }, ...extra });
   const daemon = new Daemon({ home, config, adapters: { "claude-code": fake.options } });
   await daemon.start();
   daemons.push(daemon);
@@ -189,7 +190,7 @@ describe("device pairing and sessions (ADR 0020)", () => {
   it("reports remote status from config and tailscale", async () => {
     const { call, local } = await start();
     const status = (await call<RemoteStatus>(local, "GET", "/api/v1/remote")).body;
-    // The test PATH has a failing `tailscale` stub; the configured URL is still used.
+    // The configured Tailscale CLI does not exist; the configured URL is still used.
     expect(status).toMatchObject({ mode: "tailscale", installed: false, url: REMOTE, serving: false });
     expect(status.setup_command).toMatch(/^tailscale serve --bg \d+$/);
     expect(proxiesTo({ Web: { "pc.ts.net:443": { Handlers: { "/": { Proxy: "http://127.0.0.1:7420" } } } } }, 7420)).toBe(true);
