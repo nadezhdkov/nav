@@ -44,7 +44,8 @@ function at(runId: string): string | null {
       <RouterLink to="/new" class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-md bg-accent px-4 font-semibold text-bg">
         <Plus :size="18" aria-hidden="true" />{{ t("home.newRun") }}
       </RouterLink>
-      <KillSwitch class="flex-1" />
+      <!-- On the desktop the kill switch lives in the sidebar. -->
+      <KillSwitch class="flex-1 md:hidden" />
     </div>
 
     <div>

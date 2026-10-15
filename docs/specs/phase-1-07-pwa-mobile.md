@@ -1,6 +1,6 @@
 # Phase 1, slice 7: mobile PWA over Tailscale, push, pause and kill switch
 
-Status: in progress · Branch: `feat/pwa` · Spec: §6.10.3, §6.11, §6.12, §14.1, §15.1 (Mobile), §16 (Phase 1 "PWA mobile com Tailscale") · ADR: 0020
+Status: implemented · Branch: `feat/pwa` · Spec: §6.10.3, §6.11, §6.12, §14.1, §15.1 (Mobile), §16 (Phase 1 "PWA mobile com Tailscale") · ADR: 0020
 
 The phone is a remote control and a dashboard for the work on the PC (§6.12.1). This slice makes the Web UI an installable PWA that the phone reaches over the tailnet. It adds device pairing by QR code, Web Push for what needs the user, pausing and resuming a run, and a kill switch that stops everything. It covers every MVP row of §6.12.4 and the Phase 1 go/no-go item "approval from the phone, from outside the local network".
 
@@ -105,7 +105,8 @@ The same SPA and routes. At ≤ 768 px the sidebar becomes a bottom tab bar (Hom
 - Notifier: the event → notification table, quiet hours (critical passes), coalescing within 10 s, the endpoint allowlist, `notification.sent` and `notification.failed`.
 - CLI: `navarch pause`, `navarch stop --all`, `navarch remote status` (fake `tailscale` on PATH) and `navarch devices`.
 - Web: the mobile layout breakpoints, Home, New run, Device, the pairing QR, the session refresh flow in the API client, the manifest served with the right type, and complete locales.
-- Visual check: a demo daemon at 390×844 (Home, Approvals, Run, Device) and 1440×900 (Settings → Devices with QR), in dark and light.
+- Visual check (2026-10-15): a demo daemon with slow fake agents, one approval waiting and two paired devices. Chromium at 390×844 as a paired device (Home, Approvals, Run, Device, New run), the pairing screen in light mode, and 1440×900 dark and light (Settings → Devices with the QR code, Home). The run detail's tab row overflowed on phones and was fixed. No console errors from the app.
+- Notification texts are written by the daemon (`apps/daemon/src/notifications/messages.ts`) in the five UI locales, because the phone's system shows them, not the app. The device sends its locale with its subscription.
 
 ## 🔴 Open
 

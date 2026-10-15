@@ -131,17 +131,17 @@ async function act(kind: "cancel" | "resume" | "pause") {
       </ul>
 
       <section class="flex h-64 shrink-0 flex-col border-t border-line bg-surface max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:border-t-0">
-        <div class="flex items-center gap-1 border-b border-line px-4" role="tablist">
+        <div class="flex items-center gap-1 border-b border-line px-4 max-md:px-2" role="tablist">
           <button
             v-for="name in tabs"
             :key="name"
             role="tab"
             :aria-selected="tab === name"
-            class="min-h-9 border-b-2 px-3 text-sm max-md:min-h-11"
+            class="min-h-9 shrink-0 border-b-2 px-3 text-sm max-md:min-h-11 max-md:px-2"
             :class="tab === name ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg'"
             @click="tab = name"
           >{{ t(`run.${name}`) }}</button>
-          <select v-if="tab === 'timeline'" v-model="filter" :aria-label="t('run.filter')" class="ml-auto min-h-8 rounded-md border border-line bg-bg px-2 text-xs">
+          <select v-if="tab === 'timeline'" v-model="filter" :aria-label="t('run.filter')" class="ml-auto min-h-8 min-w-0 rounded-md border border-line bg-bg px-2 text-xs max-md:max-w-28">
             <option value="">{{ t("run.allEvents") }}</option>
             <option v-for="type in eventTypes" :key="type" :value="type">{{ type }}</option>
           </select>
