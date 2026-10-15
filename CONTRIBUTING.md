@@ -1,15 +1,8 @@
 # Contributing to Navarch
 
-Thanks for your interest in Navarch. Please read this before you open an issue or a pull request.
+Thanks for your interest in Navarch! Issues, ideas and pull requests are all welcome. This page explains how to make them easy to act on.
 
-## What we accept today
-
-Navarch is **source-available** under the [PolyForm Noncommercial License 1.0.0](LICENSE), not open source ([ADR 0010](docs/adr/0010-polyform-noncommercial-license.md)). The author keeps the right to license it commercially, and that needs a contributor agreement that does not exist yet. Until it does:
-
-- **Pull requests from outside the project are not accepted.** They will be closed without review, however good they are. Please do not send code, patches or diffs in issues either.
-- **Issues are welcome:** bug reports, questions, and ideas described in your own words.
-
-This section will change once there is a contributor agreement.
+Navarch is open source under the [MIT license](LICENSE) ([ADR 0018](docs/adr/0018-back-to-mit.md)). By opening a pull request you agree that your contribution is licensed under the same terms.
 
 ## Reporting a bug
 
@@ -23,19 +16,45 @@ Open an issue with:
 
 ## Reporting a security problem
 
-Do not open a public issue for a vulnerability, a prompt-injection path or a way around the Policy Engine. Open an issue asking for a private contact, without details, and the maintainer will reach out.
+Do not open a public issue for a vulnerability, a prompt-injection path or a way around the Policy Engine. Report it privately instead: see [`SECURITY.md`](SECURITY.md).
 
 ## Ideas and feature requests
 
 Describe the problem you want solved, not only the solution. The product follows the spec ([`docs/navarch-especificacao.md`](docs/navarch-especificacao.md), in Portuguese) and its phased roadmap (§16), so an idea may be accepted but scheduled for a later phase. Decisions are recorded as ADRs in [`docs/adr/`](docs/adr).
 
-## For the maintainer and the project's agents
+**For anything larger than a small fix, open an issue first** so we can agree on the approach before you spend time on code.
 
-How the repository is worked on, by the maintainer and by coding agents, is written down in [`AGENTS.md`](AGENTS.md). In short:
+## Pull requests
 
-- **One branch and worktree per slice**, under `.worktree/<name>`; slice specs in [`docs/specs/`](docs/specs).
-- **Every command goes through the root `Makefile`** (`make help`): `make install`, then `make verify` (typecheck + tests) before each commit, and `make ci` for everything CI runs. Tests use fake agent CLIs and a fake model server, so they never reach a real agent, the network or your keychain.
-- **Contracts first:** Zod schemas in `packages/contracts`, then the implementation, with tests written alongside the code.
-- **Conventional commits** (`feat:`, `fix:`, `docs:` …), in English. All documentation, comments and UI strings (through i18n) are in English.
-- **Pull requests are opened as drafts**, and merging is always a human decision. Nothing is auto-merged.
-- Architecture rules, security rules and the merge policy in `AGENTS.md` are non-negotiable; a change to them needs an ADR.
+### Setup
+
+You need Node ≥ 22.18, pnpm and git (`make doctor` checks them). Then:
+
+```sh
+make install     # pnpm install --frozen-lockfile
+make verify      # typecheck + tests
+```
+
+Tests use fake agent CLIs and a fake model server, so they never reach a real agent, the network or your keychain, and cost nothing. `make ci` runs everything CI runs (it also needs `gitleaks` and `actionlint`). `make help` lists every target.
+
+### What a good pull request looks like
+
+- **One concern per pull request**, branched from `main`.
+- **Tests with the code** (Vitest). Every agent adapter needs contract tests and a fake CLI; see "Adding an adapter" in [`AGENTS.md`](AGENTS.md).
+- **Contracts first:** shared types are Zod schemas in `packages/contracts`; do not duplicate them in apps.
+- **Sources run on Node without a build step** (type stripping): use erasable TypeScript only (no `enum`, `namespace` or constructor parameter properties) and import with `.ts` extensions. Only `apps/web` has a build.
+- **Web UI changes:** every string goes through `vue-i18n` in all locales (`apps/web/src/locales/`), status is never shown by color alone, and a screenshot in the pull request helps review.
+- **English** for code, comments, docs and commit messages, with [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:` …).
+- `make verify` passes locally.
+
+### Rules that are not up for debate in a pull request
+
+[`AGENTS.md`](AGENTS.md) lists the architecture and security rules: every side effect goes through the Policy Engine, state is derived from events, only the GitHub Integration talks to GitHub, secrets never reach logs or events, and merges are never automatic. A change that needs to bend one of them starts as an issue and, if accepted, an ADR.
+
+### Review
+
+The maintainer reviews every pull request and merges by hand. CI (typecheck, tests, audit, secret scan, workflow lint) must pass first.
+
+## Working with coding agents
+
+Contributions written with the help of coding agents are welcome; you remain responsible for what you submit. [`AGENTS.md`](AGENTS.md) (read by Codex, Copilot and others) and [`CLAUDE.md`](CLAUDE.md) hold the instructions agents follow in this repository, and `.claude/skills/` holds the project's skills.
