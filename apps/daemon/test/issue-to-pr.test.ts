@@ -2,14 +2,19 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ApprovalView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
-import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
+import { fakeClaude, type FakeScenario } from "../../../packages/adapters/claude-code/test/fake.ts";
+import { fakeCli } from "../../../packages/adapters/kit/test/fake-cli.ts";
+
 import { fakeGitHub, type FakeGitHub } from "../../../packages/github/test/fake-github.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
 import { Config } from "../src/config.ts";
 import { Daemon } from "../src/daemon.ts";
 import { Vault } from "../src/vault/vault.ts";
+
+const fakeCopilotPath = fileURLToPath(new URL("../../../packages/adapters/copilot/test/fixtures/fake-copilot.mjs", import.meta.url));
 
 const daemons: Daemon[] = [];
 const servers: FakeGitHub[] = [];
@@ -41,7 +46,11 @@ const VERIFY_OK = `verify:
     run: test -f hello.txt
 `;
 
-async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: "edit" | "flow" }) {
+/**
+ * Starts a daemon with the fake Claude. With `copilot` (a fake Copilot scenario) the Model Router
+ * is on and may pick either; without it routing is off and every agent is Claude.
+ */
+async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string }) {
   const gh = opts.gh ?? (await fakeGitHub());
   if (!opts.gh) {
     servers.push(gh);
@@ -53,8 +62,10 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     });
   }
   const fake = fakeClaude(opts.scenario ?? "edit");
+  const copilot = opts.copilot ? fakeCli(fakeCopilotPath, opts.copilot) : undefined;
   const config = Config.parse({
     daemon: { port: 0 },
+    routing: { enabled: Boolean(copilot) },
     autonomy_level: opts.autonomy ?? 2,
     github: { api_url: gh.apiUrl, git_url: opts.gitUrl },
   });
@@ -62,7 +73,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
   const daemon = new Daemon({
     home,
     config,
-    adapters: { "claude-code": fake.options },
+    adapters: { "claude-code": fake.options, ...(copilot ? { copilot: copilot.options } : {}) },
     vault: new Vault({ env: { NAVARCH_SECRET_GITHUB_TOKEN: gh.token } }),
   });
   await daemon.start();
@@ -98,7 +109,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     }
     return (await api<ApprovalView>("POST", `/api/v1/approvals/${list[0]!.id}`, { decision, ...(reason ? { reason } : {}) })).body;
   };
-  return { daemon, api, fake, gh, waitRun, pending, decide };
+  return { daemon, api, fake, copilot, gh, waitRun, pending, decide };
 }
 
 const ISSUE_FLOW = ["triage", "plan", "approve_plan", "implement", "verify", "review", "open_pr"];
@@ -305,5 +316,76 @@ describe("issue → verified draft PR", () => {
     const run = await waitRun(created.body.id, (r) => r.status === "done");
     expect(run.tasks.map((t) => t.node_id)).toEqual(["implement", "verify"]);
     expect(run.work_item).toBeNull();
+  });
+});
+
+describe("Model Router (ADR 0013)", () => {
+  const routed = (events: NavarchEvent[]) =>
+    events.filter((e): e is NavarchEvent<"model.routed"> => e.type === "model.routed").map((e) => e.payload);
+
+  it("sends triage and a simple issue to Copilot, and reviews on a provider other than the implementer's", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, fake, copilot, gh, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "flow", copilot: "flow" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+
+    expect(run.status).toBe("done");
+    expect(gh.pulls).toHaveLength(1);
+    const agents = run.tasks.filter((t) => t.type === "agent").map((t) => [t.node_id, t.adapter]);
+    expect(agents).toEqual([
+      ["triage", "copilot"],
+      ["plan", "copilot"],
+      ["implement", "copilot"],
+      ["review", "claude-code"],
+    ]);
+    expect(copilot!.calls()).toHaveLength(3);
+    expect(fake.calls()).toHaveLength(1);
+
+    const decisions = routed((await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body);
+    expect(decisions.map((d) => [d.tier, d.model_id])).toEqual([
+      ["fast", "copilot"],
+      ["fast", "copilot"],
+      ["fast", "copilot"],
+      ["standard", "claude-code"],
+    ]);
+    expect(decisions[1]!.reason).toContain("triage complexity 1 ≤ 2");
+    expect(decisions[3]!.reason).toContain("provider other than the implementer's (github-copilot)");
+  });
+
+  it("falls back to the next candidate on a rate limit without waiting or spending an attempt", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, fake, copilot, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "ratelimit-once", copilot: "flow" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "add hello.txt" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+
+    expect(run.status).toBe("done");
+    const implement = run.tasks.find((t) => t.node_id === "implement")!;
+    expect(implement).toMatchObject({ adapter: "copilot", status: "succeeded" });
+    expect(fake.calls()).toHaveLength(1);
+    expect(copilot!.calls()).toHaveLength(1);
+    // The new agent starts its own session: Claude's session id is not passed to Copilot.
+    expect(copilot!.calls()[0]!.args).not.toContain("--resume");
+
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    // Requeued at once with not_before (counted as a quota wait, not an attempt).
+    const requeue = events
+      .filter((e): e is NavarchEvent<"task.status_changed"> => e.type === "task.status_changed")
+      .find((e) => e.payload.from === "failed" && e.payload.to === "ready");
+    expect(requeue?.payload).toMatchObject({ reason: "rate limited; falling back to copilot", not_before: expect.any(String) });
+    const decisions = routed(events);
+    expect(decisions).toEqual([
+      expect.objectContaining({ model_id: "claude-code", tier: "standard" }),
+      expect.objectContaining({ model_id: "copilot", fallback_from: "claude-code", skipped: [{ id: "claude-code", reason: "rate limited" }] }),
+    ]);
+  });
+
+  it("pins every agent to --adapter, without routing", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, copilot, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "edit", copilot: "flow" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "add hello.txt", adapter: "claude-code" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+    expect(run.tasks.find((t) => t.node_id === "implement")?.adapter).toBe("claude-code");
+    expect(copilot!.calls()).toHaveLength(0);
+    expect(routed((await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body)).toEqual([]);
   });
 });

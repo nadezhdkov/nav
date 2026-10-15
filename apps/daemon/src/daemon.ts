@@ -64,6 +64,7 @@ export class Daemon {
     const runtime = new AgentRuntime({
       home: this.home,
       adapters,
+      router: this.config.routing,
       publish: (event) => this.store.append([event]),
       onLog: (runId, taskId, line) => {
         for (const listener of this.logListeners) listener(runId, taskId, line);

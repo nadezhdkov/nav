@@ -57,6 +57,20 @@ switch (scenario) {
     finish(0);
     break;
   }
+  case "flow": {
+    // Answers as the Navarch profile named at the top of the prompt.
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1] ?? "unknown";
+    if (profile === "implementer") writeFileSync("hello.txt", "hello from fake copilot\n");
+    const answers = {
+      triager: "Kind: feature. Adds one file.\nComplexity: 1",
+      planner: "Plan: add hello.txt with a greeting. Acceptance: hello.txt exists.",
+      implementer: "Created hello.txt.",
+      reviewer: "Verdict: approve. Standards: nothing to report. Spec: matches the plan.",
+    };
+    out("assistant.message", { content: answers[profile] ?? `no answer for ${profile}`, toolRequests: [] });
+    finish(0);
+    break;
+  }
   case "quota":
     out("session.error", { message: "You have exceeded your monthly quota of premium requests." });
     finish(1);

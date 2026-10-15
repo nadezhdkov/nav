@@ -28,8 +28,9 @@ Usage:
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
 
-Adapters: claude-code (default), gemini-cli, antigravity, codex, copilot, native.
-  native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
+Adapters: claude-code, gemini-cli, antigravity, codex, copilot, native.
+  Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
+  either option pins the whole run. native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
 
 Global options:
   --json      machine-readable output

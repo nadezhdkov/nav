@@ -25,7 +25,7 @@ When an agent runs out of quota, the task waits for the reset time the agent rep
 
 Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 3 resumed after a daemon restart; report and findings in [`docs/reports/2026-10-14-phase-0-go-no-go.md`](docs/reports/2026-10-14-phase-0-go-no-go.md).
 
-**Phase 1** is in progress, one slice per branch ([`docs/specs/`](docs/specs/)). Done: slice 1 ([issue → verified draft PR](docs/specs/phase-1-01-issue-to-draft-pr.md)) and slice 2 ([Flow engine](docs/specs/phase-1-02-flow-engine.md), ADR 0011):
+**Phase 1** is in progress, one slice per branch ([`docs/specs/`](docs/specs/)). Done: slice 1 ([issue → verified draft PR](docs/specs/phase-1-01-issue-to-draft-pr.md)), slice 2 ([Flow engine](docs/specs/phase-1-02-flow-engine.md), ADR 0011) and slice 3 (Model Router, below):
 
 - A run executes a **Flow** from `flows/*.yaml` (`packages/flow-engine`): `fix-issue` for issue runs (triage → plan → plan approval below level 3 → implement ⇄ verify fix loop, up to 3 iterations → review → draft PR) and `task` for prompt runs (implement ⇄ verify). The run keeps a copy of its Flow; the Orchestrator creates each node's task when it becomes due.
 - Agent profiles (`apps/daemon/src/orchestrator/profiles.ts`): `triager`, `planner` and `reviewer` are read-only; `implementer` edits. All agents of a run share one worktree, `navarch/<run>/<flow>`.
@@ -34,7 +34,9 @@ Phase 0 go/no-go met on 2026-10-14: 10 real tasks on three of our repositories, 
 - The GitHub Integration (`packages/github`) is the only GitHub client. It reads issues and opens draft PRs with a fine-grained PAT kept in the OS keychain as `secret://github/token` (ADR 0007), and pushes only `navarch/*` branches, never forced.
 - Below autonomy level 3, opening a PR waits for a human (`navarch approvals`, `navarch approve|reject`, API `/api/v1/approvals`).
 
-Not yet: Model Router (the reviewer uses the run's adapter, not a different provider), branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
+Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): without `--adapter`/`--model`, each agent task is routed at dispatch through the Agent Runtime to a catalog entry (adapter + model) from `routing` in the config. Tiers per profile, `fast` for triage and for planner/implementer when the triage says `Complexity: ≤ 2` (Copilot first by default), Claude Code first otherwise; the reviewer goes to a provider other than the implementer's; exhausted quotas are skipped and a rate limit falls back to the next candidate at once. Every decision is a `model.routed` event. Tests run with stub agent CLIs first on PATH (`test/no-real-agents.ts`), so no test can reach a real agent.
+
+Not yet: budget-aware routing and observed metrics, branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
@@ -42,7 +44,7 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 |---|---|
 | `make install` | `pnpm install --frozen-lockfile` |
 | `make typecheck` | `tsc` over every package, no emit |
-| `make test` | Vitest; adapter tests use fake CLIs and a fake model server, no network or cost |
+| `make test` | Vitest; adapter tests use fake CLIs and a fake model server, and real agent CLIs are stubbed out on PATH: no network or cost |
 | `make verify` | typecheck + test, the check to run before committing |
 | `make audit` | `pnpm audit`, fails on high or critical advisories |
 | `make secrets` | gitleaks over the git history (needs `gitleaks`) |
@@ -56,7 +58,7 @@ CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verif
 
 CLI (`navarch`, short alias `nav`): `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,native}`, `flows/`, `docs/adr`, `docs/specs`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/model-router`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,native}`, `flows/`, `docs/adr`, `docs/specs`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

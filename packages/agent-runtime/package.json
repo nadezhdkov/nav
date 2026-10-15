@@ -9,6 +9,7 @@
   "dependencies": {
     "@navarch/adapter-kit": "workspace:*",
     "@navarch/contracts": "workspace:*",
+    "@navarch/model-router": "workspace:*",
     "@navarch/runner": "workspace:*"
   }
 }

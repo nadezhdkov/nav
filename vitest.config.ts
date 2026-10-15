@@ -4,5 +4,6 @@ export default defineConfig({
   test: {
     include: ["apps/*/test/**/*.test.ts", "packages/**/test/**/*.test.ts"],
     testTimeout: 20_000,
+    setupFiles: ["test/no-real-agents.ts"],
   },
 });

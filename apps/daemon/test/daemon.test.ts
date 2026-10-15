@@ -15,7 +15,7 @@ afterEach(async () => {
 
 async function startDaemon(home: string, scenario: FakeScenario, fake = fakeClaude(scenario), concurrency = 2) {
   // Rate-limit waits without a reset hint last 60 ms here instead of minutes.
-  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency, max_attempts: 3, rate_limit_backoff_minutes: [0.001] } });
+  const config = Config.parse({ daemon: { port: 0 }, scheduler: { concurrency, max_attempts: 3, rate_limit_backoff_minutes: [0.001] }, routing: { enabled: false } });
   const daemon = new Daemon({ home, config, adapters: { "claude-code": fake.options } });
   await daemon.start();
   daemons.push(daemon);

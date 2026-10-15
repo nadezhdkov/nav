@@ -93,6 +93,8 @@ export class Orchestrator {
       );
     }
     const model = req.model ?? this.config.adapters[adapter].model;
+    // An explicit adapter or model is a manual override (spec §6.4.2 step 7): it pins the run.
+    const routing = this.config.routing.enabled && !req.adapter && !req.model ? "auto" : "pinned";
     let repoPath: string;
     let baseCommit: string;
     try {
@@ -149,6 +151,7 @@ export class Orchestrator {
           protected_paths: project.protected_paths,
           flow: { definition: flow, params: resolveParams(flow) },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
+          routing,
         },
       },
       ...(workItem ? [{ type: "workitem.received", run_id: runId, task_id: null, actor: system("github"), payload: workItem } as NewEvent] : []),
@@ -209,6 +212,8 @@ export class Orchestrator {
             return;
           }
           const adapter = agent ? (node.adapter ?? run.adapter) : node.type === "github" ? "github" : node.type === "approval" ? "human" : "runner";
+          // A node's own `adapter` pins it; otherwise a routed run lets the Model Router choose at dispatch.
+          const routed = agent && !node.adapter && run.routing === "auto";
           const inputs = node.type === "approval"
             ? Object.fromEntries(step.start.show.flatMap(({ path, value }) => (renderValue(value) ? [[path, renderValue(value)!]] : [])))
             : renderInputs(step.start.inputs);
@@ -228,6 +233,7 @@ export class Orchestrator {
                 stage,
                 ...(node.type === "action" || node.type === "github" ? { uses: node.uses } : {}),
                 ...(Object.keys(inputs).length ? { inputs } : {}),
+                ...(routed ? { routing: "auto" as const } : {}),
               },
             },
             taskStatus(runId, taskId, "pending", "ready", 0, iteration > 1 ? `iteration ${iteration}` : "node due"),

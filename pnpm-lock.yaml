@@ -307,6 +307,9 @@ importers:
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@navarch/model-router':
+        specifier: workspace:*
+        version: link:../model-router
       '@navarch/runner':
         specifier: workspace:*
         version: link:../runner
@@ -337,6 +340,8 @@ importers:
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/model-router: {}
 
   packages/runner:
     dependencies:

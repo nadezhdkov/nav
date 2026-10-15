@@ -14,12 +14,14 @@ import {
   type ToolGrant,
 } from "@navarch/contracts";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
+import { route, type RouteDecision, type RouteRequest, type RouterConfig } from "@navarch/model-router";
 import { changedFiles, createWorktree, runShell, worktreeDiff } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
  * turns its output into events, logs and artifacts. It never decides what is allowed: the
- * tool grant comes from the Policy Engine through the caller.
+ * tool grant comes from the Policy Engine through the caller. It is the only caller of the
+ * Model Router (architecture rule 4).
  */
 
 export type RuntimeDeps = {
@@ -27,6 +29,8 @@ export type RuntimeDeps = {
   adapters: Map<string, AgentAdapter>;
   publish: (event: NewEvent) => void;
   onLog?: (runId: string, taskId: string, line: string) => void;
+  /** Model Router policy; without it, `route()` is never asked (every run is pinned). */
+  router?: RouterConfig;
 };
 
 export type TaskSpec = {
@@ -61,6 +65,12 @@ export class AgentRuntime {
 
   constructor(deps: RuntimeDeps) {
     this.deps = deps;
+  }
+
+  /** Asks the Model Router where an agent task should run, among the adapters this runtime has. */
+  route(req: Omit<RouteRequest, "adapters">): RouteDecision | undefined {
+    if (!this.deps.router) return undefined;
+    return route(this.deps.router, { ...req, adapters: new Set(this.deps.adapters.keys()) });
   }
 
   async execute(spec: TaskSpec): Promise<TaskOutcome> {
