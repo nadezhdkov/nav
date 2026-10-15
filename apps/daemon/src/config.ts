@@ -83,6 +83,8 @@ export const Config = z.object({
     .object({
       host: z.string().default("127.0.0.1"),
       port: z.number().int().min(0).max(65535).default(7420),
+      /** The Web UI build to serve at `/` (ADR 0017); defaults to `apps/web/dist` in this checkout. */
+      web_dir: z.string().optional(),
     })
     .prefault({}),
   budgets: z.object({ default_run: z.number().positive().default(2) }).prefault({}),

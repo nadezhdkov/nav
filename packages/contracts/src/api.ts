@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { EventType } from "./events.ts";
+import { FlowDefinition } from "./flow.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { ISSUE_REF, WorkItemRef } from "./work.ts";
 
@@ -76,7 +77,16 @@ export const RunView = z.object({
 });
 export type RunView = z.infer<typeof RunView>;
 
+/** The run's own copy of its Flow and the params it started with (ADR 0011). */
+export const RunFlow = z.object({
+  definition: FlowDefinition,
+  params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
+});
+export type RunFlow = z.infer<typeof RunFlow>;
+
 export const RunDetail = RunView.extend({
+  /** Null for runs created before Flows. */
+  flow_definition: RunFlow.nullable(),
   tasks: z.array(TaskView),
   artifacts: z.array(
     z.object({ id: z.string(), task_id: z.string(), kind: z.string(), uri: z.string(), summary: z.string() }),
@@ -137,6 +147,16 @@ export type DecideProposalRequest = z.infer<typeof DecideProposalRequest>;
 
 export const ProposalDecision = z.object({ reply: z.string(), proposal: ProposalView });
 export type ProposalDecision = z.infer<typeof ProposalDecision>;
+
+/** Web UI sign-in (ADR 0017): `navarch web` gets a single-use code; the SPA trades it for the token. */
+export const WebCode = z.object({ code: z.string(), expires_at: z.string() });
+export type WebCode = z.infer<typeof WebCode>;
+
+export const WebExchangeRequest = z.object({ code: z.string().min(1).max(256) });
+export type WebExchangeRequest = z.infer<typeof WebExchangeRequest>;
+
+export const WebExchangeResponse = z.object({ token: z.string() });
+export type WebExchangeResponse = z.infer<typeof WebExchangeResponse>;
 
 export const ApiError = z.object({ error: z.string(), message: z.string() });
 export type ApiError = z.infer<typeof ApiError>;

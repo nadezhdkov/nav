@@ -1,7 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import {
   ApprovalStatus,
@@ -11,7 +12,10 @@ import {
   DecideApprovalRequest,
   DecideProposalRequest,
   StreamClientMessage,
+  WebExchangeRequest,
   type StreamServerMessage,
+  type WebCode,
+  type WebExchangeResponse,
   type NavarchEvent,
 } from "@navarch/contracts";
 import { z } from "zod";
@@ -26,6 +30,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   await app.register(websocket);
 
   app.addHook("onRequest", async (req, reply) => {
+    // The Web UI's static files are public; the token reaches the SPA in the URL fragment (ADR 0017).
+    if (!isApi(req.url) || req.url === "/api/v1/web/exchange") return;
     const header = req.headers.authorization ?? "";
     const query = (req.query as { token?: string } | undefined)?.token ?? "";
     const given = header.startsWith("Bearer ") ? header.slice(7) : query;
@@ -45,6 +51,32 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     return reply.code(status).send({ error: status >= 500 ? "internal" : "bad_request", message: (err as Error).message });
+  });
+
+  await serveWeb(app, daemon.config.daemon.web_dir ?? DEFAULT_WEB_DIR);
+
+  // `navarch web` opens the UI with a single-use code instead of the token, so the token never
+  // shows up in a browser's command line (ADR 0017).
+  const codes = new Map<string, number>();
+  app.post("/api/v1/web/codes", async (_req, reply) => {
+    const now = Date.now();
+    for (const [c, expires] of codes) if (expires <= now) codes.delete(c);
+    const code = randomBytes(32).toString("base64url");
+    codes.set(code, now + WEB_CODE_TTL_MS);
+    const body: WebCode = { code, expires_at: new Date(now + WEB_CODE_TTL_MS).toISOString() };
+    return reply.code(201).send(body);
+  });
+
+  app.post("/api/v1/web/exchange", async (req, reply) => {
+    const parsed = WebExchangeRequest.safeParse(req.body);
+    const code = parsed.success ? parsed.data.code : undefined;
+    const expires = code === undefined ? undefined : codes.get(code);
+    if (code !== undefined) codes.delete(code);
+    if (expires === undefined || expires <= Date.now()) {
+      return reply.code(401).send({ error: "unauthorized", message: "unknown or expired code; run `navarch web` again" });
+    }
+    const body: WebExchangeResponse = { token };
+    return body;
   });
 
   app.get("/api/v1/health", async () => ({
@@ -198,6 +230,67 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   return app;
+}
+
+const WEB_CODE_TTL_MS = 60_000;
+
+const DEFAULT_WEB_DIR = resolve(import.meta.dirname, "../../../web/dist");
+
+/** Same-origin only: no inline scripts, no eval, no framing. Vue sets styles through the CSSOM. */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self'",
+  "img-src 'self' data:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+function isApi(url: string): boolean {
+  return url === "/api" || url.startsWith("/api/") || url.startsWith("/api?");
+}
+
+/** Serves the Vite build at `/` with an SPA fallback for client routes (ADR 0017). */
+async function serveWeb(app: FastifyInstance, dir: string): Promise<void> {
+  const built = existsSync(join(dir, "index.html"));
+  app.addHook("onSend", async (req, reply, payload) => {
+    if (!isApi(req.url)) {
+      reply.header("content-security-policy", CSP);
+      reply.header("x-content-type-options", "nosniff");
+      reply.header("referrer-policy", "no-referrer");
+    }
+    return payload;
+  });
+  // `wildcard` resolves files per request, so a rebuild is served without restarting the daemon.
+  if (built) {
+    await app.register(fastifyStatic, {
+      root: dir,
+      prefix: "/",
+      wildcard: true,
+      index: "index.html",
+      setHeaders: (reply, path) => {
+        reply.header("cache-control", path.endsWith(".html") ? "no-cache" : "public, max-age=31536000, immutable");
+      },
+    });
+  }
+
+  app.setNotFoundHandler((req, reply) => {
+    const path = req.url.split("?")[0] ?? "";
+    if (isApi(req.url) || req.method !== "GET" || path.startsWith("/assets/") || /\.[a-z0-9]+$/i.test(path)) {
+      return notFound(reply, "route");
+    }
+    if (!built) {
+      return reply
+        .code(503)
+        .type("text/plain")
+        .send(`The Web UI is not built. Run \`make web-build\` in the Navarch checkout (looked in ${dir}).`);
+    }
+    return reply.type("text/html").header("cache-control", "no-cache").sendFile("index.html");
+  });
 }
 
 function viaOf(headers: Record<string, unknown>): "cli" | "web" | "mobile" | "api" {

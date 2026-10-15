@@ -3,7 +3,7 @@ import {
   newId,
   parsePayload,
   type ApprovalStatus,
-  type FlowDefinition,
+  type RunFlow,
   type ApprovalView,
   type NewEvent,
   type RunDetail,
@@ -186,7 +186,13 @@ export class EventStore {
     const artifacts = this.db
       .prepare("SELECT id, task_id, kind, uri, summary FROM artifacts WHERE run_id = ? ORDER BY created_at")
       .all(id) as RunDetail["artifacts"];
-    return { ...run, tasks: this.tasksOfRun(id), artifacts: artifacts.map((a) => ({ ...a })) };
+    const flow = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(id) as { flow: string | null }).flow;
+    return {
+      ...run,
+      flow_definition: flow ? (JSON.parse(flow) as RunFlow) : null,
+      tasks: this.tasksOfRun(id),
+      artifacts: artifacts.map((a) => ({ ...a })),
+    };
   }
 
   tasksOfRun(runId: string): TaskView[] {
@@ -232,7 +238,6 @@ export class EventStore {
   }
 }
 
-export type RunFlow = { definition: FlowDefinition; params: Record<string, number | string | boolean> };
 
 export type RunRecord = RunView & {
   adapter: string;

@@ -39,30 +39,35 @@ Slice 3, [Model Router v1](docs/specs/phase-1-03-model-router.md) (ADR 0013): wi
 
 Slice 4, [conversational CLI](docs/specs/phase-1-04-conversational-cli.md) (ADR 0016): `navarch` (no arguments, in a terminal) or `navarch chat` talks to a **concierge** agent that runs in the daemon (`packages/concierge`, `apps/daemon/src/concierge`, API `/api/v1/concierge/…`). Read tools (`list_runs`, `show_run`, `run_events`, `list_approvals`) run at once; act tools (`start_run`, `cancel_run`, `resume_run`, `approve`, `reject`) only create a single-use proposal that runs, as the user, after an explicit yes. The model is an API model on the native client: `concierge.model`, else the routed `native` entries of profile `concierge` (tier `fast`), falling back on rate limits. `navarch ask "<question>"` asks once and never acts. Conversations live in daemon memory; events `concierge.message`, `concierge.action.proposed|decided`.
 
-Not yet: budget-aware routing and observed metrics, branching Flow nodes (Phase 2), label triggers and webhooks, Web UI, PWA (slices 3–5).
+Slice 5, [Web UI](docs/specs/phase-1-05-web-ui.md) (ADR 0017): `apps/web` is a Vue 3 + Vite SPA (Pinia, vue-router, Vue Flow, Tailwind 4, vue-i18n) that `navarchd` serves at `/` from `apps/web/dist`: run list, run detail with the live read-only TaskGraph (built from `RunDetail.flow_definition`), node panel, timeline and logs, and approvals. It is the one package with a build step (`make web-build`) and type-checks with `vue-tsc` on its own TypeScript 6. `navarch web` opens it with a single-use sign-in code (`/api/v1/web/codes`, `/api/v1/web/exchange`) instead of the token. Static files are public with a strict CSP; `/api/*` still needs the token.
+
+Not yet: budget-aware routing and observed metrics, branching Flow nodes (Phase 2), label triggers and webhooks, Inbox and Home screens, PWA.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
 | Command | What it does |
 |---|---|
 | `make install` | `pnpm install --frozen-lockfile` |
-| `make typecheck` | `tsc` over every package, no emit |
+| `make typecheck` | `tsc` over every package, no emit; `vue-tsc` for `apps/web` |
 | `make test` | Vitest; adapter tests use fake CLIs and a fake model server, and real agent CLIs are stubbed out on PATH: no network or cost |
 | `make verify` | typecheck + test, the check to run before committing |
+| `make web-build` | build the Web UI into `apps/web/dist` (served by `navarchd` at `/`) |
+| `make web-dev` | Vite dev server for the Web UI, proxying `/api` to a running daemon (`NAVARCH_URL`) |
+| `make web` | open the Web UI (`navarch web`) |
 | `make audit` | `pnpm audit`, fails on high or critical advisories |
 | `make secrets` | gitleaks over the git history (needs `gitleaks`) |
 | `make lint-workflows` | actionlint over `.github/workflows` (needs `actionlint`) |
-| `make ci` | verify + audit + secrets + lint-workflows, everything CI runs |
+| `make ci` | verify + web-build + audit + secrets + lint-workflows, everything CI runs |
 | `make daemon` | run `navarchd` in the foreground |
 | `make cli ARGS="…"` | run the `navarch` CLI, e.g. `ARGS="run list"` |
 | `make chat` | talk to the concierge (`navarch chat`) |
 | `make doctor` | print node, pnpm, git and agent CLI versions (claude, gemini, agy, codex, copilot, opencode, ollama) |
 
-CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make verify` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
+CI (`.github/workflows/`, details in `.github/CI.md`): `ci.yml` runs `make typecheck`, `make test` and `make web-build` on Node 22.18.0 (the `engines` floor) and Node 24, plus actionlint, on every push and pull request; `security.yml` runs `make audit` and `make secrets` on push, pull request and weekly; Dependabot opens weekly grouped updates for npm and Actions. Actions are pinned by commit SHA. The repository is public; CodeQL and dependency review are not set up yet.
 
-CLI (`navarch`, short alias `nav`): `navarch` / `navarch chat`, `navarch ask <question>`, `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
+CLI (`navarch`, short alias `nav`): `navarch` / `navarch chat`, `navarch ask <question>`, `navarch web [--print]`, `navarch daemon start|stop|status`, `navarch run [--repo] [--adapter] [--model] [--budget] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt>`, `navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [instructions]`, `navarch approvals [--all]`, `navarch approve|reject <id> [--reason]`, `navarch secret set|status <name>`, `navarch run list|show <id>`, `navarch run resume <id> [--follow]`, `navarch logs <id> [-f] [--raw]`, `navarch cancel <id>`. Set `NAVARCH_HOME` to use a home other than `~/.navarch` (tests and smoke runs do this). Homes, secrets and `.vectr/project.yaml` from before the rename keep working (ADR 0008).
 
-Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `packages/contracts`, `packages/flow-engine`, `packages/model-router`, `packages/concierge`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,opencode,native}`, `flows/`, `docs/adr`, `docs/specs`.
+Layout today: `apps/daemon` (api, events, orchestrator, scheduler, policy, vault, github), `apps/cli`, `apps/web`, `packages/contracts`, `packages/flow-engine`, `packages/model-router`, `packages/concierge`, `packages/runner`, `packages/agent-runtime`, `packages/github`, `packages/verification`, `packages/adapters/{kit,claude-code,gemini-cli,antigravity,codex,copilot,opencode,native}`, `flows/`, `docs/adr`, `docs/specs`.
 
 Adding an adapter: implement `AgentAdapter` from `packages/contracts`, translate the neutral `ToolGrant` and declare `enforcement`, reuse `packages/adapters/kit` for CLIs, add a fake CLI and contract tests, register it in `buildAdapters` (`apps/daemon/src/daemon.ts`) and in `AdapterId`.
 

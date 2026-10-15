@@ -1,0 +1,30 @@
+{
+  "name": "@navarch/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@lucide/vue": "1.56.0",
+    "@navarch/contracts": "workspace:*",
+    "@vue-flow/core": "1.48.2",
+    "pinia": "4.0.3",
+    "vue": "3.5.44",
+    "vue-i18n": "11.4.14",
+    "vue-router": "5.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.3.3",
+    "@vitejs/plugin-vue": "6.0.10",
+    "@vue/test-utils": "2.5.1",
+    "happy-dom": "21.0.1",
+    "tailwindcss": "4.3.3",
+    "typescript": "6.0.3",
+    "vite": "8.3.4",
+    "vue-tsc": "3.3.13"
+  }
+}

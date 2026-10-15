@@ -15,5 +15,6 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
+  "exclude": ["apps/web"],
   "include": ["apps/*/src", "apps/*/test", "packages/*/src", "packages/*/test", "packages/adapters/*/src", "packages/adapters/*/test", "vitest.config.ts", "test"]
 }
