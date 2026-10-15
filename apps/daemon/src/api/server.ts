@@ -22,6 +22,7 @@ import {
   type StopResult,
   type StreamServerMessage,
   type WebCode,
+  type WorktreeStatus,
   type WebExchangeResponse,
   type NavarchEvent,
   FleetWindow,
@@ -33,6 +34,7 @@ import {
   WorkItemStatus,
   type SyncInboxResult,
 } from "@navarch/contracts";
+import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Daemon } from "../daemon.ts";
@@ -385,6 +387,33 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return reply.type("text/plain").send(parts.join(""));
   });
 
+  // The run's worktree, read-only (slice 10): changed files since the base commit, and one file's
+  // diff. Only a path already in the status list reaches git, after `--`.
+  const worktreeOf = async (runId: string): Promise<WorktreeStatus | undefined> => {
+    const run = daemon.store.getRun(runId);
+    if (!run) return undefined;
+    const task = daemon.store.tasksOfRun(runId).filter((t) => t.sandbox_path).at(-1);
+    const path = task?.sandbox_path ?? null;
+    const empty = { files: [], totals: { files: 0, added: 0, removed: 0 } };
+    const base = { run_id: runId, branch: task?.branch ?? null, path, base_commit: run.base_commit };
+    if (!path || !existsSync(join(path, ".git"))) return { ...base, exists: false, ...empty };
+    return { ...base, exists: true, ...(await worktreeStatus(path, run.base_commit)) };
+  };
+
+  app.get("/api/v1/runs/:id/worktree", async (req, reply) => {
+    const status = await worktreeOf((req.params as { id: string }).id);
+    return status ?? notFound(reply, "run");
+  });
+
+  app.get("/api/v1/runs/:id/worktree/diff", async (req, reply) => {
+    const status = await worktreeOf((req.params as { id: string }).id);
+    if (!status) return notFound(reply, "run");
+    const wanted = (req.query as { path?: string }).path;
+    const file = status.files.find((f) => f.path === wanted);
+    if (!file || !status.path) return notFound(reply, "file");
+    return reply.type("text/plain").send(await worktreeFileDiff(status.path, status.base_commit, file));
+  });
+
   app.get("/api/v1/artifacts/:id", async (req, reply) => {
     const artifact = daemon.store.getArtifact((req.params as { id: string }).id);
     if (!artifact) return notFound(reply, "artifact");
@@ -461,6 +490,8 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/runs/:id/messages",
   "GET /api/v1/runs/:id/events",
   "GET /api/v1/runs/:id/logs",
+  "GET /api/v1/runs/:id/worktree",
+  "GET /api/v1/runs/:id/worktree/diff",
   "GET /api/v1/fleet",
   "GET /api/v1/approvals",
   "POST /api/v1/approvals/:id",

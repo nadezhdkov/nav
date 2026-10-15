@@ -80,6 +80,9 @@ describe("device pairing and sessions (ADR 0020)", () => {
     const session = await pair();
     const t = session.access_token;
     expect((await call(t, "GET", "/api/v1/runs")).status).toBe(200);
+    // The worktree routes are allowed: an unknown run is a 404, not a 403.
+    expect((await call(t, "GET", "/api/v1/runs/run_nope/worktree")).status).toBe(404);
+    expect((await call(t, "GET", "/api/v1/runs/run_nope/worktree/diff?path=a")).status).toBe(404);
     expect((await call<DeviceView>(t, "GET", "/api/v1/devices/me")).body.id).toBe(session.device.id);
     for (const [method, path] of [
       ["GET", "/api/v1/secrets/github%2Ftoken"],

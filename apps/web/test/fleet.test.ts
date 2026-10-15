@@ -69,6 +69,8 @@ const view: FleetView = {
       flow: "task",
       autonomy_level: 2,
       team: null,
+      progress: { done: 1, total: 2 },
+      project_id: null,
       agents: [
         agent(),
         agent({ id: "task_rev", node_id: "review", profile: "reviewer", status: "waiting_approval", waiting: { kind: "approval" }, last_activity: null }),

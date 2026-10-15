@@ -25,7 +25,7 @@ import {
   type VerifyCommand,
   type WorkItemTriage,
 } from "@navarch/contracts";
-import { evaluate, parseExpr, teamState, teamTaskId } from "@navarch/flow-engine";
+import { evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
 import { credentialTables, dropProjections, eventsTable, projectionTables } from "./schema.ts";
 
@@ -337,6 +337,8 @@ export class EventStore {
     const runs = this.listRuns(500).filter((r) => !isTerminalRun(r.status) || (window === "24h" && (r.ended_at ?? r.updated_at) >= since));
     const counts = { running: 0, waiting: 0, failed: 0, done: 0 };
     const nowIso = new Date(now).toISOString();
+    const trim = (path: string) => path.replace(/\/+$/, "");
+    const projectByPath = new Map(this.listProjects().map((p) => [trim(p.path), p.id]));
     const out = runs.map((run) => {
       const rows = this.db.prepare("SELECT * FROM tasks WHERE run_id = ? AND type = 'agent' ORDER BY rowid").all(run.id) as TaskRow[];
       const latest = new Map<string, TaskRow>();
@@ -371,10 +373,27 @@ export class EventStore {
           team_key: team?.key ?? null,
         };
       });
-      const flow = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(run.id) as { flow: string | null }).flow;
-      return { ...run, agents, team: this.teamOf(run.id, flow ? (JSON.parse(flow) as RunFlow) : null) };
+      const flowText = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(run.id) as { flow: string | null }).flow;
+      const flow = flowText ? (JSON.parse(flowText) as RunFlow) : null;
+      return {
+        ...run,
+        agents,
+        team: this.teamOf(run.id, flow),
+        progress: flow ? this.progressOf(run, flow) : null,
+        project_id: projectByPath.get(trim(run.repo_path)) ?? null,
+      };
     });
     return { generated_at: nowIso, counts, runs: out };
+  }
+
+  /** Step progress of a Flow run (slice 10), read from its tasks like the Orchestrator reads them. */
+  private progressOf(run: RunView, flow: RunFlow): { done: number; total: number } {
+    return progress(flow.definition, {
+      params: flow.params,
+      project: { autonomy_level: run.autonomy_level ?? 0, work_item: run.work_item !== null },
+      tasks: this.taskRecordsOfRun(run.id).map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })),
+      skipped: this.skippedNodes(run.id),
+    });
   }
 
   /** Registered projects (ADR 0021), oldest first; removed ones only with `withRemoved`. */
