@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ArrowLeft, Ban, ExternalLink, Play } from "@lucide/vue";
+import { ArrowLeft, Ban, CirclePause, ExternalLink, Play } from "@lucide/vue";
+import type { TaskStatus } from "@navarch/contracts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/client.ts";
@@ -9,7 +10,7 @@ import InstructionBox from "../components/InstructionBox.vue";
 import NodePanel from "../components/NodePanel.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { buildGraph } from "../lib/graph.ts";
-import { canCancel, canResume, money, runLook, runTitle } from "../lib/status.ts";
+import { canCancel, canPause, canResume, money, nodeLook, runLook, runTitle } from "../lib/status.ts";
 import { useRunStore } from "../stores/runs.ts";
 
 const props = defineProps<{ id: string }>();
@@ -57,18 +58,21 @@ const shownEvents = computed(() => {
   return [...list].reverse();
 });
 
+const taskLook = (status: TaskStatus) => nodeLook[status];
+
 function describe(payload: Record<string, unknown>): string {
   const p = payload as { from?: string; to?: string; reason?: string; summary?: string; text?: string; model_id?: string; node_id?: string };
   if (p.from && p.to) return `${p.from} → ${p.to}${p.reason ? ` · ${p.reason}` : ""}`;
   return p.summary ?? p.text ?? p.reason ?? p.model_id ?? p.node_id ?? "";
 }
 
-async function act(kind: "cancel" | "resume") {
+async function act(kind: "cancel" | "resume" | "pause") {
   if (kind === "cancel" && !window.confirm(t("run.confirmCancel"))) return;
+  if (kind === "pause" && !window.confirm(t("run.confirmPause"))) return;
   busy.value = true;
   actionError.value = null;
   try {
-    await (kind === "cancel" ? api.cancel(props.id) : api.resume(props.id));
+    await (kind === "cancel" ? api.cancel(props.id) : kind === "pause" ? api.pause(props.id) : api.resume(props.id));
     await store.load(props.id);
   } catch (err) {
     actionError.value = (err as Error).message;
@@ -94,6 +98,9 @@ async function act(kind: "cancel" | "resume") {
         <button v-if="canResume(run.status)" :disabled="busy" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm hover:bg-surface-2 disabled:opacity-60" @click="act('resume')">
           <Play :size="14" aria-hidden="true" />{{ t("run.resume") }}
         </button>
+        <button v-if="canPause(run.status)" :disabled="busy" class="tone-warning inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm disabled:opacity-60 max-md:min-h-11" style="color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, transparent)" @click="act('pause')">
+          <CirclePause :size="14" aria-hidden="true" />{{ t("run.pause") }}
+        </button>
         <button v-if="canCancel(run.status)" :disabled="busy" class="tone-danger inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm disabled:opacity-60" style="color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, transparent)" @click="act('cancel')">
           <Ban :size="14" aria-hidden="true" />{{ t("run.cancel") }}
         </button>
@@ -103,7 +110,7 @@ async function act(kind: "cancel" | "resume") {
 
     <p v-if="!run" class="p-6 text-muted">{{ t("run.loading") }}</p>
     <template v-else>
-      <div class="flex min-h-0 flex-1 max-lg:flex-col">
+      <div class="flex min-h-0 flex-1 max-lg:flex-col max-md:hidden">
         <div class="relative min-h-80 min-w-0 flex-1">
           <FlowGraph v-if="flow" :flow="flow" :params="params" :tasks="run.tasks" :skipped="store.skipped" :selected="selected" @select="selected = $event" />
           <p v-else class="grid-canvas grid h-full place-items-center text-muted">{{ t("run.noFlow") }}</p>
@@ -114,18 +121,27 @@ async function act(kind: "cancel" | "resume") {
         </div>
       </div>
 
-      <section class="flex h-64 shrink-0 flex-col border-t border-line bg-surface">
-        <div class="flex items-center gap-1 border-b border-line px-4" role="tablist">
+      <!-- Phones: the tasks as a list (agent, model, cost) instead of the graph. -->
+      <ul class="divide-y divide-line border-b border-line bg-surface md:hidden" :aria-label="t('run.graph')">
+        <li v-for="task in run.tasks" :key="task.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm">
+          <span class="font-medium">{{ task.node_id }}<template v-if="task.iteration > 1"> · {{ task.iteration }}</template></span>
+          <StatusBadge :look="taskLook(task.status)" :status="task.status" />
+          <span class="w-full truncate font-mono text-xs text-muted">{{ task.adapter }}<template v-if="task.model"> · {{ task.model }}</template> · {{ money(task.cost) }}</span>
+        </li>
+      </ul>
+
+      <section class="flex h-64 shrink-0 flex-col border-t border-line bg-surface max-md:h-auto max-md:min-h-0 max-md:flex-1 max-md:border-t-0">
+        <div class="flex items-center gap-1 border-b border-line px-4 max-md:px-2" role="tablist">
           <button
             v-for="name in tabs"
             :key="name"
             role="tab"
             :aria-selected="tab === name"
-            class="min-h-9 border-b-2 px-3 text-sm"
+            class="min-h-9 shrink-0 border-b-2 px-3 text-sm max-md:min-h-11 max-md:px-2"
             :class="tab === name ? 'border-accent text-fg' : 'border-transparent text-muted hover:text-fg'"
             @click="tab = name"
           >{{ t(`run.${name}`) }}</button>
-          <select v-if="tab === 'timeline'" v-model="filter" :aria-label="t('run.filter')" class="ml-auto min-h-8 rounded-md border border-line bg-bg px-2 text-xs">
+          <select v-if="tab === 'timeline'" v-model="filter" :aria-label="t('run.filter')" class="ml-auto min-h-8 min-w-0 rounded-md border border-line bg-bg px-2 text-xs max-md:max-w-28">
             <option value="">{{ t("run.allEvents") }}</option>
             <option v-for="type in eventTypes" :key="type" :value="type">{{ type }}</option>
           </select>
@@ -134,7 +150,7 @@ async function act(kind: "cancel" | "resume") {
           <li v-if="!shownEvents.length" class="text-muted">{{ t("run.noEvents") }}</li>
           <li v-for="e in shownEvents" :key="e.id" class="flex gap-3 py-0.5">
             <time :datetime="e.ts" class="shrink-0 text-muted">{{ new Date(e.ts).toLocaleTimeString(locale) }}</time>
-            <span class="w-44 shrink-0 truncate text-accent">{{ e.type }}</span>
+            <span class="w-44 shrink-0 truncate text-accent max-md:w-28">{{ e.type }}</span>
             <span class="min-w-0 truncate">{{ describe(e.payload as Record<string, unknown>) }}</span>
           </li>
         </ol>

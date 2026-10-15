@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { Hand, Languages, ListChecks, Ship, Wifi, WifiOff } from "@lucide/vue";
-import { onMounted, onUnmounted, watch } from "vue";
+import { Hand, House, Languages, ListChecks, Settings, Ship, Smartphone, Wifi, WifiOff } from "@lucide/vue";
+import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { authorized } from "./api/client.ts";
+import { authorized, client, pendingPair } from "./api/client.ts";
+import KillSwitch from "./components/KillSwitch.vue";
+import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
@@ -41,42 +43,54 @@ watch(authorized, (ok) => {
   if (ok) start();
 });
 onUnmounted(() => offs.splice(0).forEach((off) => off()));
+
+/** Away from the PC (the tailnet name), signing in means pairing; on the PC, the local token. */
+const onPc = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+const mobile = computed(() => client() === "mobile");
+const items = computed(() => {
+  const home = { to: "/home", label: t("nav.home"), icon: House, badge: 0, tone: "neutral" };
+  const runsItem = { to: "/runs", label: t("nav.runs"), icon: ListChecks, badge: 0, tone: "neutral" };
+  const fleetItem = { to: "/fleet", label: t("nav.fleet"), icon: Ship, badge: fleet.running, tone: "info" };
+  const approvalsItem = { to: "/approvals", label: t("nav.approvals"), icon: Hand, badge: approvals.pending.length, tone: "warning" };
+  const last = mobile.value
+    ? { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }
+    : { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" };
+  return [home, approvalsItem, runsItem, fleetItem, last];
+});
 </script>
 
 <template>
-  <TokenView v-if="!authorized" />
+  <PairView v-if="!authorized && (pendingPair || !onPc)" />
+  <TokenView v-else-if="!authorized" />
   <div v-else class="flex h-full min-h-0">
-    <nav :aria-label="t('nav.main')" class="flex w-56 shrink-0 flex-col border-r border-line bg-surface max-md:w-16">
+    <nav :aria-label="t('nav.main')" class="flex w-56 shrink-0 flex-col border-r border-line bg-surface max-md:hidden">
       <div class="flex items-center gap-2.5 px-4 py-4">
         <img src="/favicon.svg" alt="" class="size-7" />
-        <span class="text-base font-semibold tracking-tight max-md:hidden">{{ t("app.name") }}</span>
+        <span class="text-base font-semibold tracking-tight">{{ t("app.name") }}</span>
       </div>
       <RouterLink
-        v-for="item in [
-          { to: '/runs', label: t('nav.runs'), icon: ListChecks, badge: 0, tone: 'neutral' },
-          { to: '/fleet', label: t('nav.fleet'), icon: Ship, badge: fleet.running, tone: 'info' },
-          { to: '/approvals', label: t('nav.approvals'), icon: Hand, badge: approvals.pending.length, tone: 'warning' },
-        ]"
+        v-for="item in items"
         :key="item.to"
         :to="item.to"
         class="mx-2 flex min-h-10 items-center gap-3 rounded-md px-3 text-muted hover:bg-surface-2 hover:text-fg"
         active-class="bg-surface-2 !text-fg"
       >
         <component :is="item.icon" :size="18" aria-hidden="true" />
-        <span class="max-md:sr-only">{{ item.label }}</span>
+        <span>{{ item.label }}</span>
         <span
           v-if="item.badge"
           :class="`tone-${item.tone}`"
-          class="ml-auto rounded-full px-1.5 text-xs font-semibold max-md:absolute max-md:ml-6 max-md:-mt-5"
+          class="ml-auto rounded-full px-1.5 text-xs font-semibold"
           style="background: var(--tone); color: var(--bg)"
         >{{ item.badge }}</span>
       </RouterLink>
-      <label class="relative mx-2 mt-auto flex min-h-10 items-center gap-3 rounded-md px-3 text-muted focus-within:outline-2 focus-within:outline-accent hover:bg-surface-2 hover:text-fg">
+      <KillSwitch compact class="mx-2 mt-auto" />
+      <label class="relative mx-2 mt-2 flex min-h-10 items-center gap-3 rounded-md px-3 text-muted focus-within:outline-2 focus-within:outline-accent hover:bg-surface-2 hover:text-fg">
         <Languages :size="18" aria-hidden="true" />
         <select
           :value="locale"
           :aria-label="t('nav.language')"
-          class="min-w-0 flex-1 cursor-pointer bg-transparent text-sm outline-none max-md:absolute max-md:inset-0 max-md:opacity-0"
+          class="min-w-0 flex-1 cursor-pointer bg-transparent text-sm outline-none"
           @change="setLocale(($event.target as HTMLSelectElement).value as Locale)"
         >
           <option v-for="l in locales" :key="l.code" :value="l.code" :lang="l.code" class="bg-surface text-fg">{{ l.name }}</option>
@@ -84,11 +98,36 @@ onUnmounted(() => offs.splice(0).forEach((off) => off()));
       </label>
       <div class="flex items-center gap-2 px-4 py-3 text-xs text-muted" role="status">
         <component :is="connected ? Wifi : WifiOff" :size="14" :class="connected ? 'tone-success' : 'tone-warning'" style="color: var(--tone)" aria-hidden="true" />
-        <span class="max-md:sr-only">{{ connected ? t("nav.live") : t("nav.offline") }}</span>
+        <span>{{ connected ? t("nav.live") : t("nav.offline") }}</span>
       </div>
     </nav>
-    <main class="min-w-0 flex-1 overflow-auto">
+    <main class="min-w-0 flex-1 overflow-auto max-md:pb-[calc(4rem+env(safe-area-inset-bottom))]">
+      <p v-if="!connected" class="tone-warning flex items-center gap-2 border-b border-line px-4 py-1.5 text-xs md:hidden" style="color: var(--tone)" role="status">
+        <WifiOff :size="14" aria-hidden="true" />{{ t("nav.offline") }}
+      </p>
       <RouterView />
     </main>
+    <!-- Phones: a bottom tab bar with large targets (spec §15.4), above the home indicator. -->
+    <nav
+      :aria-label="t('nav.main')"
+      class="fixed inset-x-0 bottom-0 z-20 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
+    >
+      <RouterLink
+        v-for="item in items"
+        :key="item.to"
+        :to="item.to"
+        class="relative flex min-h-16 flex-1 flex-col items-center justify-center gap-1 text-[11px] text-muted"
+        active-class="!text-accent"
+      >
+        <component :is="item.icon" :size="22" aria-hidden="true" />
+        <span class="max-w-full truncate px-1">{{ item.label }}</span>
+        <span
+          v-if="item.badge"
+          :class="`tone-${item.tone}`"
+          class="absolute top-1.5 left-1/2 ml-2 rounded-full px-1.5 text-[10px] font-semibold"
+          style="background: var(--tone); color: var(--bg)"
+        >{{ item.badge }}</span>
+      </RouterLink>
+    </nav>
   </div>
 </template>

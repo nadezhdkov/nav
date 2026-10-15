@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  Actor,
   canTransitionRun,
   canTransitionTask,
   CreateRunRequest,
   FleetView,
   newId,
+  PairDeviceRequest,
   parseIssueRef,
   parsePayload,
+  PushSubscriptionRequest,
   redact,
   registerSecret,
   SendRunMessage,
@@ -67,6 +70,29 @@ describe("redact", () => {
     expect(out).not.toContain("ghp_");
     expect(out).not.toContain("super-secret-value");
     expect(out).not.toContain("sk-ant-");
+  });
+
+  it("removes device access and refresh tokens", () => {
+    const out = redact("Bearer nvd_ZGV2XzAxSjIzNDU2Nzg5.c2lnbmF0dXJlX2hlcmVfMTIz and nvr_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFG");
+    expect(out).not.toContain("nvd_");
+    expect(out).not.toContain("nvr_");
+  });
+});
+
+describe("devices and push", () => {
+  it("accepts a device actor and the new events", () => {
+    expect(Actor.parse({ kind: "user", via: "mobile", device_id: "dev_1" })).toEqual({ kind: "user", via: "mobile", device_id: "dev_1" });
+    expect(parsePayload("device.paired", { device_id: "dev_1", name: "Pixel" })).toEqual({ device_id: "dev_1", name: "Pixel" });
+    expect(parsePayload("fleet.stopped", { run_ids: ["run_1"] }).run_ids).toEqual(["run_1"]);
+    expect(() => parsePayload("notification.sent", { channel: "email", device_id: "d", kind: "k", run_id: null })).toThrow();
+  });
+
+  it("validates pairing and push subscription requests", () => {
+    expect(PairDeviceRequest.safeParse({ code: "c", name: "  " }).success).toBe(false);
+    expect(PairDeviceRequest.parse({ code: "c", name: " Pixel 9 " }).name).toBe("Pixel 9");
+    const sub = { endpoint: "https://fcm.googleapis.com/fcm/send/abc", keys: { p256dh: "BPk", auth: "x" } };
+    expect(PushSubscriptionRequest.parse(sub)).toEqual({ ...sub, locale: "en" });
+    expect(PushSubscriptionRequest.safeParse({ endpoint: "not a url", keys: sub.keys }).success).toBe(false);
   });
 });
 

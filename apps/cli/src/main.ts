@@ -3,11 +3,22 @@ import { mkdirSync, openSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { isTerminalRun, type ApprovalView, type ConciergeTurn, type RunDetail, type RunMessage, type RunView, type NavarchEvent } from "@navarch/contracts";
+import {
+  isTerminalRun,
+  type ApprovalView,
+  type ConciergeTurn,
+  type DeviceView,
+  type RemoteStatus,
+  type RunDetail,
+  type RunMessage,
+  type RunView,
+  type NavarchEvent,
+  type StopResult,
+} from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatEvent, formatRunDetail, formatRunList } from "./format.ts";
+import { formatApprovals, formatDevices, formatEvent, formatRemote, formatRunDetail, formatRunList } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -28,6 +39,8 @@ Usage:
   navarch run resume <run-id> [--follow]   continue a paused run (e.g. after a quota reset)
   navarch logs <run-id> [-f|--follow] [--raw]
   navarch cancel <run-id>
+  navarch pause <run-id>                   pause a run: running agents stop and nothing starts until resumed
+  navarch stop --all                       kill switch: pause every active run (nothing is cancelled)
   navarch say <run-id> [--task <task-id>] [--now] <text...>
                                          tell a run's agents something: in the next agent turn, or --now
                                          interrupt that running task and resume it with your message
@@ -36,6 +49,9 @@ Usage:
   navarch reject <approval-id> [--reason <text>]
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
+  navarch remote status                    Tailscale and the phone's URL (\`tailscale serve\` must proxy to the daemon)
+  navarch devices                          paired phones (pair one from the Web UI: Settings → Devices)
+  navarch devices revoke <device-id>       sign a phone out
 
 Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
@@ -152,6 +168,33 @@ async function main(argv: string[]): Promise<number> {
     case "cancel": {
       const run = await new ApiClient(home).request<RunView>("POST", `/api/v1/runs/${required(rest[0], "run id")}/cancel`);
       return print(json ? run : `run ${run.id} ${run.status}`, json);
+    }
+    case "pause": {
+      const run = await new ApiClient(home).request<RunView>("POST", `/api/v1/runs/${required(rest[0], "run id")}/pause`);
+      return print(json ? run : `run ${run.id} paused; continue with: navarch run resume ${run.id}`, json);
+    }
+    case "stop": {
+      if (!values.all) throw new CliError("usage: navarch stop --all (pauses every active run)", EXIT.usage);
+      const result = await new ApiClient(home).request<StopResult>("POST", "/api/v1/stop");
+      const text = result.paused.length
+        ? `paused ${result.paused.length} run(s): ${result.paused.join(", ")}\nresume each with: navarch run resume <run-id>`
+        : "no active run to pause";
+      return print(json ? result : text, json);
+    }
+    case "remote": {
+      if (rest[0] !== "status") throw new CliError("usage: navarch remote status", EXIT.usage);
+      const status = await new ApiClient(home).request<RemoteStatus>("GET", "/api/v1/remote");
+      return print(json ? status : formatRemote(status), json);
+    }
+    case "devices": {
+      const api = new ApiClient(home);
+      if (rest[0] === "revoke") {
+        const device = await api.request<DeviceView>("DELETE", `/api/v1/devices/${encodeURIComponent(required(rest[1], "device id"))}`);
+        return print(json ? device : `${device.name} (${device.id}) revoked`, json);
+      }
+      if (rest[0] !== undefined) throw new CliError("usage: navarch devices [revoke <device-id>]", EXIT.usage);
+      const devices = await api.request<DeviceView[]>("GET", "/api/v1/devices");
+      return print(json ? devices : formatDevices(devices), json);
     }
     case "say": {
       const id = required(rest[0], "run id");

@@ -6,6 +6,7 @@ import {
   isTerminalRun,
   isTerminalTask,
   newId,
+  PAUSE_INTERRUPT,
   type Actor,
   type ApprovalView,
   type CreateRunRequest,
@@ -25,6 +26,7 @@ import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
 import { loadProjectConfig } from "../project.ts";
+import { PolicyEngine } from "../policy/engine.ts";
 import { issuePrompt } from "./issue.ts";
 import { implementer, PROFILES } from "./profiles.ts";
 
@@ -65,6 +67,7 @@ export class Orchestrator {
   private readonly onReady: () => void;
   private readonly github: GitHubIntegration | undefined;
   private readonly flows: Map<string, FlowDefinition>;
+  private readonly policy: PolicyEngine;
 
   constructor(
     store: EventStore,
@@ -73,6 +76,7 @@ export class Orchestrator {
     onReady: () => void,
     github?: GitHubIntegration,
     flows: Map<string, FlowDefinition> = loadFlows(),
+    policy: PolicyEngine = new PolicyEngine(),
   ) {
     this.store = store;
     this.config = config;
@@ -80,6 +84,7 @@ export class Orchestrator {
     this.onReady = onReady;
     this.github = github;
     this.flows = flows;
+    this.policy = policy;
   }
 
   flowNames(): string[] {
@@ -370,21 +375,75 @@ export class Orchestrator {
   }
 
   /**
-   * Continues a paused run (spec §10, `/runs/:id/resume`): its failed tasks are requeued and
-   * keep their resume token, so the agent continues the same conversation.
+   * Pauses a run (ADR 0020): nothing of it is dispatched until it is resumed, and its running
+   * tasks are interrupted without using an attempt, so resumable agents continue their session.
+   */
+  pauseRun(runId: string, actor: Actor, interrupt: (taskId: string) => boolean, reason = "user"): RunView {
+    const run = this.store.getRun(runId);
+    if (!run) throw new OrchestratorError("not_found", `run ${runId} not found`);
+    if (run.status === "paused") throw new OrchestratorError("conflict", `run ${runId} is already paused`);
+    if (!canTransitionRun(run.status, "paused")) throw new OrchestratorError("conflict", `run ${runId} is ${run.status} and cannot be paused`);
+    this.authorize(actor, "run.pause", runId);
+    // The status changes first, so the Scheduler records each interrupted attempt as a pause.
+    this.store.append([runStatus(runId, run.status, "paused", reason, actor)]);
+    for (const task of this.store.tasksOfRun(runId)) {
+      if (task.status === "running") interrupt(task.id);
+    }
+    return this.store.getRun(runId)!;
+  }
+
+  /** The kill switch (spec §6.12.4): pauses every active run, which can then be resumed or cancelled. */
+  stopAll(actor: Actor, interrupt: (taskId: string) => boolean): string[] {
+    this.authorize(actor, "fleet.stop", "*");
+    const paused: string[] = [];
+    for (const run of this.store.listRuns(10_000)) {
+      if (run.status === "paused" || !canTransitionRun(run.status, "paused")) continue;
+      this.pauseRun(run.id, actor, interrupt, "kill switch");
+      paused.push(run.id);
+    }
+    this.store.append([{ type: "fleet.stopped", run_id: null, task_id: null, actor, payload: { run_ids: paused } }]);
+    return paused;
+  }
+
+  /**
+   * Continues a paused run (spec §10, `/runs/:id/resume`) in the status it had before the pause.
+   * Tasks that failed on a quota are requeued and keep their resume token, so the agent continues
+   * the same conversation; tasks interrupted by the pause are already ready.
    */
   resumeRun(runId: string, actor: Actor): RunView {
     const run = this.store.getRun(runId);
     if (!run) throw new OrchestratorError("not_found", `run ${runId} not found`);
     if (run.status !== "paused") throw new OrchestratorError("conflict", `run ${runId} is ${run.status}, not paused`);
+    this.authorize(actor, "run.resume", runId);
 
-    const events: NewEvent[] = [runStatus(runId, "paused", "executing", "resumed by user", actor)];
+    const before = this.statusBeforePause(runId);
+    const events: NewEvent[] = [runStatus(runId, "paused", before, "resumed by user", actor)];
     for (const task of this.store.tasksOfRun(runId)) {
       if (task.status === "failed") events.push(taskStatus(runId, task.id, "failed", "ready", task.attempt, "run resumed by user"));
     }
     this.store.append(events);
+    // A task may have succeeded while the run was paused; its successor is due now.
+    this.advance(runId);
     this.onReady();
     return this.store.getRun(runId)!;
+  }
+
+  private statusBeforePause(runId: string): RunStatus {
+    const events = this.store.events({ runId });
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]!;
+      if (e.type !== "run.status_changed") continue;
+      const p = e.payload as { from: RunStatus; to: RunStatus };
+      if (p.to === "paused") return canTransitionRun("paused", p.from) ? p.from : "executing";
+    }
+    return "executing";
+  }
+
+  private authorize(actor: Actor, action: string, resource: string): void {
+    const decision = this.policy.decide(actor, action, resource, { autonomyLevel: this.config.autonomy_level });
+    if (decision.effect === "allow") return;
+    this.store.append([{ type: "policy.denied", run_id: resource.startsWith("run_") ? resource : null, task_id: null, actor, payload: { action, resource, reason: decision.reason } }]);
+    throw new OrchestratorError("forbidden", decision.reason);
   }
 
   /**

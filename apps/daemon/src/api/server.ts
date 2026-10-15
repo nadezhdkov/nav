@@ -13,6 +13,13 @@ import {
   DecideProposalRequest,
   StreamClientMessage,
   WebExchangeRequest,
+  PairDeviceRequest,
+  PushSubscriptionRequest,
+  RefreshDeviceRequest,
+  type Actor,
+  type DeviceSession,
+  type PushKey,
+  type StopResult,
   type StreamServerMessage,
   type WebCode,
   type WebExchangeResponse,
@@ -21,30 +28,50 @@ import {
   SendRunMessage,
 } from "@navarch/contracts";
 import { z } from "zod";
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 import { ConciergeError } from "../concierge/service.ts";
+import { DeviceError } from "../devices/devices.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
   const app = Fastify({ logger: false, bodyLimit: 1024 * 1024 });
+  const callers = new WeakMap<FastifyRequest, Caller>();
+  const callerOf = (req: FastifyRequest): Caller => callers.get(req) ?? { kind: "local" };
+  const actorOf = (req: FastifyRequest): Actor => {
+    const caller = callerOf(req);
+    return caller.kind === "device" ? { kind: "user", via: "mobile", device_id: caller.deviceId } : { kind: "user", via: viaOf(req.headers) };
+  };
   await app.register(websocket);
 
+  // Who is calling: the local token (CLI, desktop UI) or a paired device's access token (ADR 0020).
+  // `tailscale serve` makes remote requests look local, so the source address proves nothing.
   app.addHook("onRequest", async (req, reply) => {
     // The Web UI's static files are public; the token reaches the SPA in the URL fragment (ADR 0017).
-    if (!isApi(req.url) || req.url === "/api/v1/web/exchange") return;
+    if (!isApi(req.url) || PUBLIC_ROUTES.has(`${req.method} ${req.routeOptions.url}`)) return;
     const header = req.headers.authorization ?? "";
     const query = (req.query as { token?: string } | undefined)?.token ?? "";
     const given = header.startsWith("Bearer ") ? header.slice(7) : query;
-    if (!safeEqual(given, token)) {
-      return reply.code(401).send({ error: "unauthorized", message: "missing or invalid token" });
+    if (safeEqual(given, token)) {
+      callers.set(req, { kind: "local" });
+      return;
     }
+    const deviceId = daemon.devices.authenticate(given);
+    if (!deviceId) return reply.code(401).send({ error: "unauthorized", message: "missing or invalid token" });
+    if (!DEVICE_ROUTES.has(`${req.method} ${req.routeOptions.url}`)) {
+      return reply.code(403).send({ error: "forbidden", message: "not available from a paired device; use the desktop" });
+    }
+    callers.set(req, { kind: "device", deviceId });
   });
 
   app.setErrorHandler((err, _req, reply) => {
     if (err instanceof ConciergeError) {
       const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
+    }
+    if (err instanceof DeviceError) {
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : 401;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     if (err instanceof OrchestratorError) {
@@ -82,6 +109,71 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return body;
   });
 
+  // Remote access and paired devices (ADR 0020). Pairing and the device list stay on the desktop.
+  app.get("/api/v1/remote", async () => daemon.remoteStatus());
+
+  app.post("/api/v1/devices/pairings", async (_req, reply) => {
+    const remote = await daemon.remoteStatus();
+    if (remote.mode === "off" || !remote.url) {
+      return reply.code(409).send({ error: "conflict", message: "remote access is off or no tailnet URL is known; see `navarch remote status`" });
+    }
+    return reply.code(201).send(daemon.devices.createPairing(remote.url));
+  });
+
+  app.post("/api/v1/devices/pair", async (req, reply) => {
+    const parsed = PairDeviceRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const session: DeviceSession = daemon.devices.pair(parsed.data.code, parsed.data.name);
+    return reply.code(201).send(session);
+  });
+
+  app.post("/api/v1/devices/refresh", async (req, reply) => {
+    const parsed = RefreshDeviceRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const session: DeviceSession = daemon.devices.refresh(parsed.data.refresh_token);
+    return session;
+  });
+
+  app.get("/api/v1/devices", async () => daemon.devices.list());
+
+  app.get("/api/v1/devices/me", async (req, reply) => {
+    const caller = callerOf(req);
+    if (caller.kind !== "device") return badRequest(reply, "only a paired device has a device of its own");
+    return daemon.devices.get(caller.deviceId);
+  });
+
+  app.delete("/api/v1/devices/:id", async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const caller = callerOf(req);
+    if (caller.kind === "device" && caller.deviceId !== id) return forbidden(reply, "a device can only revoke itself");
+    return daemon.devices.revoke(id, actorOf(req), caller.kind === "device" ? "signed out on the device" : "revoked by the user");
+  });
+
+  app.get("/api/v1/push/key", async () => {
+    const body: PushKey = { public_key: daemon.notifier.publicKey };
+    return body;
+  });
+
+  app.put("/api/v1/push/subscription", async (req, reply) => {
+    const caller = callerOf(req);
+    if (caller.kind !== "device") return badRequest(reply, "push subscriptions belong to paired devices");
+    const parsed = PushSubscriptionRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const refused = daemon.notifier.checkEndpoint(parsed.data.endpoint);
+    if (refused) return badRequest(reply, refused);
+    daemon.devices.setSubscription(caller.deviceId, parsed.data, actorOf(req));
+    return reply.code(204).send();
+  });
+
+  app.delete("/api/v1/push/subscription", async (req, reply) => {
+    const caller = callerOf(req);
+    if (caller.kind !== "device") return badRequest(reply, "push subscriptions belong to paired devices");
+    daemon.devices.clearSubscription(caller.deviceId, actorOf(req));
+    return reply.code(204).send();
+  });
+
+  app.get("/api/v1/repos", async () => daemon.store.listRepos());
+
   app.get("/api/v1/health", async () => ({
     ok: true,
     running_tasks: daemon.scheduler.runningCount,
@@ -96,7 +188,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/runs", async (req, reply) => {
     const parsed = CreateRunRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
-    const run = await daemon.orchestrator.startRun(parsed.data, { kind: "user", via: viaOf(req.headers) });
+    if (callerOf(req).kind === "device") {
+      // A phone starts prompt runs in known repositories only, with the daemon's defaults: no
+      // commands, setup steps, adapters or budgets it could widen (ADR 0020).
+      const extra = Object.keys(parsed.data).filter((k) => k !== "repo_path" && k !== "prompt");
+      if (extra.length || parsed.data.issue) return forbidden(reply, `a paired device cannot set ${extra.join(", ") || "issue"}`);
+      if (!daemon.store.listRepos().some((r) => r.path === parsed.data.repo_path)) {
+        return forbidden(reply, "a paired device can start runs only in repositories of earlier runs");
+      }
+    }
+    const run = await daemon.orchestrator.startRun(parsed.data, actorOf(req));
     return reply.code(201).send(run);
   });
 
@@ -107,14 +208,25 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/runs/:id/cancel", async (req) => {
     const id = (req.params as { id: string }).id;
-    return daemon.orchestrator.cancelRun(id, { kind: "user", via: viaOf(req.headers) }, (taskId) =>
+    return daemon.orchestrator.cancelRun(id, actorOf(req), (taskId) =>
       daemon.scheduler.requestCancel(taskId),
     );
   });
 
   app.post("/api/v1/runs/:id/resume", async (req) => {
     const id = (req.params as { id: string }).id;
-    return daemon.orchestrator.resumeRun(id, { kind: "user", via: viaOf(req.headers) });
+    return daemon.orchestrator.resumeRun(id, actorOf(req));
+  });
+
+  app.post("/api/v1/runs/:id/pause", async (req) => {
+    const id = (req.params as { id: string }).id;
+    return daemon.pauseRun(id, actorOf(req));
+  });
+
+  // The kill switch (spec §6.12.4): pauses every active run; nothing is cancelled.
+  app.post("/api/v1/stop", async (req) => {
+    const body: StopResult = { paused: daemon.stopAll(actorOf(req)) };
+    return body;
   });
 
   app.get("/api/v1/runs/:id/messages", async (req, reply) => {
@@ -127,7 +239,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const parsed = SendRunMessage.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const id = (req.params as { id: string }).id;
-    const message = daemon.sendRunMessage(id, parsed.data, { kind: "user", via: viaOf(req.headers) });
+    const message = daemon.sendRunMessage(id, parsed.data, actorOf(req));
     return reply.code(201).send(message);
   });
 
@@ -149,7 +261,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const parsed = DecideApprovalRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const id = (req.params as { id: string }).id;
-    return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, { kind: "user", via: viaOf(req.headers) });
+    return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, actorOf(req));
   });
 
   // Concierge (ADR 0016): act tools only propose; a proposal runs when the operator decides it here.
@@ -221,10 +333,18 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.get("/api/v1/stream", { websocket: true }, (socket, req) => {
     const origin = req.headers.origin;
-    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) && origin !== daemon.remoteOrigin()) {
       socket.close(1008, "origin not allowed");
       return;
     }
+    // A device's stream ends when the device is revoked; the client reconnects with a fresh token.
+    const caller = callerOf(req);
+    const offRevoked =
+      caller.kind === "device"
+        ? daemon.store.subscribe((event) => {
+            if (event.type === "device.revoked" && (event.payload as { device_id: string }).device_id === caller.deviceId) socket.close(4401, "device revoked");
+          })
+        : () => {};
     const topics = new Set<string>();
     const send = (msg: StreamServerMessage) => socket.send(JSON.stringify(msg));
     const matches = (runId: string | null) => topics.has("*") || topics.has("runs") || (runId !== null && topics.has(`run:${runId}`));
@@ -249,6 +369,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       send({ kind: "subscribed", topics: [...topics] });
     });
     socket.on("close", () => {
+      offRevoked();
       offEvent();
       offLog();
     });
@@ -258,6 +379,41 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 }
 
 const WEB_CODE_TTL_MS = 60_000;
+
+type Caller = { kind: "local" } | { kind: "device"; deviceId: string };
+
+/** Routes whose credential is in the body: a sign-in code, a pairing code or a refresh token. */
+const PUBLIC_ROUTES = new Set(["POST /api/v1/web/exchange", "POST /api/v1/devices/pair", "POST /api/v1/devices/refresh"]);
+
+/**
+ * What a paired device may call (ADR 0020). An allowlist, so a new route stays desktop-only until
+ * it is added here. Secrets, pairing, sign-in codes, other devices and the concierge are not.
+ */
+const DEVICE_ROUTES = new Set([
+  "GET /api/v1/health",
+  "GET /api/v1/runs",
+  "POST /api/v1/runs",
+  "GET /api/v1/runs/:id",
+  "POST /api/v1/runs/:id/cancel",
+  "POST /api/v1/runs/:id/pause",
+  "POST /api/v1/runs/:id/resume",
+  "GET /api/v1/runs/:id/messages",
+  "POST /api/v1/runs/:id/messages",
+  "GET /api/v1/runs/:id/events",
+  "GET /api/v1/runs/:id/logs",
+  "GET /api/v1/fleet",
+  "GET /api/v1/approvals",
+  "POST /api/v1/approvals/:id",
+  "GET /api/v1/artifacts/:id",
+  "GET /api/v1/stream",
+  "GET /api/v1/repos",
+  "POST /api/v1/stop",
+  "GET /api/v1/devices/me",
+  "DELETE /api/v1/devices/:id",
+  "GET /api/v1/push/key",
+  "PUT /api/v1/push/subscription",
+  "DELETE /api/v1/push/subscription",
+]);
 
 const DEFAULT_WEB_DIR = resolve(import.meta.dirname, "../../../web/dist");
 
@@ -298,7 +454,10 @@ async function serveWeb(app: FastifyInstance, dir: string): Promise<void> {
       wildcard: true,
       index: "index.html",
       setHeaders: (reply, path) => {
-        reply.header("cache-control", path.endsWith(".html") ? "no-cache" : "public, max-age=31536000, immutable");
+        // Only hashed build files are immutable; the page, the service worker and the manifest must update.
+        const fixedName = path.endsWith(".html") || path.endsWith("sw.js") || path.endsWith(".webmanifest") || path.includes("/icons/");
+        reply.header("cache-control", fixedName ? "no-cache" : "public, max-age=31536000, immutable");
+        if (path.endsWith(".webmanifest")) reply.header("content-type", "application/manifest+json");
       },
     });
   }
@@ -327,6 +486,10 @@ function safeEqual(a: string, b: string): boolean {
   const x = Buffer.from(a);
   const y = Buffer.from(b);
   return x.length === y.length && timingSafeEqual(x, y);
+}
+
+function forbidden(reply: FastifyReply, message: string) {
+  return reply.code(403).send({ error: "forbidden", message });
 }
 
 function badRequest(reply: FastifyReply, message: string) {

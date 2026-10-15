@@ -61,6 +61,11 @@ export function canResume(status: RunStatus): boolean {
   return status === "paused";
 }
 
+/** A run can be paused while it is active (ADR 0020); a budget stop waits for a decision instead. */
+export function canPause(status: RunStatus): boolean {
+  return !isTerminalRun(status) && status !== "paused" && status !== "budget_exceeded";
+}
+
 /** `owner/repo#N` for issue runs, then the first line of the prompt. */
 export function runTitle(run: RunView): string {
   const line = run.prompt.split("\n").find((l) => l.trim())?.trim() ?? "";

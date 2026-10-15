@@ -85,6 +85,38 @@ export const Config = z.object({
       port: z.number().int().min(0).max(65535).default(7420),
       /** The Web UI build to serve at `/` (ADR 0017); defaults to `apps/web/dist` in this checkout. */
       web_dir: z.string().optional(),
+      /**
+       * Remote access for the phone (ADR 0020): `tailscale serve` proxies the tailnet's HTTPS name to
+       * this daemon. `url` is that origin; without it, it is read from `tailscale status --json`.
+       */
+      remote: z
+        .object({
+          mode: z.enum(["tailscale", "off"]).default("tailscale"),
+          url: z.string().url().optional(),
+          /** The Tailscale CLI, read-only (`status`, `serve status`); tests point it at a fake. */
+          tailscale_command: z.string().default("tailscale"),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  /** Push notifications to paired devices (spec §6.11, ADR 0020). */
+  notifications: z
+    .object({
+      web_push: z.boolean().default(true),
+      /** Local time of the PC; only critical notifications are sent in between. */
+      quiet_hours: z
+        .object({
+          start: z.string().regex(/^\d{2}:\d{2}$/),
+          end: z.string().regex(/^\d{2}:\d{2}$/),
+          allow_critical: z.boolean().default(true),
+        })
+        .optional(),
+      /** Push services the daemon may POST to; a subscription elsewhere is refused. */
+      push_hosts: z
+        .array(z.string())
+        .default(["fcm.googleapis.com", "updates.push.services.mozilla.com", "*.push.apple.com", "*.notify.windows.com"]),
+      /** VAPID `sub` claim (RFC 8292): a mailto: or https: contact for the push services. */
+      vapid_subject: z.string().default("https://github.com/nadezhdkov/nav"),
     })
     .prefault({}),
   budgets: z.object({ default_run: z.number().positive().default(2) }).prefault({}),

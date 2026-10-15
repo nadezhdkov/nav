@@ -1,6 +1,6 @@
-import type { ApprovalView, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, DeviceView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatEvent, formatRunList } from "../src/format.ts";
+import { formatApprovals, formatDevices, formatEvent, formatRemote, formatRunList } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -84,5 +84,23 @@ describe("Phase 1 output", () => {
       "failed: test: exit 1",
     );
     expect(formatEvent(event("github.pr.opened", { url: "https://github.com/acme/widgets/pull/100", draft: true }))).toContain("draft https://github.com/acme/widgets/pull/100");
+  });
+});
+
+describe("remote and devices (ADR 0020)", () => {
+  const base = { mode: "tailscale", installed: true, running: true, url: "https://pc.tail.ts.net", serving: false, setup_command: "tailscale serve --bg 7420" } as const;
+
+  it("says what is missing for the phone to reach the daemon", () => {
+    expect(formatRemote(base)).toContain("not set up; run: tailscale serve --bg 7420");
+    expect(formatRemote({ ...base, serving: true })).toContain("Pair a phone");
+    expect(formatRemote({ ...base, installed: false, running: false, url: null })).toContain("not installed");
+    expect(formatRemote({ ...base, mode: "off" })).toContain("remote access is off");
+  });
+
+  it("lists paired devices with their state", () => {
+    const d: DeviceView = { id: "dev_1", name: "Pixel", paired_at: "2026-10-15T10:00:00Z", last_seen_at: null, revoked_at: null, push: true };
+    expect(formatDevices([d])).toBe("dev_1  Pixel  paired 2026-10-15  last seen never  push on");
+    expect(formatDevices([{ ...d, revoked_at: "2026-10-16T08:30:00Z", push: false }])).toContain("revoked 2026-10-16 08:30");
+    expect(formatDevices([])).toContain("no paired devices");
   });
 });

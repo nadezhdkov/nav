@@ -1,5 +1,5 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
-import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
@@ -50,8 +50,8 @@ export class Scheduler {
   private readonly onSucceeded: (runId: string) => void;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
-  /** Running tasks the user interrupted to give an instruction (ADR 0019). */
-  private readonly interruptRequested = new Set<string>();
+  /** Running tasks the user interrupted, with why: an instruction (ADR 0019) or a pause (ADR 0020). */
+  private readonly interruptRequested = new Map<string, string>();
   /** One per active task; aborting ends its setup or agent whatever stage it is in. */
   private readonly aborts = new Map<string, AbortController>();
   private stopping = false;
@@ -132,9 +132,9 @@ export class Scheduler {
    * Stops a running agent so it resumes with the user's pending instructions (ADR 0019). The
    * attempt ends as `interrupted` and goes back to `ready` without counting as an attempt.
    */
-  requestInterrupt(taskId: string): boolean {
+  requestInterrupt(taskId: string, reason: string = INSTRUCTION_INTERRUPT): boolean {
     if (!this.active.has(taskId)) return false;
-    this.interruptRequested.add(taskId);
+    this.interruptRequested.set(taskId, reason);
     this.aborts.get(taskId)?.abort();
     void this.cancelHook(taskId);
     return true;
@@ -156,7 +156,8 @@ export class Scheduler {
 
   private dispatch(queued: TaskRecord): void {
     const run = this.store.getRunRecord(queued.run_id);
-    if (!run) return;
+    // A paused run keeps its ready tasks until it is resumed (ADR 0020).
+    if (!run || run.status === "paused") return;
     let task = queued;
     if (task.type === "agent" && task.routing === "auto" && !task.model_id) {
       this.store.append([this.routeTask(run, task)]);
@@ -214,7 +215,7 @@ export class Scheduler {
     const attempt = task.attempt + 1;
     const events: NewEvent[] = [taskStatus(run.id, task.id, "ready", "running", attempt)];
     const to = nodeStatus ?? "executing";
-    if (canTransitionRun(run.status, to) && run.status !== "paused") events.push(runStatus(run.id, run.status, to, `${task.node_id} dispatched`));
+    if (canTransitionRun(run.status, to)) events.push(runStatus(run.id, run.status, to, `${task.node_id} dispatched`));
     // The user's instructions go to the next agent attempt of the run (or of the task they name).
     const messages = executor ? [] : this.store.pendingMessagesFor(task);
     for (const m of messages) {
@@ -295,7 +296,8 @@ export class Scheduler {
     // A stopping daemon leaves the task `running`; recovery on the next start requeues it.
     if (this.stopping) return;
     const runId = task.run_id;
-    const interrupted = this.interruptRequested.has(task.id);
+    const interruptReason = this.interruptRequested.get(task.id);
+    const interrupted = interruptReason !== undefined;
     // An interrupted attempt ends like a cancelled one; only a cancel request cancels the run.
     const cancelled = this.cancelRequested.has(task.id) || (outcome.error?.kind === "cancelled" && !interrupted);
     const complexity = task.profile === "triager" && outcome.status === "succeeded" ? parseComplexity(outcome.summary) : undefined;
@@ -321,11 +323,11 @@ export class Scheduler {
     const run = this.store.getRun(runId)!;
     if (!cancelled && interrupted && !isTerminalRun(run.status)) {
       events.push(
-        taskStatus(runId, task.id, "running", "interrupted", attempt, INSTRUCTION_INTERRUPT, {
+        taskStatus(runId, task.id, "running", "interrupted", attempt, interruptReason, {
           kind: "interrupted",
-          message: "stopped by the user to give an instruction",
+          message: interruptReason === PAUSE_INTERRUPT ? "stopped because the user paused the run" : "stopped by the user to give an instruction",
         }),
-        taskStatus(runId, task.id, "interrupted", "ready", attempt, INSTRUCTION_INTERRUPT),
+        taskStatus(runId, task.id, "interrupted", "ready", attempt, interruptReason),
       );
       this.store.append(events);
       return;

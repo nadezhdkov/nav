@@ -1,6 +1,7 @@
 import type { NavarchEvent, StreamServerMessage } from "@navarch/contracts";
 import { ref } from "vue";
-import { getToken } from "./token.ts";
+import { authorized } from "./client.ts";
+import { bearer, forgetDevice } from "./session.ts";
 
 /**
  * `/api/v1/stream` (spec §6.13): one socket for the app, topics added and dropped as views need
@@ -52,10 +53,22 @@ function send(msg: { subscribe?: string[]; unsubscribe?: string[] }): void {
   if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify(msg));
 }
 
+let opening = false;
+
 function ensure(): void {
-  if (socket || timer) return;
-  const token = getToken();
-  if (!token) return;
+  if (socket || timer || opening) return;
+  opening = true;
+  void bearer()
+    .then((token) => {
+      if (token) open(token);
+    })
+    .finally(() => {
+      opening = false;
+    });
+}
+
+function open(token: string): void {
+  if (socket) return;
   const url = new URL("/api/v1/stream", window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("token", token);
@@ -78,9 +91,15 @@ function ensure(): void {
     if (msg.kind === "event") for (const fn of eventListeners) fn(msg.event as unknown as NavarchEvent);
     else if (msg.kind === "log") for (const fn of logListeners) fn(msg.run_id, msg.task_id, msg.line);
   };
-  ws.onclose = () => {
+  ws.onclose = (e) => {
     socket = null;
     connected.value = false;
+    // 4401: this device was revoked (ADR 0020); there is nothing to reconnect to.
+    if (e.code === 4401) {
+      forgetDevice();
+      authorized.value = false;
+      return;
+    }
     if (!topics.size) return;
     retry++;
     timer = setTimeout(() => {

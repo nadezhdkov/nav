@@ -5,7 +5,8 @@ import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work
 
 /** Who caused an event (spec §9.2 `actor`). */
 export const Actor = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("user"), via: z.enum(["cli", "web", "mobile", "api"]) }),
+  /** `device_id` names the paired device a mobile action came from (ADR 0020). */
+  z.object({ kind: z.literal("user"), via: z.enum(["cli", "web", "mobile", "api"]), device_id: z.string().optional() }),
   z.object({ kind: z.literal("system"), component: z.string() }),
   z.object({
     kind: z.literal("agent"),
@@ -32,6 +33,9 @@ export type ErrorKind = z.infer<typeof ErrorKind>;
  * instruction (ADR 0019). Such an attempt does not count toward `max_attempts`.
  */
 export const INSTRUCTION_INTERRUPT = "instruction";
+
+/** Reason of `running → interrupted → ready` when the user pauses a run (ADR 0020); not an attempt either. */
+export const PAUSE_INTERRUPT = "pause";
 
 export const TaskError = z.object({
   kind: ErrorKind,
@@ -218,6 +222,27 @@ export const EventPayloads = {
     action: z.string(),
     resource: z.string(),
     reason: z.string(),
+  }),
+  /** A phone was paired from the desktop UI (ADR 0020). Tokens and their hashes never appear in events. */
+  "device.paired": z.object({ device_id: z.string(), name: z.string() }),
+  /** A device can no longer sign in: revoked by the user, by itself, or after a refresh token was reused. */
+  "device.revoked": z.object({ device_id: z.string(), reason: z.string() }),
+  /** A device turned Web Push on or off; the subscription itself is kept outside the event log. */
+  "device.push_changed": z.object({ device_id: z.string(), enabled: z.boolean() }),
+  /** The kill switch paused every active run (spec §6.12.4). */
+  "fleet.stopped": z.object({ run_ids: z.array(z.string()) }),
+  "notification.sent": z.object({
+    channel: z.literal("web_push"),
+    device_id: z.string(),
+    kind: z.string(),
+    run_id: z.string().nullable(),
+  }),
+  "notification.failed": z.object({
+    channel: z.literal("web_push"),
+    device_id: z.string(),
+    kind: z.string(),
+    status: z.number().int().nullable(),
+    message: z.string(),
   }),
   /** A message in a concierge conversation (ADR 0016); the assistant's carries its model and usage. */
   "concierge.message": z.object({

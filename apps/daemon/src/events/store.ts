@@ -4,7 +4,9 @@ import {
   isTerminalTask,
   newId,
   parsePayload,
+  type DeviceView,
   type FleetAgent,
+  type RepoView,
   type FleetView,
   type FleetWindow,
   type RunMessage,
@@ -20,7 +22,7 @@ import {
   type VerifyCommand,
 } from "@navarch/contracts";
 import { applyEvent } from "./projections.ts";
-import { dropProjections, eventsTable, projectionTables } from "./schema.ts";
+import { credentialTables, dropProjections, eventsTable, projectionTables } from "./schema.ts";
 
 export type EventListener = (event: NavarchEvent) => void;
 
@@ -37,6 +39,7 @@ export class EventStore {
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
     this.db.exec(eventsTable);
     this.db.exec(projectionTables);
+    this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
@@ -241,6 +244,29 @@ export class EventStore {
     return this.db.prepare("SELECT * FROM run_messages WHERE run_id = ? ORDER BY created_at, rowid").all(runId).map(toRunMessage);
   }
 
+  /** Paired devices (ADR 0020), newest first; `last_seen_at` comes from the credentials the Devices service keeps. */
+  listDevices(): DeviceView[] {
+    return this.db
+      .prepare(
+        `SELECT d.*, c.last_seen_at FROM devices d LEFT JOIN device_credentials c ON c.device_id = d.id ORDER BY d.paired_at DESC, d.rowid DESC`,
+      )
+      .all()
+      .map(toDeviceView);
+  }
+
+  getDevice(id: string): DeviceView | undefined {
+    const row = this.db.prepare("SELECT d.*, c.last_seen_at FROM devices d LEFT JOIN device_credentials c ON c.device_id = d.id WHERE d.id = ?").get(id);
+    return row ? toDeviceView(row) : undefined;
+  }
+
+  /** Repositories of earlier runs, most recent first: where a phone may start a run. */
+  listRepos(): RepoView[] {
+    return this.db
+      .prepare("SELECT repo_path AS path, MAX(created_at) AS last_run_at FROM runs GROUP BY repo_path ORDER BY last_run_at DESC LIMIT 50")
+      .all()
+      .map((r) => ({ path: String((r as Row).path), last_run_at: String((r as Row).last_run_at) }));
+  }
+
   /** Undelivered instructions an attempt of this task should receive: those for the whole run or for the task. */
   pendingMessagesFor(task: { id: string; run_id: string }): RunMessage[] {
     return this.db
@@ -426,6 +452,17 @@ function toTaskRecord(row: Row): TaskRecord {
     outputs: row.outputs ? (JSON.parse(String(row.outputs)) as Record<string, unknown>) : null,
     model_id: (row.model_id as string | null) ?? null,
     routing: row.routing === "auto" ? "auto" : null,
+  };
+}
+
+function toDeviceView(row: Row): DeviceView {
+  return {
+    id: String(row.id),
+    name: String(row.name),
+    paired_at: String(row.paired_at),
+    last_seen_at: (row.last_seen_at as string | null) ?? null,
+    revoked_at: (row.revoked_at as string | null) ?? null,
+    push: Number(row.push) === 1,
   };
 }
 

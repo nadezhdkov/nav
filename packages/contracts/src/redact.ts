@@ -9,6 +9,8 @@ const patterns: RegExp[] = [
   /github_pat_[A-Za-z0-9_]{20,}/g,
   /xox[abprs]-[A-Za-z0-9-]{10,}/g,
   /AKIA[0-9A-Z]{16}/g,
+  // Navarch device access and refresh tokens (ADR 0020).
+  /nv[dr]_[A-Za-z0-9_.-]{20,}/g,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
 ];
 
