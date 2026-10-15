@@ -109,6 +109,7 @@ export class Daemon {
       adapters,
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
+      listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
     });
     this.inbox = new InboxService({ config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
   }
