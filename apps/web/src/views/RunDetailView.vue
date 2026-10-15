@@ -96,7 +96,7 @@ async function act(kind: "cancel" | "resume" | "pause") {
           {{ t("run.pr") }}<ExternalLink :size="13" aria-hidden="true" />
         </a>
         <button v-if="canResume(run.status)" :disabled="busy" class="inline-flex min-h-9 items-center gap-1.5 rounded-md border border-line px-3 text-sm hover:bg-surface-2 disabled:opacity-60" @click="act('resume')">
-          <Play :size="14" aria-hidden="true" />{{ t("run.resume") }}
+          <Play :size="14" aria-hidden="true" />{{ t(run.status === "failed" ? "run.retry" : "run.resume") }}
         </button>
         <button v-if="canPause(run.status)" :disabled="busy" class="tone-warning inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm disabled:opacity-60 max-md:min-h-11" style="color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, transparent)" @click="act('pause')">
           <CirclePause :size="14" aria-hidden="true" />{{ t("run.pause") }}

@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.15 (retomada de Run `failed` em §8.4, ADR 0025). 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -897,7 +897,7 @@ stateDiagram-v2
 ### 8.4 Máquina de estados da Run
 
 `created → planning → awaiting_approval → executing → verifying → reviewing → ready_for_pr → pr_opened → done`
-com saídas laterais `failed`, `cancelled`, `paused` e `budget_exceeded`. A única volta permitida é `verifying → executing`, feita pelo loop de correção (ADR 0011); um Flow pode pular estágios que não tem.
+com saídas laterais `failed`, `cancelled`, `paused` e `budget_exceeded`. A única volta permitida é `verifying → executing`, feita pelo loop de correção (ADR 0011); um Flow pode pular estágios que não tem. Uma Run `failed` volta ao estado em que falhou só quando o usuário a retoma (`/runs/:id/resume`): as Tasks `failed` voltam a `ready` e as concluídas são mantidas; uma Run que falhou por decisão do Flow, sem Task `failed`, não pode ser retomada (ADR 0025).
 
 ---
 

@@ -269,7 +269,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
     },
     {
       name: "resume_run",
-      description: "Propose resuming a paused run (e.g. after a quota reset).",
+      description: "Propose resuming a paused run (e.g. after a quota reset), or retrying the failed task of a failed run.",
       parameters: obj({ run_id: str("Run id") }, ["run_id"]),
       kind: "act",
       summarize: (args) => `resume run ${String(args.run_id)}`,

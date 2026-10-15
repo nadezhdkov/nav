@@ -72,9 +72,11 @@ const runSideExits: readonly RunStatus[] = ["failed", "cancelled", "paused", "bu
  * A run moves forward along the main sequence (a Flow may skip stages it does not have; a fix
  * loop returns from `verifying` to `executing`),
  * may leave it through a side exit from any non-terminal state, and returns from
- * `paused`/`budget_exceeded` to a main-sequence state.
+ * `paused`/`budget_exceeded` to a main-sequence state. A failed run returns to a main-sequence state
+ * only when the user retries it (ADR 0025).
  */
 export function canTransitionRun(from: RunStatus, to: RunStatus): boolean {
+  if (from === "failed") return runSequence.includes(to) && to !== "created" && to !== "done";
   if (from === to || runTerminal.includes(from)) return false;
   if (from === "paused" || from === "budget_exceeded") {
     return runSequence.includes(to) || to === "failed" || to === "cancelled";

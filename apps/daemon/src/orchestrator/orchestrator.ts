@@ -446,7 +446,8 @@ export class Orchestrator {
   resumeRun(runId: string, actor: Actor): RunView {
     const run = this.store.getRun(runId);
     if (!run) throw new OrchestratorError("not_found", `run ${runId} not found`);
-    if (run.status !== "paused") throw new OrchestratorError("conflict", `run ${runId} is ${run.status}, not paused`);
+    if (run.status === "failed") return this.retryRun(runId, actor);
+    if (run.status !== "paused") throw new OrchestratorError("conflict", `run ${runId} is ${run.status}, not paused or failed`);
     this.authorize(actor, "run.resume", runId);
 
     const before = this.statusBeforePause(runId);
@@ -459,6 +460,36 @@ export class Orchestrator {
     this.advance(runId);
     this.onReady();
     return this.store.getRun(runId)!;
+  }
+
+  /**
+   * Retries a run that failed on a task (ADR 0025): the run returns to the stage it failed in and
+   * its failed tasks are requeued, keeping their approvals and resume tokens, so finished work is
+   * not redone. A run that failed on a flow decision (e.g. a fix loop out of iterations) has no
+   * failed task and would only fail again.
+   */
+  private retryRun(runId: string, actor: Actor): RunView {
+    const failed = this.store.tasksOfRun(runId).filter((t) => t.status === "failed");
+    if (!failed.length) throw new OrchestratorError("conflict", `run ${runId} has no failed task to retry; it failed on a flow decision`);
+    this.authorize(actor, "run.resume", runId);
+    const before = this.statusBefore(runId, "failed");
+    this.store.append([
+      runStatus(runId, "failed", before, "retried by user", actor),
+      ...failed.map((task) => taskStatus(runId, task.id, "failed", "ready", task.attempt, "run retried by user")),
+    ]);
+    this.onReady();
+    return this.store.getRun(runId)!;
+  }
+
+  private statusBefore(runId: string, status: "failed"): RunStatus {
+    const events = this.store.events({ runId });
+    for (let i = events.length - 1; i >= 0; i--) {
+      const e = events[i]!;
+      if (e.type !== "run.status_changed") continue;
+      const p = e.payload as { from: RunStatus; to: RunStatus };
+      if (p.to === status) return canTransitionRun(status, p.from) ? p.from : "executing";
+    }
+    return "executing";
   }
 
   private statusBeforePause(runId: string): RunStatus {

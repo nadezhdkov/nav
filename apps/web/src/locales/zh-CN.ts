@@ -31,6 +31,7 @@ export const zhCN: Messages = {
     back: "所有运行",
     cancel: "取消运行",
     resume: "恢复运行",
+    retry: "重试失败的步骤",
     confirmCancel: "取消此运行？正在执行的智能体将被停止。",
     pr: "草稿 PR",
     cost: "成本",
