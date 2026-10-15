@@ -1,9 +1,16 @@
 # Free models for the Model Router (ADR 0014). Merge into ~/.navarch/config.yaml.
 #
-# Keys live in the Vault, never here:
+# OpenRouter keys live in the Vault, never here:
 #   navarch secret set openrouter/api_key   # https://openrouter.ai/keys
-#   navarch secret set opencode/api_key     # https://opencode.ai/console
 # An entry whose provider has no key is skipped by the router ("no API key for provider …").
+#
+# OpenCode Zen's free models answer only to the OpenCode client (the API returns FreeTierError
+# to anyone else), so they run on the `opencode` adapter (ADR 0015): install the CLI, log in
+# once (`opencode auth login`, a Google account works) and no key is needed. The installer puts
+# it in ~/.opencode/bin; if that is not on the daemon's PATH, set the command:
+#   adapters:
+#     opencode:
+#       command: /home/<you>/.opencode/bin/opencode
 #
 # Free offers change often and are not guaranteed; check before relying on them:
 #   OpenRouter: ids ending in `:free`, 20 requests/min and 50/day (1,000/day after buying 10 credits once).
@@ -26,16 +33,16 @@ routing:
       model: openrouter/nvidia/nemotron-3-ultra-550b-a55b:free
       provider: nvidia
     zen-big-pickle:
-      adapter: native
-      model: opencode-zen/big-pickle
+      adapter: opencode
+      model: opencode/big-pickle
       provider: opencode
     zen-nemotron-lightning:
-      adapter: native
-      model: opencode-zen/nemotron-3.5-lightning-free
+      adapter: opencode
+      model: opencode/nemotron-3.5-lightning-free
       provider: nvidia
     zen-mimo-flash:
-      adapter: native
-      model: opencode-zen/mimo-v2.6-flash-free
+      adapter: opencode
+      model: opencode/mimo-v2.6-flash-free
       provider: xiaomi
   tiers:
     # Free first; the router falls back on rate limits and missing keys, and a failed

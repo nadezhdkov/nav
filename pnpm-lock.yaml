@@ -211,6 +211,9 @@ importers:
       '@navarch/adapter-native':
         specifier: workspace:*
         version: link:../../packages/adapters/native
+      '@navarch/adapter-opencode':
+        specifier: workspace:*
+        version: link:../../packages/adapters/opencode
       '@navarch/agent-runtime':
         specifier: workspace:*
         version: link:../../packages/agent-runtime
@@ -291,6 +294,15 @@ importers:
         version: link:../../contracts
 
   packages/adapters/native:
+    dependencies:
+      '@navarch/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/opencode:
     dependencies:
       '@navarch/adapter-kit':
         specifier: workspace:*

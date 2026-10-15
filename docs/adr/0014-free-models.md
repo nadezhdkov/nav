@@ -1,6 +1,6 @@
 # 0014 — Free models through the native adapter: Vault keys, OpenCode Zen, scoped daily limits
 
-- Status: accepted
+- Status: accepted; the OpenCode Zen part is superseded by ADR 0015
 - Date: 2026-10-14
 - Spec: §6.3.2 (`native`), §6.4 (catalog, fallback), §6.1.5 (Vault), architecture rule 7
 - Builds on: ADR 0004 (native adapter), ADR 0007 (Vault), ADR 0013 (Model Router)
@@ -13,7 +13,7 @@ The user's machine (Radeon RX 580 8 GB, 15 GB RAM) runs 7B local models, which m
 
 ## Decision
 
-- **No new adapter.** Free models are catalog entries on the `native` adapter (`openrouter/<id>:free`, `opencode-zen/<id>`). A separate `opencode` CLI adapter would add a second tool loop and permission system for the same models.
+- **No new adapter.** *(Superseded for OpenCode Zen by ADR 0015: the Zen API refuses free models to any client but OpenCode, so they run on an `opencode` CLI adapter. OpenRouter stays as decided here.)* Free models are catalog entries on the `native` adapter (`openrouter/<id>:free`, `opencode-zen/<id>`). A separate `opencode` CLI adapter would add a second tool loop and permission system for the same models.
 - **Provider keys from the Vault:** a native provider may name `api_key: secret://…` (stored with `navarch secret set`), read when a task starts and registered for redaction; `api_key_env` still wins when set. A key written literally in the config is refused by the schema. Defaults: `openrouter` → `secret://openrouter/api_key`, new provider `opencode-zen` (`https://opencode.ai/inference/v1`) → `secret://opencode/api_key`.
 - **Availability:** `AgentAdapter.unavailableReason(model)` (optional, synchronous). The native adapter answers from a cached key check (refreshed in the background after 60 s, and at every task start), so the router skips a free entry whose provider has no key instead of failing the task.
 - **Scoped daily limits:** a 429 carrying `X-RateLimit-Reset` (response header, or OpenRouter's `error.metadata.headers`) becomes `retry_at` plus a `quota.observed` with `model_prefix` = `<provider>/` and the limit's name (`free-models-per-day`). The router skips only that provider's models until the reset; other native providers stay usable. The fallback of ADR 0013 moves the task on at once.

@@ -36,6 +36,7 @@ const Tier = z.enum(["fast", "standard", "expert"]);
 const BUILTIN_MODELS = {
   "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
   copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
+  opencode: { adapter: "opencode", provider: "opencode", status: "active" },
   codex: { adapter: "codex", provider: "openai", status: "active" },
   "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
   antigravity: { adapter: "antigravity", provider: "google", status: "active" },
@@ -134,6 +135,10 @@ export const Config = z.object({
         .prefault({}),
       copilot: z
         .object({ enabled: z.boolean().default(true), command: z.string().default("copilot"), model: z.string().optional() })
+        .prefault({}),
+      /** OpenCode CLI (ADR 0015); the installer puts it in ~/.opencode/bin, which may not be on PATH. */
+      opencode: z
+        .object({ enabled: z.boolean().default(true), command: z.string().default("opencode"), model: z.string().optional() })
         .prefault({}),
       native: z
         .object({

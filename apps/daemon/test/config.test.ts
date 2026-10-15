@@ -10,6 +10,7 @@ describe("routing config", () => {
     expect(Object.keys(config.routing.models)).toEqual(
       expect.arrayContaining(["claude-code", "copilot", "laguna-s-free", "zen-big-pickle"]),
     );
+    expect(config.routing.models["zen-big-pickle"]).toMatchObject({ adapter: "opencode", model: "opencode/big-pickle" });
     expect(config.routing.models["laguna-s-free"]).toMatchObject({ adapter: "native", model: "openrouter/poolside/laguna-s-2.1:free", status: "active" });
     for (const id of Object.values(config.routing.tiers).flat()) expect(config.routing.models[id], id).toBeDefined();
     // Keys come from the Vault: providers name a secret, never hold a key.
