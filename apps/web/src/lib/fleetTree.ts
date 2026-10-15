@@ -1,4 +1,5 @@
 import type { FleetAgent, FleetRun, FleetView, ProjectView, TeamMemberView, TeamView } from "@navarch/contracts";
+import type { InjectionKey, Ref } from "vue";
 import type { NodeState } from "./graph.ts";
 
 /**
@@ -207,3 +208,17 @@ export function moveFocus(nodes: readonly TreeNode[], from: string | null, move:
 export function runIds(view: FleetView | null): string[] {
   return (view?.runs ?? []).map((r) => runNodeId(r.id));
 }
+
+/** What a tree node can ask of its canvas (provided by FleetTree). */
+export type TreeActions = {
+  focused: Ref<string | null>;
+  selected: Ref<string | null>;
+  /** Fold or unfold a run, or open or close a lead's sub-agents. */
+  toggle: (id: string) => void;
+  /** Open an agent's panel; a team run opens its lead chat. */
+  open: (runId: string, nodeId: string) => void;
+  /** Instructions sent from a card since the view was last fetched. */
+  sentSince: (taskId: string) => number;
+  sent: (taskId: string) => void;
+};
+export const TREE_ACTIONS: InjectionKey<TreeActions> = Symbol("tree-actions");
