@@ -57,6 +57,16 @@ describe("route", () => {
     expect(route(config, req({ adapters: new Set(["copilot"]) })).skipped).toEqual([{ id: "claude-code", reason: "adapter claude-code not enabled" }]);
   });
 
+  it("says an entry of another adapter is not usable here when the request takes one adapter only", () => {
+    const d = route(config, req({ profile: "triager", onlyAdapter: "native" }));
+    expect(d.chosen).toBeUndefined();
+    expect(d.skipped).toEqual([
+      { id: "copilot", reason: "copilot is not a native entry" },
+      { id: "claude-code", reason: "claude-code is not a native entry" },
+    ]);
+    expect(route({ ...config, tiers: { ...config.tiers, fast: ["copilot", "qwen"] } }, req({ profile: "triager", onlyAdapter: "native" })).chosen?.id).toBe("qwen");
+  });
+
   it("returns no choice when every candidate is unusable", () => {
     const d = route(config, req({ exclude: ["claude-code", "copilot"] }));
     expect(d.chosen).toBeUndefined();

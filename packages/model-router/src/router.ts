@@ -59,6 +59,8 @@ export type RouteRequest = {
   unavailable?: (entry: CatalogEntry) => string | undefined;
   /** Catalog ids not to use, e.g. the one that just hit its rate limit. */
   exclude?: string[];
+  /** Only entries of this adapter can serve the request, e.g. `native` for work without a worktree. */
+  onlyAdapter?: string;
   /** A team lead's preference for this member (ADR 0022): a catalog id or an adapter, tried first when usable. */
   prefer?: string;
   /** The smallest amount left in the run's budgets; absent or Infinity when nothing is limited (ADR 0023). */
@@ -113,11 +115,13 @@ function unusable(config: RouterConfig, req: RouteRequest, id: string): string |
       ? `status ${entry.status}`
       : !req.adapters.has(entry.adapter)
         ? `adapter ${entry.adapter} not enabled`
-        : req.exclude?.includes(id)
-          ? "rate limited"
-          : quota
-            ? `quota exhausted until ${quota.resetsAt}`
-            : (req.unavailable?.(entry) ?? overBudget(req, id, entry));
+        : req.onlyAdapter && entry.adapter !== req.onlyAdapter
+          ? `${entry.adapter} is not a ${req.onlyAdapter} entry`
+          : req.exclude?.includes(id)
+            ? "rate limited"
+            : quota
+              ? `quota exhausted until ${quota.resetsAt}`
+              : (req.unavailable?.(entry) ?? overBudget(req, id, entry));
 }
 
 /** Step 3 of spec §6.4.2: a billed entry expected to cost more than the run has left (ADR 0023). */

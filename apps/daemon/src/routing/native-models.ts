@@ -9,14 +9,12 @@ import type { EventStore } from "../events/store.ts";
  */
 export function nativeModels(deps: { runtime: AgentRuntime; config: Config; store: EventStore }, profile: string, pinned?: string): { models: string[] } | { reason: string } {
   if (pinned) return { models: [pinned] };
-  const exclude = Object.entries(deps.config.routing.models)
-    .filter(([, e]) => e.adapter !== "native")
-    .map(([id]) => id);
+  const exclude: string[] = [];
   const models: string[] = [];
   let reason = "";
   // The router returns its first usable entry; ask again without it to get the fallbacks.
   for (let i = 0; i < 3; i++) {
-    const decision = deps.runtime.route({ profile, iteration: 1, implementerProviders: [], exhausted: deps.store.exhaustedQuotas(), exclude });
+    const decision = deps.runtime.route({ profile, iteration: 1, implementerProviders: [], onlyAdapter: "native", exhausted: deps.store.exhaustedQuotas(), exclude });
     if (!decision?.chosen?.model) {
       reason ||= decision ? `${decision.reason}${decision.skipped.length ? ` (${decision.skipped.map((s) => `${s.id}: ${s.reason}`).join("; ")})` : ""}` : "routing is off";
       break;
