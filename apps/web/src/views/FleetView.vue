@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { FleetRun } from "@navarch/contracts";
 import { CircleCheck, CircleX, Hand, LoaderCircle, Ship } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { useI18n } from "vue-i18n";
 import AgentCard from "../components/AgentCard.vue";
 import AgentPanel from "../components/AgentPanel.vue";
@@ -16,6 +17,22 @@ const store = useFleetStore();
 const selected = ref<{ run: string; node: string } | null>(null);
 
 onMounted(() => void store.load());
+
+// `?agent=<task id>` (the sidebar's project tree) opens that agent's panel once the view has it.
+const route = useRoute();
+let opened: string | null = null;
+watch(
+  [() => route?.query.agent, () => store.view],
+  ([agent]) => {
+    if (typeof agent !== "string" || agent === opened) return;
+    const run = store.view?.runs.find((r) => r.agents.some((a) => a.id === agent));
+    const node = run?.agents.find((a) => a.id === agent)?.node_id;
+    if (!run || !node) return;
+    opened = agent;
+    selected.value = { run: run.id, node };
+  },
+  { immediate: true },
+);
 
 const runs = computed(() => store.view?.runs ?? []);
 const current = computed(() => {

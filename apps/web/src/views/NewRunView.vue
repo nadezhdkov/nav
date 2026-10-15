@@ -6,7 +6,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { api } from "../api/client.ts";
 
-/** A prompt run in a repository of earlier runs (spec §6.12.4 "new work", ADR 0020). */
+/** A prompt run in a registered project or a repository of earlier runs (spec §6.12.4 "new work", ADR 0020, 0021). */
 const { t } = useI18n();
 const router = useRouter();
 const repos = ref<RepoView[]>([]);
@@ -18,7 +18,10 @@ const loaded = ref(false);
 
 onMounted(async () => {
   try {
-    repos.value = await api.repos();
+    const [projects, earlier] = await Promise.all([api.projects(), api.repos()]);
+    // Registered projects first, then the other repositories earlier runs used.
+    const known = new Set(projects.map((p) => p.path));
+    repos.value = [...projects.map((p) => ({ path: p.path, last_run_at: p.added_at })), ...earlier.filter((r) => !known.has(r.path))];
     repo.value = repos.value[0]?.path ?? "";
   } catch (err) {
     error.value = (err as Error).message;

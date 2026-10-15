@@ -15,6 +15,13 @@ import type {
   RunMessage,
   RunView,
   WebExchangeResponse,
+  InboxItemDetail,
+  InboxView,
+  ProjectView,
+  QuotaView,
+  StartInboxResult,
+  SyncInboxResult,
+  WorkItemStatus,
 } from "@navarch/contracts";
 import { ref } from "vue";
 import { bearer, forgetDevice, isDevice, refresh } from "./session.ts";
@@ -138,4 +145,12 @@ export const api = {
   subscribePush: (sub: PushSubscriptionJSON, locale: Locale) =>
     request<void>("PUT", "/api/v1/push/subscription", { endpoint: sub.endpoint, keys: sub.keys, locale }),
   unsubscribePush: () => request<void>("DELETE", "/api/v1/push/subscription"),
+  projects: () => request<ProjectView[]>("GET", "/api/v1/projects"),
+  inbox: (status?: WorkItemStatus[]) => request<InboxView>("GET", `/api/v1/inbox${status?.length ? `?status=${status.join(",")}` : ""}`),
+  inboxItem: (id: string) => request<InboxItemDetail>("GET", `/api/v1/inbox/${encodeURIComponent(id)}`),
+  syncInbox: (projectId?: string) => request<SyncInboxResult>("POST", "/api/v1/inbox/sync", projectId ? { project_id: projectId } : {}),
+  startInbox: (body: { item_ids: string[]; flow?: string; budget?: number }) => request<StartInboxResult>("POST", "/api/v1/inbox/start", body),
+  dismissItem: (id: string, reason?: string) => request<InboxItemDetail>("POST", `/api/v1/inbox/${encodeURIComponent(id)}/dismiss`, reason ? { reason } : {}),
+  restoreItem: (id: string) => request<InboxItemDetail>("POST", `/api/v1/inbox/${encodeURIComponent(id)}/restore`, {}),
+  quotas: () => request<QuotaView[]>("GET", "/api/v1/quotas"),
 };
