@@ -4,12 +4,14 @@ import {
   canTransitionRun,
   canTransitionTask,
   CreateRunRequest,
+  FleetRun,
   FleetView,
   newId,
   PairDeviceRequest,
   parseIssueRef,
   parsePayload,
   PushSubscriptionRequest,
+  WorktreeStatus,
   redact,
   registerSecret,
   SendRunMessage,
@@ -140,5 +142,33 @@ describe("instructions to a run (ADR 0019)", () => {
   it("describes the fleet as runs with their agents", () => {
     const view = FleetView.parse({ generated_at: "2026-10-15T00:00:00Z", counts: { running: 0, waiting: 0, failed: 0, done: 0 }, runs: [] });
     expect(view.runs).toEqual([]);
+  });
+});
+
+describe("Fleet tree (slice 10)", () => {
+  const run = {
+    id: "run_1", status: "executing", repo_path: "/r", base_commit: "abc", prompt: "p", budget: 5, cost_total: 0,
+    created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z", ended_at: null, work_item: null, pr_url: null,
+    flow: "task", autonomy_level: null, agents: [], team: null,
+  };
+
+  it("carries step progress and the run's project", () => {
+    expect(FleetRun.parse({ ...run, progress: { done: 3, total: 7 }, project_id: "prj_1" }).progress).toEqual({ done: 3, total: 7 });
+    expect(FleetRun.parse({ ...run, progress: null, project_id: null }).project_id).toBeNull();
+    expect(FleetRun.safeParse({ ...run, progress: { done: -1, total: 7 }, project_id: null }).success).toBe(false);
+    expect(FleetRun.safeParse(run).success).toBe(false);
+  });
+
+  it("describes a worktree's changed files", () => {
+    const status = {
+      run_id: "run_1", branch: "navarch/run_1/task", path: "/w", base_commit: "abc", exists: true,
+      files: [
+        { path: "b.ts", old_path: "a.ts", status: "renamed", added: 1, removed: 0 },
+        { path: "logo.png", status: "added", added: null, removed: null },
+      ],
+      totals: { files: 2, added: 1, removed: 0 },
+    };
+    expect(WorktreeStatus.parse(status).files[0]!.old_path).toBe("a.ts");
+    expect(WorktreeStatus.safeParse({ ...status, files: [{ path: "x", status: "copied", added: 0, removed: 0 }] }).success).toBe(false);
   });
 });

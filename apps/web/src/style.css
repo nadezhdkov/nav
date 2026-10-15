@@ -118,6 +118,11 @@ body {
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--accent) 70%, transparent));
 }
 .vue-flow__edge.loop-back .vue-flow__edge-path { stroke: var(--tone-warning); stroke-dasharray: 6 5; }
+/* Fleet tree (slice 10): every edge kind also has a text label, never color alone. */
+.vue-flow__edge.tree-after .vue-flow__edge-path { stroke-dasharray: 5 5; }
+.vue-flow__edge.tree-reports .vue-flow__edge-path { stroke: var(--tone-success); stroke-dasharray: 2 4; }
+.vue-flow__edge-textbg { fill: var(--surface); }
+.vue-flow__edge-text { fill: var(--text-muted); font-size: 11px; }
 .vue-flow__handle { opacity: 0; pointer-events: none; }
 .vue-flow__node { cursor: default; }
 .vue-flow__node.selected > * { outline: 2px solid var(--accent); outline-offset: 3px; }

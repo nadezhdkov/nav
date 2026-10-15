@@ -69,6 +69,8 @@ const view: FleetView = {
       flow: "task",
       autonomy_level: 2,
       team: null,
+      progress: { done: 1, total: 2 },
+      project_id: null,
       agents: [
         agent(),
         agent({ id: "task_rev", node_id: "review", profile: "reviewer", status: "waiting_approval", waiting: { kind: "approval" }, last_activity: null }),
@@ -79,8 +81,15 @@ const view: FleetView = {
 
 const global = { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } };
 
+/** Screen width as the Fleet view reads it: wide screens are offered the tree (slice 10). */
+function screen(wide: boolean) {
+  window.matchMedia = ((query: string) => ({ matches: wide, media: query, addEventListener() {}, removeEventListener() {} })) as unknown as typeof window.matchMedia;
+}
+
 beforeEach(() => {
   setActivePinia(createPinia());
+  screen(false);
+  localStorage.clear();
   for (const fn of Object.values(api)) fn.mockReset();
   api.runEvents.mockResolvedValue([]);
   api.messages.mockResolvedValue([]);
@@ -118,6 +127,33 @@ describe("Fleet view", () => {
 
     await page.findAll('[role="radio"]').find((b) => b.text() === "Last 24 h")!.trigger("click");
     expect(api.fleet).toHaveBeenLastCalledWith("24h");
+  });
+
+  it("offers Tree and Cards on wide screens, Tree by default, and remembers the choice", async () => {
+    screen(true);
+    api.fleet.mockResolvedValue(view);
+    const stubs = { ...global.stubs, FleetTree: { template: '<div data-test="tree" />', methods: { fit() {} } } };
+    const page = mount(FleetPage, { global: { ...global, stubs } });
+    await flushPromises();
+    expect(page.find('[data-test="tree"]').exists()).toBe(true);
+    expect(page.find('[role="toolbar"]').text()).toContain("Collapse all");
+    expect(page.find('[role="toolbar"]').text()).toContain("Fit view");
+    await page.findAll('[role="radio"]').find((b) => b.text() === "Cards")!.trigger("click");
+    expect(page.find('[data-test="tree"]').exists()).toBe(false);
+    expect(page.findAll("button[aria-pressed]")).toHaveLength(2);
+    expect(localStorage.getItem("navarch.fleet.layout")).toBe("cards");
+    const again = mount(FleetPage, { global: { ...global, stubs } });
+    await flushPromises();
+    expect(again.find('[data-test="tree"]').exists()).toBe(false);
+  });
+
+  it("gives phones the cards only", async () => {
+    localStorage.setItem("navarch.fleet.layout", "tree");
+    api.fleet.mockResolvedValue(view);
+    const page = mount(FleetPage, { global });
+    await flushPromises();
+    expect(page.findAll('[role="radio"]').some((b) => b.text() === "Tree")).toBe(false);
+    expect(page.findAll("button[aria-pressed]")).toHaveLength(2);
   });
 
   it("refetches when the stream reports task changes, not for unrelated events", () => {

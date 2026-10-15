@@ -195,6 +195,54 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
   return last ? { kind: "done", prOpened } : { kind: "fail", reason: "empty flow" };
 }
 
+/**
+ * Step progress of a run (slice 10): Flow nodes the engine has passed, in chain order, over all
+ * nodes but the trigger. A loop counts its body nodes, and only those finished in its current
+ * iteration, so a fix iteration counts once; a team counts once, when it is done.
+ */
+export function progress(flow: FlowDefinition, ctx: RunContext): { done: number; total: number } {
+  const steps = chain(flow).filter((n) => n.type !== "trigger");
+  const width = (n: FlowNode) => (n.type === "loop" ? n.body.length : 1);
+  const total = steps.reduce((sum, n) => sum + width(n), 0);
+  const scope = scopeOf(ctx, flow);
+  let done = 0;
+  for (const node of steps) {
+    if (ctx.skipped.includes(node.id)) {
+      done += width(node);
+      continue;
+    }
+    if (node.type === "loop") {
+      const iterations = ctx.tasks.filter((t) => node.body.some((b) => b.id === t.node_id)).map((t) => t.iteration);
+      if (!iterations.length) break;
+      if (safely(() => loopStep(node, ctx, scope)) === undefined) {
+        done += width(node);
+        continue;
+      }
+      const current = Math.max(...iterations);
+      done += node.body.filter((b) => ctx.tasks.some((t) => t.node_id === b.id && t.iteration === current && t.status === "succeeded" && t.outputs?.passed !== false)).length;
+      break;
+    }
+    if (node.type === "team") {
+      if (!ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) || safely(() => teamStep(node, ctx, scope)) !== undefined) break;
+      done++;
+      continue;
+    }
+    const latest = latestTask(ctx, node.id);
+    if (latest?.status !== "succeeded" || latest.outputs?.passed === false) break;
+    done++;
+  }
+  return { done, total };
+}
+
+/** A step, or a placeholder when an expression cannot be evaluated from what the caller knows. */
+function safely(step: () => Step | undefined): Step | undefined {
+  try {
+    return step();
+  } catch {
+    return { kind: "wait" };
+  }
+}
+
 function loopStep(node: Extract<FlowNode, { type: "loop" }>, ctx: RunContext, scope: Scope): Step | undefined {
   const iterations = ctx.tasks.filter((t) => node.body.some((b) => b.id === t.node_id)).map((t) => t.iteration);
   const current = iterations.length ? Math.max(...iterations) : 0;

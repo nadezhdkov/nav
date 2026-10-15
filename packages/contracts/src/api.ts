@@ -305,7 +305,18 @@ export const FleetAgent = TaskView.extend({
 });
 export type FleetAgent = z.infer<typeof FleetAgent>;
 
-export const FleetRun = RunView.extend({ agents: z.array(FleetAgent), team: TeamView.nullable() });
+/** Finished Flow nodes over all nodes of the run's Flow copy; a loop iteration counts once (slice 10). */
+export const RunProgress = z.object({ done: z.number().int().nonnegative(), total: z.number().int().nonnegative() });
+export type RunProgress = z.infer<typeof RunProgress>;
+
+export const FleetRun = RunView.extend({
+  agents: z.array(FleetAgent),
+  team: TeamView.nullable(),
+  /** Null for runs created before Flows. */
+  progress: RunProgress.nullable(),
+  /** The registered project whose path is the run's `repo_path` (ADR 0021). */
+  project_id: z.string().nullable(),
+});
 export type FleetRun = z.infer<typeof FleetRun>;
 
 export const FleetWindow = z.enum(["active", "24h"]);
@@ -322,6 +333,34 @@ export const FleetView = z.object({
   runs: z.array(FleetRun),
 });
 export type FleetView = z.infer<typeof FleetView>;
+
+/** A file changed in a run's worktree since the run's base commit (slice 10). */
+export const WorktreeFileStatus = z.enum(["added", "modified", "deleted", "renamed", "untracked"]);
+export type WorktreeFileStatus = z.infer<typeof WorktreeFileStatus>;
+
+export const WorktreeFile = z.object({
+  /** Relative to the worktree. */
+  path: z.string(),
+  old_path: z.string().optional(),
+  status: WorktreeFileStatus,
+  /** Null for binary files. */
+  added: z.number().int().nonnegative().nullable(),
+  removed: z.number().int().nonnegative().nullable(),
+});
+export type WorktreeFile = z.infer<typeof WorktreeFile>;
+
+/** The live state of a run's worktree, read without touching its index or files. */
+export const WorktreeStatus = z.object({
+  run_id: z.string(),
+  branch: z.string().nullable(),
+  path: z.string().nullable(),
+  base_commit: z.string(),
+  /** False before the worktree is created and after it is removed. */
+  exists: z.boolean(),
+  files: z.array(WorktreeFile),
+  totals: z.object({ files: z.number().int().nonnegative(), added: z.number().int().nonnegative(), removed: z.number().int().nonnegative() }),
+});
+export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
 export const ApiError = z.object({ error: z.string(), message: z.string() });
 export type ApiError = z.infer<typeof ApiError>;

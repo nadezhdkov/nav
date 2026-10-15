@@ -33,7 +33,7 @@
 A *navarch* commanded a fleet. Navarch is a **local-first coordination layer** for coding agents: Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, OpenCode, or local and remote models through its own agent loop. It does not replace them; it gives them a plan, an isolated worktree, a budget, rules and a human in the loop, and records everything as events you can follow from the CLI, the Web UI or a conversation. Formerly VECTR (ADR 0008).
 
 > [!NOTE]
-> **Status: Phase 1 in progress.** Issue → plan → approval → implementation → verification → review → draft PR works end to end. The Web UI covers runs, the live graph, the fleet of agents at work and approvals; the mobile PWA comes next. Full spec (Portuguese): [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md).
+> **Status: Phase 1 in progress.** Issue → plan → approval → implementation → verification → review → draft PR works end to end. The Web UI covers runs, the live graph, the fleet of agents as a tree, team runs with a lead agent, the Inbox and approvals, and installs on your phone as an app. Full spec (Portuguese): [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md).
 
 ## Quick start
 
@@ -82,14 +82,35 @@ Each run works on its own branch, `navarch/<run-id>/…`, in a worktree under `~
   </tr>
 </table>
 
-<p align="center"><img src="docs/assets/screenshots/fleet.png" alt="The Fleet view: agents of three runs as cards, one running agent open in the side panel with its activity, a waiting instruction and the Interrupt now option" width="960"><br><sub><b>FLEET</b> · every agent at work, and a word with any of them</sub></p>
+<p align="center"><img src="docs/assets/screenshots/fleet-tree.png" alt="The Fleet tree: two projects, a team run whose lead delegated a member, and two fix-issue runs with their agents, step progress and a prompt box on each agent that can still act" width="960"><br><sub><b>FLEET</b> · project → run → agents, a lead and the members it delegates to</sub></p>
+
+<p align="center"><img src="docs/assets/screenshots/fleet-worktree.png" alt="An implementer agent's panel open on the Worktree tab: branch, path, two changed files with added and removed lines, and one file's diff" width="960"><br><sub><b>WORKTREE</b> · what the agent changed so far, live, file by file</sub></p>
 
 - **Live task graph.** Every node of the run's Flow, its status as icon and text, the agent and model it ran on, loop iterations and the fix loop. The amber gate marks where a human decides.
-- **Fleet.** Every agent at work across your runs, as cards: status, adapter and model, branch, cost and what it is doing now. Open one to follow its activity, output, worktree and log, and tell it something: in its next turn, or right away, interrupting it and resuming its session with your message.
+- **Fleet.** Every agent at work across your runs, as a tree on a canvas (or as cards): project → run → agents, with step progress, cost against budget, adapter and model, branch and what each agent is doing now. In a team run the lead sits above the members it delegated to, with "delegates", "after" and "reports" links. Type into any agent's card to give it an instruction for its next turn, or open it to chat, see its output, the live diff of its worktree and its log, and interrupt it right away if it needs to change course. Arrow keys walk the tree.
 - **Approvals.** You see what will happen (the plan, the PR), why it needs you and what the run has cost, then approve or reject with a reason.
 - **Timeline and logs.** The full event log of the run, filterable, and the agent's live output.
 
-Dark by default, light when your system asks for it, usable by keyboard. Screenshots above come from a demo run with Navarch's test agents.
+Dark by default, light when your system asks for it, usable by keyboard. Screenshots in this README come from a demo daemon with Navarch's test agents.
+
+## On your phone
+
+The same UI installs on your phone as an app (PWA). `tailscale serve --bg <port>` gives the daemon your tailnet's HTTPS name while it stays on `127.0.0.1`; pair the phone by scanning the QR code in **Settings → Devices**. A paired phone gets its own short-lived session, sees runs, the fleet and the Inbox, approves or rejects, pauses runs or stops everything, and starts runs in your registered projects. It never sees secrets, and you can revoke it at any time. Push notifications tell you when an approval waits, a run fails or finishes, a PR opens, or an agent asks you a question; they only link to the screen where you decide.
+
+<table>
+  <tr>
+    <td width="25%" align="center"><img src="docs/assets/screenshots/mobile-home.png" alt="Phone Home: an approval waiting, New run, the Stop everything button, the Inbox, today's cost and the active runs"><br><sub><b>HOME</b> · what needs you, what runs</sub></td>
+    <td width="25%" align="center"><img src="docs/assets/screenshots/mobile-fleet.png" alt="Phone Fleet: each run with its step progress and agent cards with status as icon and text"><br><sub><b>FLEET</b> · agents per run</sub></td>
+    <td width="25%" align="center"><img src="docs/assets/screenshots/mobile-run.png" alt="Phone run detail: the run's tasks as a list, Pause and Cancel, and the event timeline"><br><sub><b>RUN</b> · tasks, pause, timeline</sub></td>
+    <td width="25%" align="center"><img src="docs/assets/screenshots/mobile-approvals.png" alt="Phone approval of a team plan: what will happen, why it needs you, the run's cost, and Approve or Reject"><br><sub><b>APPROVALS</b> · decide on the go</sub></td>
+  </tr>
+</table>
+
+## From the terminal
+
+Everything the UI does, the `navarch` CLI does too (`nav` for short): start runs from a prompt or an issue, follow their logs, list and decide approvals, tell an agent something, pause, resume or stop everything. `navarch --help` lists every command.
+
+<p align="center"><img src="docs/assets/screenshots/cli.png" alt="A terminal: navarch run list with three runs, navarch run show of a fix-issue run in its second implement iteration with its branch and worktree, and navarch say sending an instruction to the running agent" width="760"></p>
 
 ## Talk to it
 

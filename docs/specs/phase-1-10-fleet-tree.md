@@ -1,6 +1,6 @@
 # Phase 1, slice 10: Fleet tree
 
-Status: draft · Branch: `feat/fleet-tree` (after slice 9) · Spec: §8.3, §9.1, §9.2, §15.1, §15.2, §19 idea 14 · ADR: 0022 · Needs: slice 9 (Team mode)
+Status: implemented · Branch: `feat/fleet-tree` · Spec: §8.3, §9.1, §9.2, §15.1, §15.2, §19 idea 14 · ADR: 0022 · Needs: slice 9 (Team mode)
 
 The Fleet (ADR 0019) shown as a tree on a canvas: project → run → lead → members (ADR 0022), with the links between agents, a chat with the lead, a prompt box on every agent card and the live state of the run's worktree. Visual reference: the user's "Large Project - Multi-Agent Tree" mockup (2026-10-15), in the graphite theme.
 
@@ -53,7 +53,7 @@ The panel of ADR 0019, with these changes:
 - Projection: step progress over a Flow with a fix loop (iterations count once), runs created before Flows, project link by path.
 - Worktree API with a real temporary repository: added, modified, deleted, renamed, untracked and binary files; totals; the index is unchanged after the call (`git diff --cached` empty, `git status` identical); 404 for a path outside the list and for `../` paths; truncation; missing worktree → `exists: false`; token required; device allowed.
 - Web: tree building (projects, "Other repositories", Flow order, collapse), keyboard moves, prompt box sends `next` to the task and shows the pending badge, Chat thread, Worktree tab list and file diff, layout switch remembered, phones only get Cards; all locales complete.
-- Visual check: demo daemon with two projects, a run with a fix loop, a waiting approval and a running slow agent, Chromium 1440×900 dark and light, and 390×844; Tree, collapsed run, agent panel Chat and Worktree; no console errors.
+- Visual check (2026-10-15): demo daemon with two projects, a run with a fix loop, a waiting approval and a running slow agent, Chromium 1440×900 dark and light, and 390×844; Tree, collapsed run, agent panel Chat and Worktree; no console errors. Done with a demo daemon: two projects, a real team run (fake lead and fake Codex) waiting for plan approval, and seeded runs in a fix loop (with a real worktree) and at an approval; tree, keyboard focus, collapsed runs, agent Chat, Worktree with a file diff, lead chat, phone Cards. It found and fixed: the panel kept the previous run's worktree when switching agents, Fit view shrank text below readable size (now never below 70 %), Collapse all left the tree out of view, and finished agents had a prompt box their message could never reach.
 
 ## 🔴 Open
 
