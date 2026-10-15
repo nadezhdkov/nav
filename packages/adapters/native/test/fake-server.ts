@@ -6,7 +6,9 @@ import type { AddressInfo } from "node:net";
 export type Scripted =
   | { tool_calls: { name: string; args: Record<string, unknown> }[]; content?: string; cost?: number }
   | { content: string; cost?: number }
-  | { status: number; body: unknown; headers?: Record<string, string> };
+  | { status: number; body: unknown; headers?: Record<string, string> }
+  /** Accepts the request and never answers, like a stalled free-model queue. */
+  | { hang: true };
 
 export type FakeServer = {
   baseUrl: string;
@@ -23,6 +25,7 @@ export async function fakeModelServer(script: Scripted[]): Promise<FakeServer> {
     req.on("end", () => {
       requests.push(JSON.parse(body));
       const step = script[Math.min(turn++, script.length - 1)]!;
+      if ("hang" in step) return;
       if ("status" in step) {
         res.writeHead(step.status, { "content-type": "application/json", ...step.headers }).end(JSON.stringify(step.body));
         return;
@@ -44,6 +47,10 @@ export async function fakeModelServer(script: Scripted[]): Promise<FakeServer> {
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
   };
 }
