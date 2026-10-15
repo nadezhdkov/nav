@@ -5,6 +5,7 @@ import { useI18n } from "vue-i18n";
 import { api } from "../api/client.ts";
 import { onEvent, onLog, onReconnect, subscribe } from "../api/stream.ts";
 import FlowGraph from "../components/FlowGraph.vue";
+import InstructionBox from "../components/InstructionBox.vue";
 import NodePanel from "../components/NodePanel.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { buildGraph } from "../lib/graph.ts";
@@ -15,7 +16,7 @@ const props = defineProps<{ id: string }>();
 const { t, locale } = useI18n();
 const store = useRunStore();
 const selected = ref<string | null>(null);
-const tab = ref<"timeline" | "logs">("timeline");
+const tab = ref<"timeline" | "logs" | "instruct">("timeline");
 const filter = ref("");
 const busy = ref(false);
 const actionError = ref<string | null>(null);
@@ -48,6 +49,8 @@ const selectedNode = computed(() => {
   if (!run.value || !flow.value || !selected.value) return null;
   return buildGraph(flow.value, run.value.tasks, store.skipped, params.value).nodes.find((n) => n.id === selected.value) ?? null;
 });
+/** Instructions only make sense while the run can still act on them. */
+const tabs = computed(() => (run.value && canCancel(run.value.status) ? (["timeline", "logs", "instruct"] as const) : (["timeline", "logs"] as const)));
 const eventTypes = computed(() => [...new Set(store.events.map((e) => e.type))].sort());
 const shownEvents = computed(() => {
   const list = filter.value ? store.events.filter((e) => e.type === filter.value) : store.events;
@@ -114,7 +117,7 @@ async function act(kind: "cancel" | "resume") {
       <section class="flex h-64 shrink-0 flex-col border-t border-line bg-surface">
         <div class="flex items-center gap-1 border-b border-line px-4" role="tablist">
           <button
-            v-for="name in ['timeline', 'logs'] as const"
+            v-for="name in tabs"
             :key="name"
             role="tab"
             :aria-selected="tab === name"
@@ -135,6 +138,10 @@ async function act(kind: "cancel" | "resume") {
             <span class="min-w-0 truncate">{{ describe(e.payload as Record<string, unknown>) }}</span>
           </li>
         </ol>
+        <div v-else-if="tab === 'instruct'" class="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <InstructionBox :run-id="run.id" />
+          <p class="mt-2 text-xs text-muted">{{ t("instruct.fleetHint") }}</p>
+        </div>
         <pre v-else class="min-h-0 flex-1 overflow-auto px-4 py-2 font-mono text-xs whitespace-pre-wrap"><template v-if="!store.logs.length">{{ t("run.noLogs") }}</template><template v-for="(l, i) in store.logs" :key="i">{{ l.line }}
 </template></pre>
       </section>

@@ -77,6 +77,12 @@ export const defaultRules: PolicyRule[] = [
     reason: "running verification commands requires approval below autonomy level 2",
   },
   {
+    match: (r) => r.action === "run.message" && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user may instruct their own runs (ADR 0019)",
+  },
+  { match: (r) => r.action === "run.message", effect: "deny", reason: "only the user sends instructions to a run" },
+  {
     match: (r) => r.action === "flow.approval",
     effect: "require_approval",
     reason: "the flow asks a human at this step",

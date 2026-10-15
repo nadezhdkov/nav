@@ -33,7 +33,7 @@
 A *navarch* commanded a fleet. Navarch is a **local-first coordination layer** for coding agents: Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, OpenCode, or local and remote models through its own agent loop. It does not replace them; it gives them a plan, an isolated worktree, a budget, rules and a human in the loop, and records everything as events you can follow from the CLI, the Web UI or a conversation. Formerly VECTR (ADR 0008).
 
 > [!NOTE]
-> **Status: Phase 1 in progress.** Issue → plan → approval → implementation → verification → review → draft PR works end to end. The Web UI covers runs, the live graph and approvals; the mobile PWA comes next. Full spec (Portuguese): [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md).
+> **Status: Phase 1 in progress.** Issue → plan → approval → implementation → verification → review → draft PR works end to end. The Web UI covers runs, the live graph, the fleet of agents at work and approvals; the mobile PWA comes next. Full spec (Portuguese): [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md).
 
 ## Quick start
 
@@ -46,6 +46,7 @@ navarch daemon start
 navarch run --repo ~/code/my-repo --budget 1 --follow "Fix the failing date parser test"
 navarch run --issue owner/repo#42 --repo ~/code/repo   # triage, plan, approval, fix, verify, review, draft PR
 navarch web                     # open the Web UI
+navarch say <run-id> "Use pnpm, not npm"   # tell a run's agents something, in their next turn
 navarch                         # or just ask, in plain language
 ```
 
@@ -81,7 +82,10 @@ Each run works on its own branch, `navarch/<run-id>/…`, in a worktree under `~
   </tr>
 </table>
 
+<p align="center"><img src="docs/assets/screenshots/fleet.png" alt="The Fleet view: agents of three runs as cards, one running agent open in the side panel with its activity, a waiting instruction and the Interrupt now option" width="960"><br><sub><b>FLEET</b> · every agent at work, and a word with any of them</sub></p>
+
 - **Live task graph.** Every node of the run's Flow, its status as icon and text, the agent and model it ran on, loop iterations and the fix loop. The amber gate marks where a human decides.
+- **Fleet.** Every agent at work across your runs, as cards: status, adapter and model, branch, cost and what it is doing now. Open one to follow its activity, output, worktree and log, and tell it something: in its next turn, or right away, interrupting it and resuming its session with your message.
 - **Approvals.** You see what will happen (the plan, the PR), why it needs you and what the run has cost, then approve or reject with a reason.
 - **Timeline and logs.** The full event log of the run, filterable, and the agent's live output.
 
@@ -89,7 +93,7 @@ Dark by default, light when your system asks for it, usable by keyboard. Screens
 
 ## Talk to it
 
-Run `navarch` with no arguments (or `navarch chat`) and ask in plain language: "what is running?", "why did the last run fail?", "start a run here to add a CONTRIBUTING.md". The concierge reads Navarch's state on its own. Anything that changes something (starting, cancelling or resuming a run, approving or rejecting) is shown as a proposal and runs only after you type `y`. `navarch ask "<question>"` asks once and never acts.
+Run `navarch` with no arguments (or `navarch chat`) and ask in plain language: "what is running?", "why did the last run fail?", "start a run here to add a CONTRIBUTING.md". The concierge reads Navarch's state on its own. Anything that changes something (starting, cancelling or resuming a run, sending an instruction to its agents, approving or rejecting) is shown as a proposal and runs only after you type `y`. `navarch ask "<question>"` asks once and never acts.
 
 The concierge needs an API model with tool calling. Pin one in `~/.navarch/config.yaml`:
 

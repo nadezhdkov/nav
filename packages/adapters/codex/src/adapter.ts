@@ -104,7 +104,7 @@ export class CodexAdapter implements AgentAdapter {
       args: this.buildArgs(ctx, resume),
       cwd: ctx.sandbox.path,
       env: scrubbedEnv(this.options.scrubEnv),
-      stdin: resume ? RESUME_PROMPT : ctx.instructions,
+      stdin: resume ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions,
       timeoutMs: ctx.budget.timeoutMs,
       onLine: (line) => {
         io.emit({ kind: "log", line });

@@ -3,11 +3,13 @@ import {
   canTransitionRun,
   canTransitionTask,
   CreateRunRequest,
+  FleetView,
   newId,
   parseIssueRef,
   parsePayload,
   redact,
   registerSecret,
+  SendRunMessage,
 } from "../src/index.ts";
 
 describe("task state machine (spec §8.3)", () => {
@@ -91,5 +93,26 @@ describe("work items", () => {
     expect(() =>
       parsePayload("github.pr.opened", { repo: "o/r", number: 0, url: "https://github.com/o/r/pull/0", branch: "navarch/x", draft: true }),
     ).toThrow();
+  });
+});
+
+describe("instructions to a run (ADR 0019)", () => {
+  it("defaults to the next turn and bounds the text", () => {
+    expect(SendRunMessage.parse({ text: "  use pnpm  " })).toEqual({ text: "use pnpm", delivery: "next" });
+    expect(SendRunMessage.safeParse({ text: "   " }).success).toBe(false);
+    expect(SendRunMessage.safeParse({ text: "x".repeat(4_001) }).success).toBe(false);
+    expect(SendRunMessage.safeParse({ text: "stop", delivery: "later" }).success).toBe(false);
+  });
+
+  it("validates the message events", () => {
+    expect(parsePayload("run.message", { message_id: "msg_1", text: "use pnpm", delivery: "now", task_id: "tsk_1" })).toBeTruthy();
+    expect(() => parsePayload("run.message", { text: "use pnpm" })).toThrow();
+    expect(parsePayload("run.message.delivered", { message_id: "msg_1", task_id: "tsk_1", attempt: 2 })).toBeTruthy();
+    expect(() => parsePayload("run.message.delivered", { message_id: "msg_1", task_id: "tsk_1", attempt: 0 })).toThrow();
+  });
+
+  it("describes the fleet as runs with their agents", () => {
+    const view = FleetView.parse({ generated_at: "2026-10-15T00:00:00Z", counts: { running: 0, waiting: 0, failed: 0, done: 0 }, runs: [] });
+    expect(view.runs).toEqual([]);
   });
 });

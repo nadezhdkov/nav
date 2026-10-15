@@ -1,4 +1,4 @@
-import type { ApprovalView, NavarchEvent, RunDetail, RunView } from "@navarch/contracts";
+import type { ApprovalView, FleetView, FleetWindow, NavarchEvent, RunDetail, RunView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -127,4 +127,33 @@ export const useRunStore = defineStore("run", () => {
   );
 
   return { id, detail, events, logs, error, skipped, load, apply, applyLog };
+});
+
+/** The Fleet view (ADR 0019): every agent of recent runs, refetched when the stream reports a change. */
+export const useFleetStore = defineStore("fleet", () => {
+  const view = ref<FleetView | null>(null);
+  const span = ref<FleetWindow>("active");
+  const error = ref<string | null>(null);
+  const running = computed(() => view.value?.counts.running ?? 0);
+
+  async function load() {
+    try {
+      view.value = await api.fleet(span.value);
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  function setSpan(next: FleetWindow) {
+    span.value = next;
+    void load();
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^(run|task|approval|model)\./.test(event.type)) refetch();
+  }
+
+  return { view, span, error, running, load, setSpan, apply };
 });

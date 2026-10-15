@@ -130,7 +130,7 @@ export class OpencodeAdapter implements AgentAdapter {
       ...(ctx.model ? ["--model", ctx.model] : []),
       ...(resume ? ["--session", resume] : ["--title", `navarch ${ctx.runId} ${ctx.taskId}`]),
       "--",
-      resume ? RESUME_PROMPT : ctx.instructions,
+      resume ? (ctx.resumePrompt ?? RESUME_PROMPT) : ctx.instructions,
     ];
   }
 

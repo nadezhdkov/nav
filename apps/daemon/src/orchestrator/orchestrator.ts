@@ -13,8 +13,10 @@ import {
   type FlowDefinition,
   type WorkItem,
   type NewEvent,
+  type RunMessage,
   type RunStatus,
   type RunView,
+  type SendRunMessage,
   type TaskStatus,
 } from "@navarch/contracts";
 import { next, parseFlow, renderInputs, renderValue, resolveParams, type TaskState } from "@navarch/flow-engine";
@@ -312,6 +314,59 @@ export class Orchestrator {
       ]);
     }
     return this.store.getApproval(id)!;
+  }
+
+  /**
+   * Records an instruction from the user to a run (ADR 0019). `next` waits for the next agent
+   * attempt that starts; `now` interrupts the running task so it resumes with the message. The
+   * Policy Engine decides `run.message` first; an instruction never changes what agents may do.
+   */
+  sendMessage(
+    runId: string,
+    req: SendRunMessage,
+    actor: Actor,
+    deps: {
+      decide: (actor: Actor, runId: string) => { effect: "allow" | "deny" | "require_approval"; reason: string };
+      resumable: (adapter: string) => boolean;
+      interrupt: (taskId: string) => boolean;
+    },
+  ): RunMessage {
+    const run = this.store.getRun(runId);
+    if (!run) throw new OrchestratorError("not_found", `run ${runId} not found`);
+    const task = req.task_id ? this.store.getTask(req.task_id) : undefined;
+    if (req.task_id && (!task || task.run_id !== runId)) throw new OrchestratorError("not_found", `task ${req.task_id} not found in run ${runId}`);
+    if (isTerminalRun(run.status)) throw new OrchestratorError("conflict", `run ${runId} is already ${run.status}`);
+    if (task && task.type !== "agent") throw new OrchestratorError("conflict", `task ${task.id} is not an agent`);
+    if (task && isTerminalTask(task.status)) {
+      throw new OrchestratorError("conflict", `task ${task.id} is ${task.status}; send the instruction to the run instead`);
+    }
+    if (req.delivery === "now") {
+      if (!task) throw new OrchestratorError("conflict", "an instruction delivered now needs the running task it interrupts");
+      if (task.status !== "running") throw new OrchestratorError("conflict", `task ${task.id} is ${task.status}, not running`);
+      if (!deps.resumable(task.adapter)) {
+        throw new OrchestratorError("conflict", `${task.adapter} cannot resume a session; send the instruction for its next turn`);
+      }
+    }
+    const decision = deps.decide(actor, runId);
+    if (decision.effect !== "allow") {
+      this.store.append([
+        { type: "policy.denied", run_id: runId, task_id: task?.id ?? null, actor, payload: { action: "run.message", resource: runId, reason: decision.reason } },
+      ]);
+      throw new OrchestratorError("forbidden", decision.reason);
+    }
+    const id = newId("msg");
+    this.store.append([
+      {
+        type: "run.message",
+        run_id: runId,
+        task_id: task?.id ?? null,
+        actor,
+        payload: { message_id: id, text: req.text, delivery: req.delivery, ...(task ? { task_id: task.id } : {}) },
+      },
+    ]);
+    // If the attempt ended in the meantime, the message waits for the task's next attempt, if it gets one.
+    if (req.delivery === "now") deps.interrupt(task!.id);
+    return this.store.listMessages(runId).find((m) => m.id === id)!;
   }
 
   /**

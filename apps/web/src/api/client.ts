@@ -1,4 +1,14 @@
-import type { ApprovalStatus, ApprovalView, NavarchEvent, RunDetail, RunView, WebExchangeResponse } from "@navarch/contracts";
+import type {
+  ApprovalStatus,
+  ApprovalView,
+  FleetView,
+  FleetWindow,
+  NavarchEvent,
+  RunDetail,
+  RunMessage,
+  RunView,
+  WebExchangeResponse,
+} from "@navarch/contracts";
 import { ref } from "vue";
 import { clearToken, getToken, setToken } from "./token.ts";
 
@@ -83,6 +93,12 @@ export const api = {
   resume: (id: string) => request<unknown>("POST", `/api/v1/runs/${encodeURIComponent(id)}/resume`),
   approvals: (status?: ApprovalStatus) =>
     request<ApprovalView[]>("GET", `/api/v1/approvals${status ? `?status=${status}` : ""}`),
+  fleet: (window: FleetWindow = "active") => request<FleetView>("GET", `/api/v1/fleet?window=${window}`),
+  taskLogs: (runId: string, taskId: string) =>
+    request<string>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/logs?task=${encodeURIComponent(taskId)}`, undefined, "text"),
+  messages: (runId: string) => request<RunMessage[]>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/messages`),
+  sendMessage: (runId: string, body: { text: string; task_id?: string; delivery: "next" | "now" }) =>
+    request<RunMessage>("POST", `/api/v1/runs/${encodeURIComponent(runId)}/messages`, body),
   decide: (id: string, decision: "approve" | "reject", reason?: string) =>
     request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}) }),
 };

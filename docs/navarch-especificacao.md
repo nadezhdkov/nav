@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -872,7 +872,7 @@ stateDiagram-v2
     ready --> running: despachada
     running --> succeeded
     running --> failed
-    running --> interrupted: lease expirado / reinício
+    running --> interrupted: lease expirado / reinício / instrução do usuário
     interrupted --> ready: retry
     failed --> ready: retry disponível
     failed --> [*]
@@ -942,7 +942,7 @@ Especificação formal em OpenAPI 3.1 gerada a partir do código.
 }
 ```
 
-Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `run.message`, `task.created`, `task.status_changed` (substitui `task.ready`/`task.started`/`task.failed`: toda mudança de estado da Task é um único tipo com `from`/`to`), `task.progress`, `task.resume_token`, `task.completed`, `artifact.created`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `sandbox.setup` (um comando de preparo da worktree: comando, código de saída, duração), `quota.observed` (janela de cota informada pelo agente, ADR 0005), `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
+Tipos principais: `workitem.received`, `workitem.triaged`, `run.created`, `run.status_changed`, `run.message` (instrução do usuário à Run, ADR 0019), `run.message.delivered` (a instrução entrou no prompt de uma Task), `task.created`, `task.status_changed` (substitui `task.ready`/`task.started`/`task.failed`: toda mudança de estado da Task é um único tipo com `from`/`to`), `task.progress`, `task.resume_token`, `task.completed`, `artifact.created`, `model.routed`, `model.call.completed`, `approval.requested`, `approval.decided`, `sandbox.created`, `sandbox.setup` (um comando de preparo da worktree: comando, código de saída, duração), `quota.observed` (janela de cota informada pelo agente, ADR 0005), `verification.completed`, `github.pr.opened`, `budget.threshold`, `policy.denied`.
 
 ### 9.3 Interface de Agent Adapter
 
@@ -1348,6 +1348,7 @@ Desktop
 ├── Runs
 │   ├── Lista
 │   └── Detalhe (TaskGraph ao vivo | Timeline | Artefatos | Diff | Custos)
+├── Fleet (todos os agentes das Runs ativas, painel por agente, instruções; ADR 0019)
 ├── Flow Studio (editor visual + YAML)
 ├── Agents (perfis, adaptadores, saúde)
 ├── Models (catálogo, métricas, testes)

@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { Hand, Languages, ListChecks, Wifi, WifiOff } from "@lucide/vue";
+import { Hand, Languages, ListChecks, Ship, Wifi, WifiOff } from "@lucide/vue";
 import { onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized } from "./api/client.ts";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useRunsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useFleetStore, useRunsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
 const approvals = useApprovalsStore();
+const fleet = useFleetStore();
 
 const offs: (() => void)[] = [];
 function start() {
@@ -20,14 +21,17 @@ function start() {
     onEvent((e) => {
       runs.apply(e);
       approvals.apply(e);
+      fleet.apply(e);
     }),
     onReconnect(() => {
       void runs.load();
       void approvals.load();
+      void fleet.load();
     }),
   );
   void runs.load();
   void approvals.load();
+  void fleet.load();
 }
 
 onMounted(() => {
@@ -49,8 +53,9 @@ onUnmounted(() => offs.splice(0).forEach((off) => off()));
       </div>
       <RouterLink
         v-for="item in [
-          { to: '/runs', label: t('nav.runs'), icon: ListChecks, badge: 0 },
-          { to: '/approvals', label: t('nav.approvals'), icon: Hand, badge: approvals.pending.length },
+          { to: '/runs', label: t('nav.runs'), icon: ListChecks, badge: 0, tone: 'neutral' },
+          { to: '/fleet', label: t('nav.fleet'), icon: Ship, badge: fleet.running, tone: 'info' },
+          { to: '/approvals', label: t('nav.approvals'), icon: Hand, badge: approvals.pending.length, tone: 'warning' },
         ]"
         :key="item.to"
         :to="item.to"
@@ -61,7 +66,8 @@ onUnmounted(() => offs.splice(0).forEach((off) => off()));
         <span class="max-md:sr-only">{{ item.label }}</span>
         <span
           v-if="item.badge"
-          class="tone-warning ml-auto rounded-full px-1.5 text-xs font-semibold max-md:absolute max-md:ml-6 max-md:-mt-5"
+          :class="`tone-${item.tone}`"
+          class="ml-auto rounded-full px-1.5 text-xs font-semibold max-md:absolute max-md:ml-6 max-md:-mt-5"
           style="background: var(--tone); color: var(--bg)"
         >{{ item.badge }}</span>
       </RouterLink>

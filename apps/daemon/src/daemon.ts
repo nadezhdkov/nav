@@ -10,7 +10,7 @@ import { OpencodeAdapter, type OpencodeOptions } from "@navarch/adapter-opencode
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
 import { ConciergeService } from "./concierge/service.ts";
-import { registerSecret, type AdapterId, type AgentAdapter } from "@navarch/contracts";
+import { registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type SendRunMessage } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
@@ -52,6 +52,7 @@ export class Daemon {
   readonly adapters: Map<string, AgentAdapter>;
   readonly vault: Vault;
   readonly concierge: ConciergeService;
+  readonly policy: PolicyEngine;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
   private port?: number;
@@ -76,6 +77,7 @@ export class Daemon {
       },
     });
     const policy = new PolicyEngine();
+    this.policy = policy;
     const github = new GitHubIntegration(this.config, this.vault, policy);
     this.scheduler = new Scheduler({
       store: this.store,
@@ -96,6 +98,7 @@ export class Daemon {
       runtime,
       adapters,
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
+      sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
     });
   }
 
@@ -106,6 +109,20 @@ export class Daemon {
   onLog(listener: LogListener): () => void {
     this.logListeners.add(listener);
     return () => this.logListeners.delete(listener);
+  }
+
+  /** Whether an adapter can resume a session, so a `now` instruction can reach it (ADR 0019). */
+  resumable(adapter: string): boolean {
+    return this.adapters.get(adapter)?.capabilities().resumable ?? false;
+  }
+
+  /** An instruction from the user to a run (ADR 0019, `POST /api/v1/runs/:id/messages`). */
+  sendRunMessage(runId: string, req: SendRunMessage, actor: Actor): RunMessage {
+    return this.orchestrator.sendMessage(runId, req, actor, {
+      decide: (who, resource) => this.policy.decide(who, "run.message", resource, { autonomyLevel: this.config.autonomy_level }),
+      resumable: (adapter) => this.resumable(adapter),
+      interrupt: (taskId) => this.scheduler.requestInterrupt(taskId),
+    });
   }
 
   async start(): Promise<void> {

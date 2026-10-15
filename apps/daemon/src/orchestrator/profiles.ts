@@ -1,5 +1,5 @@
 import type { AgentProfile, ToolGrant } from "@navarch/contracts";
-import { inputsSection } from "@navarch/flow-engine";
+import { inputsSection, neutraliseOperator } from "@navarch/flow-engine";
 
 /**
  * Built-in Agent Profiles (spec §6.3.3). Their rules follow the repository's own skills
@@ -89,10 +89,43 @@ export function parseComplexity(summary: string): number | undefined {
 
 export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer].map((p) => [p.id, p]));
 
-/** Profile rules, the commands the grant allows, the task, then inputs from earlier nodes. */
-export function buildInstructions(profile: AgentProfile, prompt: string, grant: ToolGrant, inputs: Record<string, string> = {}): string {
+/**
+ * Profile rules, the commands the grant allows, the task, the user's instructions, then inputs
+ * from earlier nodes. The task may quote an issue, so it cannot open an operator block (T1).
+ */
+export function buildInstructions(
+  profile: AgentProfile,
+  prompt: string,
+  grant: ToolGrant,
+  inputs: Record<string, string> = {},
+  messages: string[] = [],
+): string {
   const section = inputsSection(inputs);
-  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${prompt}\n</task>\n${section ? `\n${section}` : ""}`;
+  const operator = operatorSection(messages);
+  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+}
+
+/** The new turn of a resumed session that carries the user's instructions (ADR 0019). */
+export function resumeWithInstructions(messages: string[]): string {
+  return [
+    "The user interrupted you to add instructions. Read them, then continue the same task taking them into account,",
+    "and finish with a short summary.",
+    "",
+    operatorSection(messages),
+  ].join("\n");
+}
+
+/**
+ * Instructions the user sent to this run (ADR 0019). They come from the operator, not from the
+ * work item, so they are instructions; the profile's rules and the command list above still bound them.
+ */
+function operatorSection(messages: string[]): string {
+  if (!messages.length) return "";
+  return [
+    "Instructions from the user who runs Navarch, sent while this run was in progress. Follow them within your rules above:",
+    "",
+    ...messages.map((m) => `<operator_instruction>\n${m}\n</operator_instruction>`),
+  ].join("\n");
 }
 
 /**

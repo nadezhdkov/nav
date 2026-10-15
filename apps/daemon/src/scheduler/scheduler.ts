@@ -1,9 +1,9 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
-import { canTransitionRun, isTerminalRun, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, newId, type Actor, type NewEvent, type RunStatus } from "@navarch/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
-import { buildInstructions, implementer, parseComplexity, PROFILES } from "../orchestrator/profiles.ts";
+import { buildInstructions, implementer, parseComplexity, PROFILES, resumeWithInstructions } from "../orchestrator/profiles.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
 const RETRYABLE = new Set(["transient", "interrupted"]);
@@ -50,6 +50,8 @@ export class Scheduler {
   private readonly onSucceeded: (runId: string) => void;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
+  /** Running tasks the user interrupted to give an instruction (ADR 0019). */
+  private readonly interruptRequested = new Set<string>();
   /** One per active task; aborting ends its setup or agent whatever stage it is in. */
   private readonly aborts = new Map<string, AbortController>();
   private stopping = false;
@@ -124,6 +126,18 @@ export class Scheduler {
     this.cancelRequested.add(taskId);
     this.aborts.get(taskId)?.abort();
     void this.cancelHook(taskId);
+  }
+
+  /**
+   * Stops a running agent so it resumes with the user's pending instructions (ADR 0019). The
+   * attempt ends as `interrupted` and goes back to `ready` without counting as an attempt.
+   */
+  requestInterrupt(taskId: string): boolean {
+    if (!this.active.has(taskId)) return false;
+    this.interruptRequested.add(taskId);
+    this.aborts.get(taskId)?.abort();
+    void this.cancelHook(taskId);
+    return true;
   }
 
   /** Stops dispatching and waits for running tasks to end without recording their results. */
@@ -201,7 +215,19 @@ export class Scheduler {
     const events: NewEvent[] = [taskStatus(run.id, task.id, "ready", "running", attempt)];
     const to = nodeStatus ?? "executing";
     if (canTransitionRun(run.status, to) && run.status !== "paused") events.push(runStatus(run.id, run.status, to, `${task.node_id} dispatched`));
+    // The user's instructions go to the next agent attempt of the run (or of the task they name).
+    const messages = executor ? [] : this.store.pendingMessagesFor(task);
+    for (const m of messages) {
+      events.push({
+        type: "run.message.delivered",
+        run_id: run.id,
+        task_id: task.id,
+        actor: scheduler,
+        payload: { message_id: m.id, task_id: task.id, attempt },
+      });
+    }
     this.store.append(events);
+    const texts = messages.map((m) => m.text);
 
     const tools = this.policy.taskGrant(run.allow_commands, profile?.edits ?? true);
     const sandboxSlug = run.flow_definition?.definition.metadata.name;
@@ -221,7 +247,7 @@ export class Scheduler {
         adapter: task.adapter,
         ...(sandboxSlug ? { sandboxSlug } : {}),
         profile: profile!,
-        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs),
+        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts),
         ...(task.model ? { model: task.model } : {}),
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.
@@ -233,6 +259,7 @@ export class Scheduler {
           timeoutMs: this.config.scheduler.task_timeout_minutes * 60_000,
         },
         ...(task.resume_token ? { resumeToken: task.resume_token } : {}),
+        ...(task.resume_token && texts.length ? { resumePrompt: resumeWithInstructions(texts) } : {}),
         ...(sandboxId ? { sandboxId } : {}),
         signal: abort.signal,
       });
@@ -258,6 +285,7 @@ export class Scheduler {
         this.active.delete(task.id);
         this.aborts.delete(task.id);
         this.cancelRequested.delete(task.id);
+        this.interruptRequested.delete(task.id);
         this.pump();
       });
     this.active.set(task.id, work);
@@ -267,7 +295,9 @@ export class Scheduler {
     // A stopping daemon leaves the task `running`; recovery on the next start requeues it.
     if (this.stopping) return;
     const runId = task.run_id;
-    const cancelled = this.cancelRequested.has(task.id) || outcome.error?.kind === "cancelled";
+    const interrupted = this.interruptRequested.has(task.id);
+    // An interrupted attempt ends like a cancelled one; only a cancel request cancels the run.
+    const cancelled = this.cancelRequested.has(task.id) || (outcome.error?.kind === "cancelled" && !interrupted);
     const complexity = task.profile === "triager" && outcome.status === "succeeded" ? parseComplexity(outcome.summary) : undefined;
     const outputs = complexity === undefined ? outcome.outputs : { ...outcome.outputs, complexity };
     const events: NewEvent[] = [
@@ -289,6 +319,17 @@ export class Scheduler {
     ];
 
     const run = this.store.getRun(runId)!;
+    if (!cancelled && interrupted && !isTerminalRun(run.status)) {
+      events.push(
+        taskStatus(runId, task.id, "running", "interrupted", attempt, INSTRUCTION_INTERRUPT, {
+          kind: "interrupted",
+          message: "stopped by the user to give an instruction",
+        }),
+        taskStatus(runId, task.id, "interrupted", "ready", attempt, INSTRUCTION_INTERRUPT),
+      );
+      this.store.append(events);
+      return;
+    }
     if (cancelled) {
       events.push(taskStatus(runId, task.id, "running", "cancelled", attempt, "cancelled by user"));
       if (!isTerminalRun(run.status)) events.push(runStatus(runId, run.status, "cancelled", "cancelled by user"));
@@ -301,8 +342,8 @@ export class Scheduler {
       const kind = outcome.error?.kind ?? "fatal";
       const error = outcome.error ?? { kind, message: outcome.summary || "task failed" };
       events.push(taskStatus(runId, task.id, "running", "failed", attempt, error.message, error));
-      // Waits for a quota reset are not counted as attempts.
-      const attempts = attempt - task.rate_limit_waits;
+      // Waits for a quota reset and interruptions by the user are not counted as attempts.
+      const attempts = attempt - task.rate_limit_waits - task.instruction_interrupts;
       const fallback = kind === "rate_limited" && !isTerminalRun(run.status) ? this.fallback(task) : undefined;
       if (fallback) {
         // Another agent takes over right away; like a quota wait, this is not an attempt.

@@ -39,6 +39,13 @@ describe("formatEvent", () => {
     } as unknown as NavarchEvent;
     expect(formatEvent(event).split("\n")).toHaveLength(1);
   });
+
+  it("shows instructions and where they went", () => {
+    const sent = { ts: "2026-10-15T01:00:00.000Z", type: "run.message", payload: { message_id: "msg_1", text: "use\npnpm", delivery: "now", task_id: "task_1" } };
+    expect(formatEvent(sent as unknown as NavarchEvent)).toContain("msg_1 now → task_1: use pnpm");
+    const delivered = { ts: "2026-10-15T01:00:01.000Z", type: "run.message.delivered", payload: { message_id: "msg_1", task_id: "task_1", attempt: 2 } };
+    expect(formatEvent(delivered as unknown as NavarchEvent)).toContain("msg_1 → task_1 attempt 2");
+  });
 });
 
 describe("Phase 1 output", () => {

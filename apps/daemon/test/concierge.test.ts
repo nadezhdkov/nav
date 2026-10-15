@@ -62,7 +62,7 @@ describe("concierge API", () => {
     expect(turn).toMatchObject({ status: 200, body: { reply: "Nothing has run yet.", proposals: [], model: "fake/concierge-1" } });
     expect(server.requests[0]?.model).toBe("concierge-1");
     expect(server.requests[0]?.tools?.map((t) => t.function.name)).toEqual(
-      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_approvals", "start_run", "cancel_run", "resume_run", "approve", "reject"]),
+      expect.arrayContaining(["list_runs", "show_run", "run_events", "list_approvals", "start_run", "cancel_run", "send_instruction", "resume_run", "approve", "reject"]),
     );
     expect(server.requests[1]?.messages.at(-1)).toMatchObject({ role: "tool", content: "[]" });
   });
@@ -108,6 +108,26 @@ describe("concierge API", () => {
     const { api, conversation } = await start([{ tool_calls: [{ name: "start_run", args: { prompt: long, issue: "o/r#1" } }] }, { content: "Proposed." }]);
     const turn = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${await conversation("/repo")}/messages`, { text: "go" });
     expect(turn.body.proposals[0]?.summary).toBe(`start a fix-issue run in /repo (routed): o/r#1 with "${long}"`);
+  });
+
+  it("sends an instruction to a run once the operator confirms", async () => {
+    const call = { name: "send_instruction", args: { run_id: "", text: "use pnpm, not npm" } };
+    const { api, daemon, conversation } = await start([{ tool_calls: [call] }, { content: "Proposed." }, { content: "Sent." }], {
+      concierge: { model: "fake/concierge-1" },
+      autonomy_level: 0,
+    });
+    // Autonomy 0 holds the run at its first approval, so it is still open for instructions.
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: makeRepo(), prompt: "add hello" })).body;
+    call.args.run_id = run.id;
+    const id = await conversation();
+    const turn = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "tell it to use pnpm" });
+    const proposal = turn.body.proposals[0]!;
+    expect(proposal.summary).toBe(`tell run ${run.id} in its next turn: use pnpm, not npm`);
+    expect(daemon.store.listMessages(run.id)).toEqual([]);
+
+    const decided = await api<ProposalDecision>("POST", `/api/v1/concierge/conversations/${id}/proposals/${proposal.id}`, { decision: "approve" });
+    expect(decided.body.proposal.status).toBe("approved");
+    expect(daemon.store.listMessages(run.id)).toMatchObject([{ text: "use pnpm, not npm", delivery: "next", task_id: null }]);
   });
 
   it("does nothing when the operator rejects the proposal", async () => {
