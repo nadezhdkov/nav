@@ -364,7 +364,7 @@ export class Orchestrator {
         payload: { message_id: id, text: req.text, delivery: req.delivery, ...(task ? { task_id: task.id } : {}) },
       },
     ]);
-    // If the task finished in the meantime, the message simply waits for the next attempt.
+    // If the attempt ended in the meantime, the message waits for the task's next attempt, if it gets one.
     if (req.delivery === "now") deps.interrupt(task!.id);
     return this.store.listMessages(runId).find((m) => m.id === id)!;
   }
