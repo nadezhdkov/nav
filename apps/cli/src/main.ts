@@ -28,7 +28,7 @@ Usage:
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
 
-Adapters: claude-code (default), gemini-cli, antigravity, codex, native.
+Adapters: claude-code (default), gemini-cli, antigravity, codex, copilot, native.
   native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
 
 Global options:

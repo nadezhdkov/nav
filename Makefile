@@ -43,6 +43,7 @@ doctor: ## Check the toolchain Navarch needs
 	@gemini --version || echo "gemini CLI not found: the gemini-cli adapter will not work"
 	@agy --version || echo "agy CLI not found: the antigravity adapter will not work"
 	@codex --version || echo "codex CLI not found: the codex adapter will not work"
+	@copilot --version || echo "copilot CLI not found: the copilot adapter will not work"
 	@ollama --version || echo "ollama not found: native runs need another provider"
 
 clean: ## Remove installed dependencies and caches

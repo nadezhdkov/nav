@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { AntigravityAdapter, type AntigravityOptions } from "@navarch/adapter-antigravity";
 import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@navarch/adapter-claude-code";
 import { CodexAdapter, type CodexOptions } from "@navarch/adapter-codex";
+import { CopilotAdapter, type CopilotOptions } from "@navarch/adapter-copilot";
 import { GeminiCliAdapter, type GeminiCliOptions } from "@navarch/adapter-gemini-cli";
 import { NativeAdapter, type NativeOptions, type Provider } from "@navarch/adapter-native";
 import { AgentRuntime } from "@navarch/agent-runtime";
@@ -28,6 +29,7 @@ export type DaemonOptions = {
     "gemini-cli"?: GeminiCliOptions;
     antigravity?: AntigravityOptions;
     codex?: CodexOptions;
+    copilot?: CopilotOptions;
     native?: Partial<NativeOptions>;
   };
   port?: number;
@@ -148,6 +150,7 @@ export function buildAdapters(
       () => new AntigravityAdapter({ command: a.antigravity.command, homeRoot: join(home, "agents", "antigravity"), ...overrides.antigravity }),
     ],
     ["codex", a.codex.enabled, () => new CodexAdapter({ command: a.codex.command, ...overrides.codex })],
+    ["copilot", a.copilot.enabled, () => new CopilotAdapter({ command: a.copilot.command, ...overrides.copilot })],
     [
       "native",
       a.native.enabled,

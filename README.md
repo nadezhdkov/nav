@@ -4,7 +4,7 @@
   <img src="docs/assets/navar_bunny_mascot.png" alt="Navarch mascot: a blocky green-haired character in a bunny hood, waving" width="280">
 </p>
 
-A *navarch* commanded a fleet. Navarch is a local-first coordination layer that runs coding agents (Claude Code, Gemini CLI, Codex, or local and remote models through its own agent loop) in isolated git worktrees, records everything as events, and lets you follow and control the work from a CLI, `navarch` or its short alias `nav` (Web UI and mobile come later). Formerly VECTR (ADR 0008).
+A *navarch* commanded a fleet. Navarch is a local-first coordination layer that runs coding agents (Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, or local and remote models through its own agent loop) in isolated git worktrees, records everything as events, and lets you follow and control the work from a CLI, `navarch` or its short alias `nav` (Web UI and mobile come later). Formerly VECTR (ADR 0008).
 
 Status: **Phase 1** in progress. A run can start from a GitHub issue and end in a verified draft PR (`navarch run --issue owner/repo#N`), with the agent working in its own worktree. See [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md) for the full spec (Portuguese) and [`docs/adr/`](docs/adr) for decisions.
 
@@ -18,6 +18,7 @@ Status: **Phase 1** in progress. A run can start from a GitHub issue and end in 
   - the `gemini` CLI with `GEMINI_API_KEY` from AI Studio;
   - the Antigravity CLI (`agy`), logged in with a Google account;
   - the `codex` CLI after `codex login`;
+  - the GitHub Copilot CLI (`copilot`), logged in with an account that has a Copilot plan;
   - Ollama with a model that supports tool calls.
 
 ## Quick start
@@ -40,6 +41,7 @@ Pick the agent with `--adapter`:
 navarch run --adapter gemini-cli "Fix the typo in README.md"
 navarch run --adapter antigravity --model gemini-3.8-flash-medium "Fix the typo in README.md"   # models: agy models
 navarch run --adapter codex "Add a unit test for parse_date"
+navarch run --adapter copilot "Add a unit test for parse_date"   # one premium request per prompt
 navarch run --adapter native --model ollama/qwen2.5:7b "Update the usage section in README.md"
 navarch run --adapter native --model openrouter/<model>:free "…"   # needs OPENROUTER_API_KEY
 ```
