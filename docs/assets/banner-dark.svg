@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="t d">
+<title id="t">Navarch</title><desc id="d">Navarch orchestrates a fleet of coding agents: triage, plan, implement, verify and review, ending in a draft pull request.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#05080F"/><stop offset="1" stop-color="#0B1220"/></linearGradient>
+  <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse"><path d="M24 0H0V24" fill="none" stroke="#94A3B8" stroke-opacity="0.07" stroke-width="1"/></pattern>
+  <filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8FA3BF"/></marker>
+</defs>
+<rect width="1280" height="400" rx="18" fill="url(#bg)"/>
+<rect width="1280" height="400" rx="18" fill="url(#grid)"/>
+<g fill="none" stroke="#22D3EE" stroke-opacity="0.1" stroke-width="1.2"><circle cx="1030" cy="200" r="150"/><circle cx="1030" cy="200" r="230" stroke-dasharray="3 7"/><path d="M1030 -40V440M760 200H1290" stroke-dasharray="2 8"/></g>
+<g filter="url(#glow)"><circle cx="130" cy="200" r="34" fill="none" stroke="#22D3EE" stroke-width="4"/>
+<circle cx="130" cy="200" r="10.88" fill="#22D3EE"/>
+<line x1="130.0" y1="189.1" x2="130.0" y2="150.7" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="124.0" y="144.7" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="139.4" y1="194.6" x2="172.7" y2="175.3" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="166.7" y="169.3" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="139.4" y1="205.4" x2="172.7" y2="224.7" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="166.7" y="218.7" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="130.0" y1="210.9" x2="130.0" y2="249.3" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="124.0" y="243.3" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="120.6" y1="205.4" x2="87.3" y2="224.7" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="81.3" y="218.7" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="120.6" y1="194.6" x2="87.3" y2="175.3" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="81.3" y="169.3" width="12" height="12" rx="3.5" fill="#22D3EE"/></g>
+<text x="210" y="214" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="76" font-weight="800" letter-spacing="-2" fill="#E6EDF7">Navarch</text>
+<text x="214" y="258" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="19" fill="#8FA3BF">orchestrate your fleet of coding agents</text>
+<text x="214" y="290" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#8FA3BF" opacity="0.8">issue → plan → approval → worktree → verify → review → draft PR</text>
+<g filter="url(#glow)"><rect x="800" y="168" width="160" height="64" rx="14" fill="#0E1626" stroke="#22D3EE" stroke-width="2.2"/></g>
+<g transform="translate(812,186) scale(0.42)"><circle cx="30" cy="33" r="22" fill="none" stroke="#22D3EE" stroke-width="4"/>
+<circle cx="30" cy="33" r="7.04" fill="#22D3EE"/>
+<line x1="30.0" y1="26.0" x2="30.0" y2="1.1" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="24.0" y="-4.9" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="36.1" y1="29.5" x2="57.6" y2="17.1" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="51.6" y="11.1" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="36.1" y1="36.5" x2="57.6" y2="48.9" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="51.6" y="42.9" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="30.0" y1="40.0" x2="30.0" y2="64.9" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="24.0" y="58.9" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="23.9" y1="36.5" x2="2.4" y2="48.9" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="-3.6" y="42.9" width="12" height="12" rx="3.5" fill="#22D3EE"/>
+<line x1="23.9" y1="29.5" x2="2.4" y2="17.0" stroke="#22D3EE" stroke-width="4" stroke-linecap="round"/>
+<rect x="-3.6" y="11.0" width="12" height="12" rx="3.5" fill="#22D3EE"/></g>
+<text x="844" y="198" font-family="Inter, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#E6EDF7">navarchd</text>
+<text x="844" y="216" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="11" fill="#8FA3BF">policy · events</text>
+<path d="M960 200 C 1010 200, 965 70, 1037 70" fill="none" stroke="#34D399" stroke-opacity="0.75" stroke-width="1.8"/>
+<circle r="3.2" fill="#34D399" filter="url(#glow)"><animateMotion dur="2.40s" repeatCount="indefinite" path="M960 200 C 1010 200, 965 70, 1037 70"/></circle>
+<rect x="1039" y="50" width="132" height="40" rx="10" fill="#0E1626" stroke="#34D399" stroke-width="1.8"/>
+<circle cx="1057" cy="70" r="5" fill="#34D399"/>
+<text x="1069" y="75" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#E6EDF7">triage</text>
+<path d="M960 200 C 1010 200, 1010 140, 1082 140" fill="none" stroke="#A78BFA" stroke-opacity="0.75" stroke-width="1.8"/>
+<circle r="3.2" fill="#A78BFA" filter="url(#glow)"><animateMotion dur="2.75s" repeatCount="indefinite" path="M960 200 C 1010 200, 1010 140, 1082 140"/></circle>
+<rect x="1084" y="120" width="132" height="40" rx="10" fill="#0E1626" stroke="#A78BFA" stroke-width="1.8"/>
+<circle cx="1102" cy="140" r="5" fill="#A78BFA"/>
+<text x="1114" y="145" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#E6EDF7">plan</text>
+<path d="M960 200 C 1010 200, 1030 212, 1102 212" fill="none" stroke="#F59E0B" stroke-opacity="0.75" stroke-width="1.8"/>
+<circle r="3.2" fill="#F59E0B" filter="url(#glow)"><animateMotion dur="3.10s" repeatCount="indefinite" path="M960 200 C 1010 200, 1030 212, 1102 212"/></circle>
+<rect x="1104" y="192" width="132" height="40" rx="10" fill="#0E1626" stroke="#F59E0B" stroke-width="1.8"/>
+<circle cx="1122" cy="212" r="5" fill="#F59E0B"/>
+<text x="1134" y="217" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#E6EDF7">implement</text>
+<path d="M960 200 C 1010 200, 1010 284, 1082 284" fill="none" stroke="#38BDF8" stroke-opacity="0.75" stroke-width="1.8"/>
+<circle r="3.2" fill="#38BDF8" filter="url(#glow)"><animateMotion dur="3.45s" repeatCount="indefinite" path="M960 200 C 1010 200, 1010 284, 1082 284"/></circle>
+<rect x="1084" y="264" width="132" height="40" rx="10" fill="#0E1626" stroke="#38BDF8" stroke-width="1.8"/>
+<circle cx="1102" cy="284" r="5" fill="#38BDF8"/>
+<text x="1114" y="289" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#E6EDF7">verify</text>
+<path d="M960 200 C 1010 200, 965 352, 1037 352" fill="none" stroke="#FB7185" stroke-opacity="0.75" stroke-width="1.8"/>
+<circle r="3.2" fill="#FB7185" filter="url(#glow)"><animateMotion dur="3.80s" repeatCount="indefinite" path="M960 200 C 1010 200, 965 352, 1037 352"/></circle>
+<rect x="1039" y="332" width="132" height="40" rx="10" fill="#0E1626" stroke="#FB7185" stroke-width="1.8"/>
+<circle cx="1057" cy="352" r="5" fill="#FB7185"/>
+<text x="1069" y="357" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="14" fill="#E6EDF7">review</text>
+<circle cx="1212" cy="266" r="9" fill="#34D399"/><path d="M1207.5 266 l3 3 l5.5 -6" fill="none" stroke="#0E1626" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1216 280 C 1255 264, 1280 222, 1236 216" fill="none" stroke="#8FA3BF" stroke-width="1.6" stroke-dasharray="5 5" marker-end="url(#arrow)"/>
+<path d="M1039 352 H 985" stroke="#34D399" stroke-width="1.6" fill="none" marker-end="url(#arrow)"/>
+<rect x="873" y="337" width="110" height="30" rx="15" fill="none" stroke="#34D399" stroke-width="1.6"/>
+<g transform="translate(885,344)" fill="none" stroke="#34D399" stroke-width="1.8" stroke-linecap="round"><circle cx="3" cy="2" r="2.4"/><circle cx="3" cy="14" r="2.4"/><circle cx="13" cy="14" r="2.4"/><path d="M3 4.5v7M13 11.5V7a3 3 0 0 0-3-3H7"/></g>
+<text x="909" y="357" font-family="'JetBrains Mono', 'SFMono-Regular', Menlo, Consolas, monospace" font-size="13" fill="#34D399">draft PR</text>
+</svg>
