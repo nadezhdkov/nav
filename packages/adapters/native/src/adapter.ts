@@ -24,6 +24,8 @@ export type NativeOptions = {
   defaultModel?: string;
   /** Upper bound on model calls per attempt when the task does not set one. */
   maxTurns?: number;
+  /** Longest wait for one model call (default 5 minutes), within the task's own timeout. */
+  requestTimeoutMs?: number;
 };
 
 const SYSTEM = [
@@ -123,7 +125,8 @@ export class NativeAdapter implements AgentAdapter {
       for (let turn = 1; turn <= maxTurns; turn++) {
         if (Date.now() > deadline) return failed("transient", "native agent timed out", lastText, [...usage.values()]);
         const started = Date.now();
-        const response = await chat(provider, model, messages, specs, entry.controller.signal);
+        const callTimeout = Math.min(this.options.requestTimeoutMs ?? 300_000, deadline - Date.now());
+        const response = await chat(provider, model, messages, specs, entry.controller.signal, callTimeout);
         const record = usage.get(modelId) ?? { model: modelId, tokens_in: 0, tokens_out: 0, cached_tokens: 0, cost: 0, latency_ms: 0 };
         record.tokens_in += response.usage.tokensIn;
         record.tokens_out += response.usage.tokensOut;

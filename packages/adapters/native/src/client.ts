@@ -50,12 +50,20 @@ export async function chat(
   messages: ChatMessage[],
   tools: ToolSpec[],
   signal: AbortSignal,
+  timeoutMs = 0,
 ): Promise<ChatResponse> {
+  // A free model's queue can hold a request open without ever answering; the timeout bounds one call.
+  const timeout = timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
+  const fail = (err: unknown, what: string): ModelError => {
+    if (signal.aborted) return new ModelError("cancelled", "cancelled");
+    if (timeout?.aborted) return new ModelError("transient", `no response from ${provider.baseUrl} within ${timeoutMs / 1_000}s`);
+    return new ModelError("transient", `${what} ${provider.baseUrl}: ${err instanceof Error ? err.message : String(err)}`);
+  };
   let res: Response;
   try {
     res = await fetch(`${provider.baseUrl.replace(/\/$/, "")}/chat/completions`, {
       method: "POST",
-      signal,
+      signal: timeout ? AbortSignal.any([signal, timeout]) : signal,
       headers: {
         "content-type": "application/json",
         ...(provider.apiKey ? { authorization: `Bearer ${provider.apiKey}` } : {}),
@@ -70,11 +78,15 @@ export async function chat(
       }),
     });
   } catch (err) {
-    if (signal.aborted) throw new ModelError("cancelled", "cancelled");
-    throw new ModelError("transient", `cannot reach ${provider.baseUrl}: ${err instanceof Error ? err.message : String(err)}`);
+    throw fail(err, "cannot reach");
   }
 
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (err) {
+    throw fail(err, "cannot read the response from");
+  }
   if (!res.ok) {
     const detail = errorDetail(text);
     const kind: ErrorKind =

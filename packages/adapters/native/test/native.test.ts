@@ -56,6 +56,16 @@ describe("NativeAdapter", () => {
     expect(await auth.adapter.run(auth.ctx, collect().io)).toMatchObject({ status: "failed", error: { kind: "fatal" } });
   });
 
+  it("gives up on a model call that never answers, instead of hanging the task", async () => {
+    const server = await fakeModelServer([{ hang: true }]);
+    servers.push(server);
+    const adapter = new NativeAdapter({ providers: { fake: { baseUrl: server.baseUrl } }, requestTimeoutMs: 300 });
+    const ctx = taskContext({ model: "fake/coder-1", sandbox: { id: "s", kind: "worktree", path: makeRepo(), branch: "b", baseCommit: "c" } });
+    const result = await adapter.run(ctx, collect().io);
+    expect(result).toMatchObject({ status: "failed", error: { kind: "transient" } });
+    expect(result.error?.message).toMatch(/no response .* within 0\.3s/);
+  });
+
   it("reads a provider's key when the task starts, and reports a provider without one as unavailable", async () => {
     const server = await fakeModelServer([{ content: "done" }]);
     servers.push(server);

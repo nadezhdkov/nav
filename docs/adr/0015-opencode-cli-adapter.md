@@ -28,6 +28,25 @@ The operator is logged in to the OpenCode CLI (2.0.29) with a Google account; no
 - `--session <id from step_start>` resumed the conversation (the model recalled a word from the first run); `--session ses_navarchprobe0001` failed with `FreeTierError`.
 - Free models report `cost: 0` and token counts per `step_finish`.
 
+## Incident: inherited PWD (2026-10-14, bake-off)
+
+The first bake-off runs on this adapter worked in the daemon's directory (the `free-models` development worktree) instead of their task worktrees: OpenCode takes its project directory from `$PWD`, not from the process cwd, and the adapter kit passed the daemon's `PWD` through. A `big-pickle` implementer committed three commits of new files there (nothing modified, nothing pushed; they were removed and kept as patches). The permission rules held: `external_directory` is relative to that wrong project, which is why the edits were allowed. Confirmed with a probe (cwd `pa`, `PWD=pb` → session recorded in `pb`). Fix: `CliProcesses` sets `PWD` to the task's cwd for every CLI adapter, with a kit test and an adapter assertion.
+
+## Bake-off (2026-10-14)
+
+Three small tasks on a local Node project (add `slugify`, fix compound durations in `parseDuration`, extract `countText` and add `--json`), `task` flow, one model pinned per run, scored with hidden acceptance tests. No GitHub writes.
+
+| Model | Passed | Time per task | Cost | Notes |
+|---|---|---|---|---|
+| Claude Code | 3/3 | 23–27 s | $0.47 total | |
+| Copilot | 3/3 | 36–49 s | 3 premium requests | |
+| `opencode/big-pickle` | 2/3, plus 1 minus an edge case (`" 1h "`) | 226–275 s | $0 | ran in the wrong directory (incident above), so it did not see the project's code |
+| `opencode/mimo-v2.6-flash-free` | not scored | 371–625 s | $0 | found big-pickle's commits in the shared wrong directory and stopped |
+| `openrouter/cohere/north-mini-code:free` | 1/1 finished | 83 s | $0 | a call that never answered hung the second task (fixed: per-call timeout); the third hit OpenRouter's 50 requests/day |
+| `openrouter/poolside/laguna-s-2.1:free` | 0 | — | $0 | upstream rate-limited (429) for the whole evening |
+
+After about six tasks the Zen free tier refused every call with `FreeTierError`, apparently its own limit. Free models are usable for triage and small changes when time does not matter, with the paid adapters as the fallback; they cannot carry a day's work. The OpenCode runs were not repeated after the PWD fix.
+
 ## Consequences
 
 - Zen's free models are usable with the operator's OpenCode login and no key.
