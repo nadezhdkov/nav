@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Ban, CirclePause, ExternalLink, Play } from "@lucide/vue";
+import { ArrowLeft, Ban, CirclePause, ExternalLink, FileText, Play } from "@lucide/vue";
 import type { TaskStatus } from "@navarch/contracts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -104,6 +104,11 @@ async function act(kind: "cancel" | "resume" | "pause") {
         <button v-if="canCancel(run.status)" :disabled="busy" class="tone-danger inline-flex min-h-9 items-center gap-1.5 rounded-md border px-3 text-sm disabled:opacity-60" style="color: var(--tone); border-color: color-mix(in srgb, var(--tone) 45%, transparent)" @click="act('cancel')">
           <Ban :size="14" aria-hidden="true" />{{ t("run.cancel") }}
         </button>
+        <ul v-if="run.attachments?.length" class="flex w-full flex-wrap items-center gap-1.5" :aria-label="t('run.attachments')">
+          <li v-for="a in run.attachments" :key="a.name" class="inline-flex items-center gap-1 rounded-md border border-line px-2 py-0.5 text-xs text-muted" :title="t('run.attachmentHint')">
+            <FileText :size="12" aria-hidden="true" />{{ a.name }}
+          </li>
+        </ul>
       </template>
       <p v-if="actionError || store.error" class="tone-danger w-full text-sm" style="color: var(--tone)" role="alert">{{ actionError ?? store.error }}</p>
     </header>

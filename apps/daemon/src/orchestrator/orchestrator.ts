@@ -172,6 +172,7 @@ export class Orchestrator {
           flow: { definition: flow, params: resolveParams(flow) },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
           routing,
+          ...(req.attachments?.length ? { attachments: req.attachments } : {}),
         },
       },
       ...(workItem ? [{ type: "workitem.received", run_id: runId, task_id: null, actor: system("github"), payload: workItem } as NewEvent] : []),

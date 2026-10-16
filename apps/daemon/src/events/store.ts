@@ -24,6 +24,8 @@ import {
   type QuotaView,
   type VerifyCommand,
   type WorkItemTriage,
+  attachmentInfo,
+  type RunAttachment,
 } from "@navarch/contracts";
 import { evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
@@ -217,7 +219,16 @@ export class EventStore {
       tasks: this.tasksOfRun(id),
       artifacts: artifacts.map((a) => ({ ...a })),
       team: this.teamOf(id, definition),
+      attachments: this.runAttachments(id).map(attachmentInfo),
     };
+  }
+
+  /** The documents attached to a run, from its `run.created` event. */
+  runAttachments(runId: string): RunAttachment[] {
+    const row = this.db.prepare("SELECT payload FROM events WHERE run_id = ? AND type = 'run.created' ORDER BY seq LIMIT 1").get(runId) as
+      | { payload: string }
+      | undefined;
+    return row ? ((JSON.parse(row.payload) as { attachments?: RunAttachment[] }).attachments ?? []) : [];
   }
 
   /** A run's team (ADR 0022), derived from its tasks with the Flow engine's own reading. */
