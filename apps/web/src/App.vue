@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Hand, House, Inbox, Languages, ListChecks, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff } from "@lucide/vue";
+import { Hand, House, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { authorized, client, pendingPair } from "./api/client.ts";
+import { authorized, client, pendingPair, reachable } from "./api/client.ts";
+import { isDevice } from "./api/session.ts";
 import KillSwitch from "./components/KillSwitch.vue";
 import ProjectsTree from "./components/ProjectsTree.vue";
 import PairView from "./views/PairView.vue";
@@ -21,6 +22,11 @@ const usage = useUsageStore();
 const stores = [runs, approvals, fleet, inbox, projects, usage];
 
 const offs: (() => void)[] = [];
+/** Loads everything again, for the "Try again" of the unreachable notice. */
+function retry() {
+  stores.forEach((s) => void s.load());
+}
+
 function start() {
   if (offs.length) return;
   offs.push(
@@ -100,7 +106,15 @@ const items = computed(() => {
       </div>
     </nav>
     <main class="min-w-0 flex-1 overflow-auto max-md:pb-[calc(4rem+env(safe-area-inset-bottom))]">
-      <p v-if="!connected" class="tone-warning flex items-center gap-2 border-b border-line px-4 py-1.5 text-xs md:hidden" style="color: var(--tone)" role="status">
+      <!-- The daemon does not answer: say so and why it may be, instead of empty lists (go/no-go F2). -->
+      <div v-if="!reachable" class="tone-warning m-6 rounded-lg border p-4 max-md:m-4" style="border-color: color-mix(in srgb, var(--tone) 45%, transparent)" role="alert">
+        <p class="flex items-center gap-2 font-semibold" style="color: var(--tone)"><WifiOff :size="18" aria-hidden="true" />{{ t("offline.title") }}</p>
+        <p class="mt-1 text-sm text-muted">{{ isDevice ? t("offline.phone") : t("offline.desktop") }}</p>
+        <button type="button" class="mt-3 inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-4 text-sm font-medium hover:bg-surface-2" @click="retry">
+          <RefreshCw :size="16" aria-hidden="true" />{{ t("offline.retry") }}
+        </button>
+      </div>
+      <p v-else-if="!connected" class="tone-warning flex items-center gap-2 border-b border-line px-4 py-1.5 text-xs md:hidden" style="color: var(--tone)" role="status">
         <WifiOff :size="14" aria-hidden="true" />{{ t("nav.offline") }}
       </p>
       <RouterView />

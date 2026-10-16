@@ -4,7 +4,7 @@ import { Ban, CircleAlert, ExternalLink, Inbox, Play, RefreshCw, RotateCcw, X } 
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { api, client } from "../api/client.ts";
+import { api, client, reachable } from "../api/client.ts";
 import StatusBadge from "../components/StatusBadge.vue";
 import { actionLook, filterItems, itemLook, sortItems, startable, totalEstimate, type InboxFilter } from "../lib/inbox.ts";
 import { money } from "../lib/status.ts";
@@ -154,7 +154,10 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
         </div>
       </header>
 
-      <p v-if="store.error" class="tone-danger px-6 py-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+      <template v-if="store.error">
+        <!-- Unreachable: App shows why; repeating the raw error here would only add noise. -->
+        <p v-if="reachable" class="tone-danger px-6 py-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+      </template>
       <p v-else-if="!store.view" class="px-6 py-6 text-muted">{{ t("inbox.loading") }}</p>
       <div v-else-if="!projects.projects.length" class="m-6 rounded-lg border border-dashed border-line p-6 text-center text-muted max-md:m-4">
         <p>{{ t("inbox.noProjects") }}</p>

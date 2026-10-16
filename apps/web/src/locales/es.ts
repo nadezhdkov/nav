@@ -3,6 +3,12 @@ import type { Messages } from "./en.ts";
 /** Spanish. Run, Flow and PR stay as in the spec's glossary (§4). */
 export const es: Messages = {
   app: { name: "Navarch", tagline: "orquesta tu flota de agentes de código" },
+  offline: {
+    title: "No se puede contactar con Navarch",
+    phone: "Este teléfono no llega al ordenador que ejecuta Navarch. Comprueba que Tailscale esté conectado en el teléfono y pueda funcionar en segundo plano, y que el ordenador esté encendido.",
+    desktop: "El daemon de Navarch no responde. Comprueba que esté en marcha: navarch daemon status.",
+    retry: "Reintentar",
+  },
   nav: { home: "Inicio", usage: "Uso", settings: "Ajustes", device: "Dispositivo", stop: "Detener", runs: "Runs", fleet: "Fleet", approvals: "Aprobaciones", live: "En vivo", offline: "Reconectando", main: "Navegación principal", language: "Idioma", inbox: "Bandeja", projects: "Proyectos", activeRuns: "{n} run(s) activa(s)", noActiveRuns: "Ninguna run activa" },
   token: {
     title: "Conectar con navarchd",

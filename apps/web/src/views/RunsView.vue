@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reachable } from "../api/client.ts";
 import { useI18n } from "vue-i18n";
 import StatusBadge from "../components/StatusBadge.vue";
 import { ago, money, runLook, runTitle } from "../lib/status.ts";
@@ -17,9 +18,12 @@ function repoName(path: string): string {
 <template>
   <section class="p-6 max-md:p-4">
     <h1 class="mb-4 text-xl font-semibold">{{ t("runs.title") }}</h1>
-    <p v-if="store.error" class="tone-danger mb-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+    <template v-if="store.error">
+      <!-- Unreachable: App shows why; repeating the raw error here would only add noise. -->
+      <p v-if="reachable" class="tone-danger mb-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+    </template>
     <p v-if="!store.loaded" class="text-muted">{{ t("runs.loading") }}</p>
-    <p v-else-if="!store.runs.length" class="rounded-lg border border-dashed border-line p-8 text-center text-muted">
+    <p v-else-if="!store.error && !store.runs.length" class="rounded-lg border border-dashed border-line p-8 text-center text-muted">
       {{ t("runs.empty") }}
     </p>
     <ul v-else class="divide-y divide-line rounded-lg border border-line bg-surface md:hidden">
