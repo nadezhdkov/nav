@@ -41,6 +41,7 @@ import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
+import { ownsWorktree } from "../orchestrator/worktrees.ts";
 import { ConciergeError } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
@@ -366,7 +367,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const parsed = DecideApprovalRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const id = (req.params as { id: string }).id;
-    return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, actorOf(req));
+    return daemon.orchestrator.decideApproval(id, parsed.data.decision, parsed.data.reason, actorOf(req), parsed.data.choice);
   });
 
   // Concierge (ADR 0016): act tools only propose; a proposal runs when the operator decides it here.
@@ -439,9 +440,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const records = daemon.store.taskRecordsOfRun(run.id);
     const named = taskId === undefined ? undefined : records.find((t) => t.id === taskId);
     if (taskId !== undefined && !named) return "no_task";
-    const task = named?.sandbox_path ? named : records.find((t) => t.sandbox_path && !t.team?.own_worktree) ?? records.filter((t) => t.sandbox_path).at(-1);
+    const task = named?.sandbox_path ? named : records.find((t) => t.sandbox_path && !ownsWorktree(t)) ?? records.filter((t) => t.sandbox_path).at(-1);
     const path = task?.sandbox_path ?? null;
-    const forked = task?.team?.own_worktree
+    const forked = task && ownsWorktree(task)
       ? (daemon.store.events({ runId: run.id }).filter((e) => e.type === "sandbox.created" && e.task_id === task.id).at(-1)?.payload as { base_commit?: string } | undefined)?.base_commit
       : undefined;
     const baseCommit = forked ?? run.base_commit;

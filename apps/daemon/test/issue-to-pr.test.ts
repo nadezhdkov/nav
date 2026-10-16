@@ -212,6 +212,27 @@ describe("issue → verified draft PR", () => {
     expect(events.find((e) => e.type === "flow.node.skipped")?.payload).toMatchObject({ node_id: "approve_plan" });
   });
 
+  it("opens the PR of a compete run with the winner's checks and a Compete section (ADR 0031)", async () => {
+    const { repo, gitUrl, bare } = project("verify:\n  - name: answer\n    run: test -f answer.txt\n");
+    const { api, gh, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "compete" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7", flow: "compete", budget: 2, params: { max_fix_iterations: 1 } });
+    expect(created.status).toBe(201);
+    await waitRun(created.body.id, (r) => r.status === "done");
+    expect(gh.pulls).toHaveLength(1);
+    const body = gh.pulls[0]!.body;
+    expect(body).toContain("Competitor c2 done.");
+    expect(body).toContain("## Compete");
+    expect(body).toContain("3 agents implemented this issue; this PR carries **c2**, ranked first by the judge");
+    expect(body).toContain("| c2 ✅ | claude-code · fake-model | #1, 8/10: c2 is the smaller change. |");
+    expect(body).toContain("| c3 | claude-code · fake-model | out: checks still failed after 1 iteration(s)");
+    // The checks shown are the winner's, not the last competitor's that failed.
+    expect(body).toContain("| answer | `test -f answer.txt` | ✅ passed |");
+    const branch = `navarch/${created.body.id}/compete`;
+    expect(git(bare, "ls-tree", "--name-only", branch).split("\n").sort()).toEqual([".navarch", "README.md", "answer.txt", "c2.txt"]);
+    // Losing branches stay local.
+    expect(git(bare, "for-each-ref", "--format=%(refname)", "refs/heads").split("\n").sort()).toEqual(["refs/heads/main", `refs/heads/${branch}`]);
+  });
+
   it("fails the run without a PR when a required check fails, using the checks committed at the base", async () => {
     const { repo, gitUrl, bare } = project("verify:\n  - name: test\n    run: echo '2 failed'; exit 1\n");
     // An uncommitted edit in the clone must not replace the committed checks.

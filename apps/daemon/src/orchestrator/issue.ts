@@ -57,6 +57,14 @@ export type PrBodyInput = {
   cost: number;
   models: string[];
   runId: string;
+  /** Compete mode (ADR 0031): who competed, how the judge ranked them and who chose the winner. */
+  compete?: {
+    winner: string;
+    chosen_by: "judge" | "user" | "only_finalist";
+    judge_summary: string | null;
+    judge: string | undefined;
+    competitors: { key: string; agent: string | undefined; state: string; reason: string | null; rank: number | null; score: number | null; judge_reason: string | null }[];
+  };
 };
 
 /** PR body (spec §6.7.5): issue, summary, files, verification, evidence, cost, and 🔴 items. */
@@ -83,6 +91,7 @@ export function prBody(input: PrBodyInput): string {
   }
   if (input.iterations && input.iterations > 1) out.push("", `Verification passed after ${input.iterations} implementation attempts.`);
   out.push("");
+  if (input.compete) out.push(...competeLines(input.compete));
   if (input.review?.trim()) out.push("## Review", "", input.review.trim(), "", ...(input.agents?.reviewer ? [by("Reviewed", input.agents.reviewer)!, ""] : []));
   const red = [...(report?.warnings ?? ["unverified: no verification report"]), ...(input.review === undefined ? ["not reviewed by an agent"] : [])];
   if (red.length) out.push("## 🔴 Needs human attention", "", ...red.map((w) => `- ${w}`), "");
@@ -90,4 +99,23 @@ export function prBody(input: PrBodyInput): string {
   out.push("## Run", "", `- Run: \`${input.runId}\``, `- Cost: $${input.cost.toFixed(2)} · Models: ${models}`, "");
   out.push("_Opened as a draft by Navarch. Review before marking it ready._");
   return out.join("\n");
+}
+
+function competeLines(c: NonNullable<PrBodyInput["compete"]>): string[] {
+  const chosen = c.chosen_by === "user" ? "chosen by the user over the judge's ranking" : c.chosen_by === "only_finalist" ? "the only competitor whose checks passed" : `ranked first by the judge${c.judge ? ` (${c.judge})` : ""}`;
+  const rows = [...c.competitors].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)).map((x) => {
+    const result = x.state === "finalist" ? (x.rank ? `#${x.rank}, ${x.score}/10: ${x.judge_reason ?? ""}` : "checks passed") : `out: ${x.reason ?? x.state}`;
+    return `| ${x.key}${x.key === c.winner ? " ✅" : ""} | ${x.agent ?? "?"} | ${result.replace(/\|/g, "\\|").replace(/\n/g, " ")} |`;
+  });
+  return [
+    "## Compete",
+    "",
+    `${c.competitors.length} agents implemented this issue; this PR carries **${c.winner}**, ${chosen}.`,
+    ...(c.judge_summary ? ["", `> ${c.judge_summary.replace(/\n/g, " ")}`] : []),
+    "",
+    "| Competitor | Agent | Result |",
+    "|---|---|---|",
+    ...rows,
+    "",
+  ];
 }

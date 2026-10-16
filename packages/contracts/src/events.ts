@@ -2,6 +2,7 @@ import { z } from "zod";
 import { FlowDefinition } from "./flow.ts";
 import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
+import { CompeteTaskRef } from "./compete.ts";
 import { TeamTaskRef } from "./team.ts";
 import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
@@ -136,6 +137,10 @@ export const EventPayloads = {
     team: TeamTaskRef.optional(),
     /** For team members: the adapter or catalog entry the lead prefers, tried first by the router. */
     prefer: z.string().optional(),
+    /** The compete node this task is part of (ADR 0031). */
+    compete: CompeteTaskRef.optional(),
+    /** For approval nodes that pick among options: what the approver may choose, the default first. */
+    choices: z.array(z.string()).min(1).optional(),
   }),
   "task.status_changed": z.object({
     from: TaskStatus,
@@ -277,11 +282,15 @@ export const EventPayloads = {
     reason: z.string(),
     /** What will happen, shown to whoever decides. */
     summary: z.string(),
+    /** Options the approver may pick when approving, the default first (ADR 0031). */
+    choices: z.array(z.string()).min(1).optional(),
   }),
   "approval.decided": z.object({
     approval_id: z.string(),
     decision: z.enum(["approved", "rejected"]),
     reason: z.string().optional(),
+    /** One of the request's choices, picked when approving. */
+    choice: z.string().optional(),
   }),
   /** A node whose `when` was false; the flow continues with the next one. */
   "flow.node.skipped": z.object({ node_id: z.string(), reason: z.string() }),

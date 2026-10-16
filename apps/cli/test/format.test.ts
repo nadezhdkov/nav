@@ -72,6 +72,8 @@ describe("Phase 1 output", () => {
       summary: "Push navarch/run_1/implement and open a draft PR on acme/widgets for issue #7.",
       status: "pending",
       decision_reason: null,
+      choices: [],
+      choice: null,
       created_at: "2026-10-14T19:34:47.558Z",
       decided_at: null,
     };
@@ -83,6 +85,11 @@ describe("Phase 1 output", () => {
     // A plan keeps its lines while it waits for a decision.
     const plan = formatApprovals([{ ...a, action: "flow.approval", summary: "Review:\n# Plan\n- add hello.txt" }]);
     expect(plan).toContain("\n  # Plan\n  - add hello.txt");
+    // A pick among competitors names the choices and the default (ADR 0031).
+    const pick = formatApprovals([{ ...a, action: "flow.approval", choices: ["c2", "c1"] }]);
+    expect(pick).toContain("choices: c2, c1 (default c2)");
+    expect(pick).toContain("navarch approve apr_1 [--pick <choice>]");
+    expect(formatApprovals([{ ...a, status: "approved", choices: ["c2", "c1"], choice: "c1" }])).toContain("picked: c1");
   });
 
   it("summarises verification and PR events", () => {

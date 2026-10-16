@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Bot, Flag, GitPullRequestDraft, Hand, Users, Zap } from "@lucide/vue";
+import { Bot, Flag, GitPullRequestDraft, Hand, Swords, Users, Zap } from "@lucide/vue";
 import { Handle, Position } from "@vue-flow/core";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
@@ -9,7 +9,7 @@ import { nodeLook } from "../lib/status.ts";
 const props = defineProps<{ data: GraphNode }>();
 const { t } = useI18n();
 
-const kindIcon = { trigger: Flag, agent: Bot, action: Zap, github: GitPullRequestDraft, approval: Hand, loop: Bot, team: Users };
+const kindIcon = { trigger: Flag, agent: Bot, action: Zap, github: GitPullRequestDraft, approval: Hand, loop: Bot, team: Users, compete: Swords };
 const look = computed(() => nodeLook[props.data.state]);
 const gate = computed(() => props.data.kind === "approval" || props.data.state === "waiting_approval");
 const live = computed(() => props.data.state === "running" || props.data.state === "waiting_approval");

@@ -1,0 +1,35 @@
+# Compete mode (ADR 0031): the same task goes to N agents, each in its own worktree with its own
+# implement ⇄ verify loop. A judge ranks the ones whose checks passed, a human confirms or picks
+# another winner below autonomy level 3, and the winner is merged into the run's worktree. Then a
+# review, and a draft PR for issue runs. Costs about N implementations: it needs `--budget`.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: compete
+  description: Several agents implement the same task in parallel; a judge ranks the results that pass the checks and the best one becomes the change.
+params:
+  competitors: { type: int, default: 3 }
+  max_fix_iterations: { type: int, default: 2 }
+
+nodes:
+  - id: compete
+    type: compete
+    competitors: ${{ params.competitors }}
+    max_fix_iterations: ${{ params.max_fix_iterations }}
+    judge: { profile: judge }
+    approve_pick: ${{ project.autonomy_level < 3 }}
+
+  - id: review
+    type: agent
+    profile: reviewer
+    inputs:
+      implementation: ${{ nodes.compete.outputs.summary }}
+
+  - id: open_pr
+    type: github
+    when: ${{ project.work_item }}
+    uses: pr.create
+    with: { draft: true }
+
+edges:
+  - compete -> review -> open_pr

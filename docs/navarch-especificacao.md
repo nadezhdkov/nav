@@ -1426,7 +1426,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 ### Fase 2 — Flow Studio e orquestração avançada (4–6 semanas)
 
-> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029).
+> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031).
 
 **Escopo**
 - Editor visual com validação, simulação, versionamento.

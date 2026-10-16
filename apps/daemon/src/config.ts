@@ -71,9 +71,9 @@ const Routing = z
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
       .prefault({}),
-    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", lead: "expert", researcher: "fast" }),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", lead: "expert", researcher: "fast", judge: "expert" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
-    different_provider: z.array(z.string()).default(["reviewer"]),
+    different_provider: z.array(z.string()).default(["reviewer", "judge"]),
     /** A candidate whose quota window is at least this used goes after the others in its tier (ADR 0023). */
     quota_reserve: z.number().min(0).max(1).default(0.9),
     /** A candidate with at least 4 tasks in 24 h failing at this rate or more goes after the others. */

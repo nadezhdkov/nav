@@ -43,6 +43,27 @@ describe("route", () => {
     expect(d.reason).toContain("escalated to standard after failed verification");
   });
 
+  it("spreads competitors over providers, then over entries (ADR 0031)", () => {
+    const wide: RouterConfig = {
+      ...config,
+      models: { ...config.models, "claude-haiku": { adapter: "claude-code", model: "haiku", provider: "anthropic", status: "active" } },
+      tiers: { ...config.tiers, standard: ["claude-code", "claude-haiku", "copilot"] },
+    };
+    const other = route(wide, req({ spread: ["claude-code"] }));
+    expect(other.chosen?.id).toBe("copilot");
+    expect(other.reason).toBe("implementer needs standard; first usable in tier standard, a provider no other competitor uses (instead of claude-code)");
+    const entry = route(wide, req({ spread: ["claude-code", "copilot"] }));
+    expect(entry.chosen?.id).toBe("claude-haiku");
+    expect(entry.reason).toContain("an agent no other competitor uses (no other provider usable)");
+    const all = route(wide, req({ spread: ["claude-code", "claude-haiku", "copilot"] }));
+    expect(all.chosen?.id).toBe("claude-code");
+    expect(all.reason).toContain("every usable agent already competes");
+    expect(route(wide, req({ prefer: "copilot", preferredBy: "its first iteration" })).reason).toBe("preferred by its first iteration (copilot)");
+    // A held-back entry of another provider still comes after a fresh one already competing.
+    const busy = route({ ...wide, quota_reserve: 0.9 }, req({ spread: ["claude-code"], quotaUse: [{ adapter: "copilot", window: "month", utilization: 0.95 }] }));
+    expect(busy.chosen?.id).toBe("claude-haiku");
+  });
+
   it("skips exhausted quotas, excluded entries and disabled adapters, with reasons", () => {
     const d = route(
       { ...config, tiers: { ...config.tiers, fast: ["codex", "copilot", "claude-code"] } },

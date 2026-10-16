@@ -32,6 +32,8 @@ export const CreateRunRequest = z
     flow: z.string().regex(/^[a-z][a-z0-9-]*$/).optional(),
     /** Small text documents (a spec, notes) every agent of the run reads after its task. */
     attachments: RunAttachments.optional(),
+    /** Values for the Flow's params, checked against their declared types (ADR 0031). */
+    params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
   })
   .refine((r) => r.prompt || r.issue, { message: "a run needs a prompt or an issue" });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
@@ -132,6 +134,42 @@ export const TeamView = z.object({
 });
 export type TeamView = z.infer<typeof TeamView>;
 
+/** One competitor of a compete node (ADR 0031). */
+export const CompetitorView = z.object({
+  key: z.string(),
+  /** Its latest implement task. */
+  task_id: z.string().nullable(),
+  status: z.string(),
+  /** Working, a finalist (its checks passed), or out. */
+  state: z.enum(["working", "finalist", "out"]),
+  /** Why it is out. */
+  reason: z.string().nullable(),
+  adapter: z.string().nullable(),
+  model: z.string().nullable(),
+  iterations: z.number().int(),
+  branch: z.string().nullable(),
+  summary: z.string().nullable(),
+  /** 1 for the judge's first; null until judged or when not a finalist. */
+  rank: z.number().int().nullable(),
+  score: z.number().nullable(),
+  judge_reason: z.string().nullable(),
+});
+export type CompetitorView = z.infer<typeof CompetitorView>;
+
+/** A run's compete node: competitors, the judge's verdict and the winner. */
+export const CompeteView = z.object({
+  node_id: z.string(),
+  competitors: z.array(CompetitorView),
+  judge_task_id: z.string().nullable(),
+  judge_summary: z.string().nullable(),
+  /** Why the judge's latest answer was not a valid ranking. */
+  judge_error: z.string().nullable(),
+  winner: z.string().nullable(),
+  chosen_by: z.enum(["judge", "user", "only_finalist"]).nullable(),
+  adopted: z.boolean(),
+});
+export type CompeteView = z.infer<typeof CompeteView>;
+
 export const RunDetail = RunView.extend({
   /** Null for runs created before Flows. */
   flow_definition: RunFlow.nullable(),
@@ -141,6 +179,8 @@ export const RunDetail = RunView.extend({
   ),
   /** Set for runs whose Flow has a `team` node (ADR 0022). */
   team: TeamView.nullable(),
+  /** Set for runs whose Flow has a `compete` node (ADR 0031). */
+  compete: CompeteView.nullable(),
   /** Documents attached to the run, by name and size; their text is in `run.created`. */
   attachments: z.array(AttachmentInfo),
 });
@@ -161,6 +201,10 @@ export const ApprovalView = z.object({
   /** `cancelled` when the run ended before anyone decided. */
   status: ApprovalStatus,
   decision_reason: z.string().nullable(),
+  /** Options to pick when approving, the default first; empty for a plain yes or no (ADR 0031). */
+  choices: z.array(z.string()),
+  /** The option picked, once approved with one. */
+  choice: z.string().nullable(),
   created_at: z.string(),
   decided_at: z.string().nullable(),
 });
@@ -169,6 +213,8 @@ export type ApprovalView = z.infer<typeof ApprovalView>;
 export const DecideApprovalRequest = z.object({
   decision: z.enum(["approve", "reject"]),
   reason: z.string().optional(),
+  /** One of the approval's choices; only with `approve`. */
+  choice: z.string().min(1).optional(),
 });
 export type DecideApprovalRequest = z.infer<typeof DecideApprovalRequest>;
 
@@ -329,6 +375,7 @@ export type RunProgress = z.infer<typeof RunProgress>;
 export const FleetRun = RunView.extend({
   agents: z.array(FleetAgent),
   team: TeamView.nullable(),
+  compete: CompeteView.nullable(),
   /** Null for runs created before Flows. */
   progress: RunProgress.nullable(),
   /** The registered project whose path is the run's `repo_path` (ADR 0021). */

@@ -35,6 +35,18 @@ describe("parallel member worktrees (ADR 0029)", () => {
     expect(again).toMatchObject({ reused: true, baseCommit: a.baseCommit });
   });
 
+  it("forks from the base when the shared worktree does not exist yet, also when reused (ADR 0031)", async () => {
+    const repoPath = makeRepo();
+    const home = tempHome();
+    const baseCommit = head(repoPath);
+    const missing = { id: "", kind: "worktree" as const, path: join(home, "nowhere"), branch: "navarch/run_2/compete", baseCommit };
+    const fork = () => forkWorktree({ sandboxId: "sbx_c1", repoPath, runId: "run_2", taskSlug: "compete-c1", baseCommit, home, from: missing });
+    const c1 = await fork();
+    expect(c1).toMatchObject({ branch: "navarch/run_2/compete-c1", baseCommit, reused: false });
+    writeFileSync(join(c1.path, "c1.txt"), "c1\n");
+    expect(await fork()).toMatchObject({ reused: true, baseCommit });
+  });
+
   it("merges a member's branch, committing its work as Navarch; merging again is a no-op", async () => {
     const { repoPath, shared, fork } = await setup();
     const a = await fork("a");

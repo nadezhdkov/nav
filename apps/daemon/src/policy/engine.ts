@@ -95,6 +95,21 @@ export const defaultRules: PolicyRule[] = [
     reason: "merging a team member's work requires approval below autonomy level 2",
   },
   {
+    match: (r) => r.action === "compete.compare",
+    effect: "allow",
+    reason: "comparing competitors only reads their branches (ADR 0031)",
+  },
+  {
+    match: (r) => r.action === "compete.adopt" && r.context.autonomyLevel >= 2,
+    effect: "allow",
+    reason: "autonomy level 2+ merges the winning competitor into the run's worktree (ADR 0031)",
+  },
+  {
+    match: (r) => r.action === "compete.adopt",
+    effect: "require_approval",
+    reason: "merging the winning competitor requires approval below autonomy level 2",
+  },
+  {
     match: (r) => r.action === "run.message" && r.actor.kind === "user",
     effect: "allow",
     reason: "the user may instruct their own runs (ADR 0019)",

@@ -134,6 +134,11 @@ export class Orchestrator {
     const flowName = req.flow ?? (workItem ? "fix-issue" : "task");
     const flow = this.flows.get(flowName);
     if (!flow) throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
+    const params = flowParams(flow, flowName, req.params);
+    // N competitors multiply the cost: Compete mode needs a budget the user chose (ADR 0031).
+    if (flow.nodes.some((n) => n.type === "compete") && req.budget === undefined) {
+      throw new OrchestratorError("budget_required", `flow "${flowName}" runs several agents on the same task; give it a run budget (--budget <usd>)`);
+    }
     // A PR node that runs only `when` something holds (e.g. `project.work_item`) does not need an issue.
     const usesGitHub = flow.nodes.some((n) => n.type === "github" && !n.when);
     if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
@@ -169,7 +174,7 @@ export class Orchestrator {
           ...(workItem ? { work_item: { source: workItem.source, repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
           verify: project.verify,
           protected_paths: project.protected_paths,
-          flow: { definition: flow, params: resolveParams(flow) },
+          flow: { definition: flow, params },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
           routing,
           ...(req.attachments?.length ? { attachments: req.attachments } : {}),
@@ -244,9 +249,11 @@ export class Orchestrator {
           }
           const adapter = agent ? (node.adapter ?? run.adapter) : node.type === "github" ? "github" : node.type === "approval" ? "human" : "runner";
           const team = step.start.team;
+          const compete = step.start.compete;
           // A node's own `adapter` pins it; otherwise a routed run lets the Model Router choose at dispatch.
-          // Team members are routed whenever routing is on, so the lead's preference counts (ADR 0022).
-          const routed = agent && !node.adapter && (run.routing === "auto" || (team?.role === "member" && this.config.routing.enabled));
+          // Team members are routed whenever routing is on, so the lead's preference counts (ADR 0022),
+          // and so are competitors, which must differ (ADR 0031).
+          const routed = agent && !node.adapter && (run.routing === "auto" || ((team?.role === "member" || compete?.role === "competitor") && this.config.routing.enabled));
           const inputs = node.type === "approval"
             ? Object.fromEntries(step.start.show.flatMap(({ path, value }) => (renderValue(value) ? [[path, renderValue(value)!]] : [])))
             : renderInputs(step.start.inputs);
@@ -273,6 +280,8 @@ export class Orchestrator {
                 ...(routed ? { routing: "auto" as const } : {}),
                 ...(team ? { team } : {}),
                 ...(step.start.prefer ? { prefer: step.start.prefer } : {}),
+                ...(compete ? { compete } : {}),
+                ...(step.start.choices?.length ? { choices: step.start.choices } : {}),
               },
             },
             taskStatus(runId, taskId, "pending", "ready", 0, iteration > 1 ? `iteration ${iteration}` : "node due"),
@@ -344,10 +353,17 @@ export class Orchestrator {
    * queue, where the Scheduler sees the approval and dispatches it; rejecting cancels the task and
    * the run.
    */
-  decideApproval(id: string, decision: "approve" | "reject", reason: string | undefined, actor: Actor): ApprovalView {
+  decideApproval(id: string, decision: "approve" | "reject", reason: string | undefined, actor: Actor, choice?: string): ApprovalView {
     const approval = this.store.getApproval(id);
     if (!approval) throw new OrchestratorError("not_found", `approval ${id} not found`);
     if (approval.status !== "pending") throw new OrchestratorError("conflict", `approval ${id} is already ${approval.status}`);
+    // A pick among options (ADR 0031): only when approving, and only one of the offered choices.
+    if (choice !== undefined) {
+      if (decision !== "approve") throw new OrchestratorError("invalid_request", "a choice goes with approve, not reject");
+      if (!approval.choices.includes(choice)) {
+        throw new OrchestratorError("invalid_request", approval.choices.length ? `choice must be one of: ${approval.choices.join(", ")}` : `approval ${id} has no choices`);
+      }
+    }
     const task = this.store.getTask(approval.task_id)!;
     const run = this.store.getRun(approval.run_id)!;
     const decided: NewEvent = {
@@ -355,7 +371,7 @@ export class Orchestrator {
       run_id: run.id,
       task_id: task.id,
       actor,
-      payload: { approval_id: id, decision: decision === "approve" ? "approved" : "rejected", ...(reason ? { reason } : {}) },
+      payload: { approval_id: id, decision: decision === "approve" ? "approved" : "rejected", ...(reason ? { reason } : {}), ...(choice !== undefined ? { choice } : {}) },
     };
     if (decision === "approve") {
       this.store.append([decided, taskStatus(run.id, task.id, "waiting_approval", "ready", task.attempt, "approved", undefined)]);
@@ -596,4 +612,25 @@ export function runStatus(runId: string, from: RunStatus, to: RunStatus, reason?
     actor: actor ?? system("orchestrator"),
     payload: { from, to, ...(reason ? { reason } : {}) },
   };
+}
+
+/**
+ * The Flow's params with the caller's values (ADR 0031). Each must name a declared param and fit
+ * its type; text such as `"2"` or `"true"` (from `--param`) is read as that type.
+ */
+function flowParams(flow: FlowDefinition, flowName: string, given: CreateRunRequest["params"]): Record<string, number | string | boolean> {
+  const values: Record<string, number | string | boolean> = {};
+  for (const [name, raw] of Object.entries(given ?? {})) {
+    const param = flow.params[name];
+    if (!param) {
+      const known = Object.keys(flow.params);
+      throw new OrchestratorError("invalid_request", `flow "${flowName}" has no param "${name}"${known.length ? `; params: ${known.join(", ")}` : ""}`);
+    }
+    const text = typeof raw === "string" ? raw.trim() : undefined;
+    const value = param.type === "string" ? raw : param.type === "bool" ? (text === "true" ? true : text === "false" ? false : raw) : text !== undefined && text !== "" ? Number(text) : raw;
+    const ok = param.type === "int" ? Number.isInteger(value) : param.type === "money" ? typeof value === "number" && Number.isFinite(value) && value >= 0 : param.type === "bool" ? typeof value === "boolean" : typeof value === "string";
+    if (!ok) throw new OrchestratorError("invalid_request", `param "${name}" of flow "${flowName}" must be ${param.type === "int" ? "an integer" : param.type === "money" ? "an amount" : param.type === "bool" ? "true or false" : "text"}`);
+    values[name] = value;
+  }
+  return resolveParams(flow, values);
 }

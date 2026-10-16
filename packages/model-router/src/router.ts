@@ -63,6 +63,13 @@ export type RouteRequest = {
   onlyAdapter?: string;
   /** A team lead's preference for this member (ADR 0022): a catalog id or an adapter, tried first when usable. */
   prefer?: string;
+  /** Who prefers it, for the reason; "the lead" by default. */
+  preferredBy?: string;
+  /**
+   * Catalog ids other competitors of the same compete node use (ADR 0031): entries of another
+   * provider come first, then other entries, then these.
+   */
+  spread?: string[];
   /** The smallest amount left in the run's budgets; absent or Infinity when nothing is limited (ADR 0023). */
   budgetRemaining?: number;
   /** Whether an entry's use is billed; only `metered` entries are filtered by budget. */
@@ -153,14 +160,14 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
     for (const id of preferred) {
       const skip = unusable(config, req, id);
       if (skip) {
-        skipped.push({ id, reason: `preferred by the lead; ${skip}` });
+        skipped.push({ id, reason: `preferred by ${req.preferredBy ?? "the lead"}; ${skip}` });
         continue;
       }
       const entry = config.models[id]!;
       return {
         chosen: { id, adapter: entry.adapter, ...(entry.model ? { model: entry.model } : {}), provider: entry.provider },
         tier,
-        reason: `preferred by the lead (${req.prefer})`,
+        reason: `preferred by ${req.preferredBy ?? "the lead"} (${req.prefer})`,
         candidates: [id, ...candidates.filter((c) => c !== id)],
         skipped,
       };
@@ -180,7 +187,19 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
     else ready.push(id);
   }
   // Demoted entries keep their order among themselves, after every other usable one.
-  const usable = [...ready, ...later.map((l) => l.id)];
+  let usable = [...ready, ...later.map((l) => l.id)];
+  let spreadNote = "";
+  if (req.spread?.length && usable.length) {
+    const providers = new Set(req.spread.map((id) => config.models[id]?.provider));
+    const rank = (id: string) => (!providers.has(config.models[id]!.provider) ? 0 : !req.spread!.includes(id) ? 1 : 2);
+    // Held-back entries stay after the others, whatever their provider.
+    const key = (id: string) => rank(id) + (later.some((l) => l.id === id) ? 3 : 0);
+    const first = usable[0]!;
+    usable = [...usable].sort((a, b) => key(a) - key(b));
+    const r = rank(usable[0]!);
+    spreadNote = r === 0 ? `, a provider no other competitor uses` : r === 1 ? `, an agent no other competitor uses (no other provider usable)` : `; every usable agent already competes`;
+    if (usable[0] !== first) spreadNote += ` (instead of ${first})`;
+  }
   const laterNote = later.length ? `; after the others: ${later.map((l) => `${l.id} (${l.why})`).join(", ")}` : "";
 
   let pick = usable[0];
@@ -204,7 +223,7 @@ export function route(config: RouterConfig, req: RouteRequest): RouteDecision {
     tier,
     reason: demoted
       ? `${why}; every candidate in tier ${tier} is held back, using ${pick} (${demoted.why})${providerNote}`
-      : `${why}; first usable in tier ${tier}${providerNote}${laterNote}`,
+      : `${why}; first usable in tier ${tier}${spreadNote}${providerNote}${laterNote}`,
     candidates,
     skipped,
   };

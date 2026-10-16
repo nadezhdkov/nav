@@ -113,6 +113,23 @@ describe("concierge API", () => {
     expect(events.find((e) => e.type === "concierge.action.decided")?.run_id).toBe(runs[0]!.id);
   });
 
+  it("proposes a compete run with its budget and number of competitors (ADR 0031)", async () => {
+    const repo = makeRepo();
+    const { api, conversation } = await start([
+      { tool_calls: [{ name: "start_run", args: { prompt: "add hello.txt", flow: "compete", budget: 3, competitors: 2 } }] },
+      { content: "Proposed." },
+    ]);
+    const id = await conversation(repo);
+    const turn = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "two agents should compete on hello.txt, $3 at most" });
+    const [proposal] = turn.body.proposals;
+    expect(proposal!.summary).toBe(`start a compete run in ${repo} (routed), 2 competitors, budget $3: "add hello.txt"`);
+    await api("POST", `/api/v1/concierge/conversations/${id}/proposals/${proposal!.id}`, { decision: "approve" });
+    const [run] = (await api<RunDetail[]>("GET", "/api/v1/runs")).body;
+    expect(run).toMatchObject({ flow: "compete", budget: 3 });
+    const detail = (await api<RunDetail>("GET", `/api/v1/runs/${run!.id}`)).body;
+    expect(detail.flow_definition?.params).toMatchObject({ competitors: 2 });
+  });
+
   it("attaches files from the repository to a run it starts, and nothing outside it (ADR 0028)", async () => {
     const repo = makeRepo();
     mkdirSync(join(repo, "docs"));

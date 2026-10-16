@@ -25,8 +25,16 @@ const repo = ref("");
 const cloning = ref<string | null>(null);
 const picked = computed(() => (repo.value.startsWith("github:") ? remote.value.find((r) => `github:${r.repo}` === repo.value) : undefined));
 const prompt = ref("");
-/** Team mode (ADR 0022): a lead agent delegates to other agents. Phones keep the daemon's defaults (ADR 0020). */
-const team = ref(false);
+/**
+ * How the agents work: one agent (`task`), a team with a lead (ADR 0022), or several competing
+ * on the same task (ADR 0031). Phones keep the daemon's defaults (ADR 0020).
+ */
+const mode = ref<"task" | "team" | "compete">("task");
+const flow = computed(() => (isDevice.value ? "task" : mode.value));
+/** Compete needs a budget the user chose: N agents cost about N times one. */
+const competitors = ref(3);
+const budget = ref<number | null>(null);
+const competeReady = computed(() => flow.value !== "compete" || (budget.value !== null && budget.value > 0 && competitors.value >= 2 && competitors.value <= 5));
 const busy = ref(false);
 const error = ref<string | null>(null);
 const loaded = ref(false);
@@ -100,7 +108,7 @@ onMounted(async () => {
 });
 
 async function start() {
-  if (!repo.value || !prompt.value.trim()) return;
+  if (!repo.value || !prompt.value.trim() || !competeReady.value) return;
   busy.value = true;
   error.value = null;
   try {
@@ -113,7 +121,8 @@ async function start() {
     const run = await api.startRun({
       repo_path: path,
       prompt: prompt.value.trim(),
-      ...(team.value && !isDevice.value ? { flow: "team" } : {}),
+      ...(flow.value !== "task" ? { flow: flow.value } : {}),
+      ...(flow.value === "compete" ? { budget: budget.value!, params: { competitors: competitors.value } } : {}),
       ...(attachments.value.length ? { attachments: attachments.value.map(({ name, content }) => ({ name, content })) } : {}),
     });
     // The run page shows them: the run starts either way, but issue runs there cannot open PRs.
@@ -172,15 +181,29 @@ async function start() {
         </div>
         <p v-for="msg in attachErrors" :key="msg" class="tone-danger mt-1 text-xs" style="color: var(--tone)" role="alert">{{ msg }}</p>
       </div>
-      <label v-if="!isDevice" class="flex min-h-11 items-start gap-3 rounded-lg border border-line px-3 py-2">
-        <input v-model="team" type="checkbox" class="mt-1 size-4" />
-        <span>
-          <span class="block text-sm font-medium">{{ t("newRun.team") }}</span>
-          <span class="block text-xs text-muted">{{ t("newRun.teamHint") }}</span>
-        </span>
-      </label>
-      <p class="text-xs text-muted">{{ t("newRun.note", { flow: team && !isDevice ? "team" : "task" }) }}</p>
-      <button type="submit" :disabled="busy || !prompt.trim() || !repo" class="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-bg disabled:opacity-60">
+      <fieldset v-if="!isDevice" class="space-y-2">
+        <legend class="mb-1 text-sm font-medium">{{ t("newRun.mode") }}</legend>
+        <label v-for="m in (['task', 'team', 'compete'] as const)" :key="m" class="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border px-3 py-2" :class="mode === m ? 'border-accent' : 'border-line'">
+          <input v-model="mode" type="radio" name="mode" :value="m" class="mt-1 size-4 shrink-0" />
+          <span>
+            <span class="block text-sm font-medium">{{ t(`newRun.modes.${m}`) }}</span>
+            <span class="block text-xs text-muted">{{ t(`newRun.modes.${m}Hint`) }}</span>
+          </span>
+        </label>
+        <div v-if="mode === 'compete'" class="flex flex-wrap gap-3 rounded-lg border border-line px-3 py-2">
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="font-medium">{{ t("newRun.competitors") }}</span>
+            <input v-model.number="competitors" type="number" min="2" max="5" step="1" class="min-h-11 w-24 rounded-md border border-line bg-bg px-3" />
+          </label>
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="font-medium">{{ t("newRun.budget") }}</span>
+            <input v-model.number="budget" type="number" min="0.01" step="0.5" required :placeholder="t('newRun.budgetPlaceholder')" class="min-h-11 w-32 rounded-md border border-line bg-bg px-3" />
+          </label>
+          <p class="w-full text-xs text-muted">{{ t("newRun.budgetHint", { n: competitors }) }}</p>
+        </div>
+      </fieldset>
+      <p class="text-xs text-muted">{{ flow === "compete" ? t("newRun.noteCompete") : t("newRun.note", { flow }) }}</p>
+      <button type="submit" :disabled="busy || !prompt.trim() || !repo || !competeReady" class="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-bg disabled:opacity-60">
         <Play :size="18" aria-hidden="true" />{{ cloning ? t("newRun.cloning", { repo: cloning }) : t("newRun.start") }}
       </button>
     </form>

@@ -229,6 +229,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
           action: a.action,
           reason: a.reason,
           summary: clip(a.summary, 400),
+          ...(a.choices.length ? { choices: a.choices, choice: a.choice } : {}),
         })),
     },
     {
@@ -241,7 +242,9 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         repo_path: str("Local clone to work in; defaults to the operator's current directory."),
         adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, grok, native)."),
         model: str("Pin the model, e.g. openrouter/<id> with the native adapter."),
-        flow: str("Flow name: fix-issue (default for issues), task (default for prompts) or team (a lead agent that delegates parts to other agents)."),
+        flow: str("Flow name: fix-issue (default for issues), task (default for prompts), team (a lead agent that delegates parts to other agents) or compete (several agents implement the same task and a judge picks the best; needs a budget)."),
+        budget: { type: "number", description: "Run budget in USD for billed use. Required for compete; otherwise only when the operator named one." },
+        competitors: { type: "integer", description: "For compete: how many agents compete, 2 to 5 (default 3)." },
         attach: {
           type: "array",
           items: { type: "string" },
@@ -256,7 +259,9 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         // The whole prompt: the operator confirms exactly what the agents will be told.
         const what = [optionalText(args, "issue"), optionalText(args, "prompt") && `"${optionalText(args, "prompt")}"`].filter(Boolean).join(" with ");
         const attach = textList(args, "attach");
-        return `start a ${flow} run in ${repo}${agent ? ` on ${agent}` : " (routed)"}: ${what}${attach.length ? `, attaching ${attach.join(", ")}` : ""}`;
+        const budget = typeof args.budget === "number" ? `, budget $${args.budget}` : "";
+        const competitors = typeof args.competitors === "number" ? `, ${args.competitors} competitors` : "";
+        return `start a ${flow} run in ${repo}${agent ? ` on ${agent}` : " (routed)"}${competitors}${budget}: ${what}${attach.length ? `, attaching ${attach.join(", ")}` : ""}`;
       },
       run: async (args) => {
         const repoPath = optionalText(args, "repo_path") ?? deps.cwd;
@@ -270,6 +275,8 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
           model: optionalText(args, "model"),
           flow: optionalText(args, "flow"),
           attachments,
+          ...(typeof args.budget === "number" ? { budget: args.budget } : {}),
+          ...(typeof args.competitors === "number" ? { params: { competitors: args.competitors } } : {}),
         });
         if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "request"}: ${i.message}`).join("; "));
         return orchestrator.startRun(parsed.data, deps.actor());
@@ -331,16 +338,25 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
           decision === "approve"
             ? "Propose approving a pending approval (the operator still confirms)."
             : "Propose rejecting a pending approval, with a reason.",
-        parameters: obj({ approval_id: str("Approval id"), reason: str("Why, in a few words.") }, decision === "reject" ? ["approval_id", "reason"] : ["approval_id"]),
+        parameters: obj(
+          {
+            approval_id: str("Approval id"),
+            reason: str("Why, in a few words."),
+            ...(decision === "approve" ? { choice: str("For an approval with choices (e.g. picking a competitor): the one the operator named; leave out to keep the default.") } : {}),
+          },
+          decision === "reject" ? ["approval_id", "reason"] : ["approval_id"],
+        ),
         kind: "act",
         summarize: (args) => {
           const id = String(args.approval_id);
           const approval = store.getApproval(id);
           const what = approval ? `${approval.action} for run ${approval.run_id}: ${clip(approval.summary, 200)}` : "(unknown approval)";
           const reason = optionalText(args, "reason");
-          return `${decision} ${id}, ${what}${reason ? ` (reason: ${reason})` : ""}`;
+          const choice = decision === "approve" ? (optionalText(args, "choice") ?? approval?.choices[0]) : undefined;
+          return `${decision} ${id}${choice ? ` picking ${choice}` : ""}, ${what}${reason ? ` (reason: ${reason})` : ""}`;
         },
-        run: async (args) => orchestrator.decideApproval(text(args, "approval_id"), decision, optionalText(args, "reason"), deps.actor()),
+        run: async (args) =>
+          orchestrator.decideApproval(text(args, "approval_id"), decision, optionalText(args, "reason"), deps.actor(), decision === "approve" ? optionalText(args, "choice") : undefined),
         describe: (result) => {
           const a = result as { id: string; status: string; run_id: string };
           return `${a.id} ${a.status} (run ${a.run_id})`;

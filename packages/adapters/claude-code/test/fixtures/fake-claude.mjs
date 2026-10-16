@@ -117,6 +117,31 @@ switch (scenario) {
     }
     break;
   }
+  case "compete": {
+    // Compete mode (ADR 0031): each competitor knows its key from its worktree (…-compete-c<i>).
+    // c1 and c2 write answer.txt (the check) and their own file; c3 never passes the check. The
+    // judge ranks c2 above c1, and records that it saw both diffs.
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1];
+    if (profile === "implementer") {
+      const key = /-compete-(c\d)$/.exec(process.cwd())?.[1] ?? "shared";
+      if (key === "c3") writeFileSync("wrong.txt", "c3\n");
+      else {
+        writeFileSync("answer.txt", `${key}\n`);
+        writeFileSync(`${key}.txt`, `${key}\n`);
+      }
+      result(true, `Competitor ${key} done.`);
+    } else if (profile === "judge") {
+      const saw = ["c1", "c2"].every((k) => prompt.includes(`+${k}`)) ? "both diffs" : "no diffs";
+      const ranking = [
+        { competitor: "c2", score: 8, reason: "c2 is the smaller change." },
+        { competitor: "c1", score: 6, reason: "c1 works too." },
+      ];
+      result(true, `I read ${saw}.\n\n\`\`\`navarch-judge\n${JSON.stringify({ summary: "c2 wins on size.", ranking })}\n\`\`\``);
+    } else {
+      result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });

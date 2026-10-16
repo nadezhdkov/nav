@@ -6,6 +6,8 @@ import {
   parsePayload,
   type DeviceView,
   type FleetAgent,
+  type CompeteTaskRef,
+  type CompeteView,
   type TeamTaskRef,
   type TeamView,
   type RepoView,
@@ -27,7 +29,7 @@ import {
   attachmentInfo,
   type RunAttachment,
 } from "@navarch/contracts";
-import { evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
+import { competeState, competeTaskId, evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
 import { credentialTables, dropProjections, eventsTable, projectionTables } from "./schema.ts";
 
@@ -50,7 +52,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice")) {
       this.rebuildProjections();
     }
     // After the rebuild: an older runs table has no name column to index until then.
@@ -219,6 +221,7 @@ export class EventStore {
       tasks: this.tasksOfRun(id),
       artifacts: artifacts.map((a) => ({ ...a })),
       team: this.teamOf(id, definition),
+      compete: this.competeOf(id, definition),
       attachments: this.runAttachments(id).map(attachmentInfo),
     };
   }
@@ -229,6 +232,54 @@ export class EventStore {
       | { payload: string }
       | undefined;
     return row ? ((JSON.parse(row.payload) as { attachments?: RunAttachment[] }).attachments ?? []) : [];
+  }
+
+  /** A run's compete node (ADR 0031), derived from its tasks with the Flow engine's own reading. */
+  competeOf(runId: string, flow: RunFlow | null): CompeteView | null {
+    const node = flow?.definition.nodes.find((n) => n.type === "compete");
+    if (!flow || !node || node.type !== "compete") return null;
+    const num = (v: number | string): number | undefined => {
+      try {
+        const n = typeof v === "number" ? v : Number(evaluate(parseExpr(v), { nodes: {}, params: flow.params, project: {} }));
+        return Number.isFinite(n) ? n : undefined;
+      } catch {
+        return undefined;
+      }
+    };
+    const count = num(node.competitors);
+    if (count === undefined) return null;
+    const rows = (this.db.prepare("SELECT * FROM tasks WHERE run_id = ? AND node_id LIKE ? ORDER BY rowid").all(runId, `${node.id}.%`) as TaskRow[]).map(toTaskRecord);
+    const state = competeState(node.id, count, rows.map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })), num(node.max_fix_iterations) ?? Infinity);
+    const judge = rows.filter((t) => t.node_id === competeTaskId.judge(node.id)).at(-1);
+    return {
+      node_id: node.id,
+      competitors: state.competitors.map((c) => {
+        const task = rows.filter((t) => t.node_id === competeTaskId.competitor(node.id, c.key)).at(-1);
+        const at = state.verdict?.ranking.findIndex((r) => r.competitor === c.key) ?? -1;
+        const rank = at >= 0 ? state.verdict!.ranking[at]! : undefined;
+        return {
+          key: c.key,
+          task_id: task?.id ?? null,
+          status: task?.status ?? "pending",
+          state: c.state,
+          reason: c.reason ?? null,
+          adapter: task?.adapter ?? null,
+          model: task?.model ?? null,
+          iterations: c.iterations,
+          branch: task?.branch ?? null,
+          summary: c.summary ?? null,
+          rank: rank ? at + 1 : null,
+          score: rank?.score ?? null,
+          judge_reason: rank?.reason ?? null,
+        };
+      }),
+      judge_task_id: judge?.id ?? null,
+      judge_summary: state.verdict?.summary ?? null,
+      judge_error: state.verdictError ?? null,
+      winner: state.winner ?? null,
+      chosen_by: state.chosen_by ?? null,
+      adopted: state.adopted,
+    };
   }
 
   /** A run's team (ADR 0022), derived from its tasks with the Flow engine's own reading. */
@@ -314,6 +365,12 @@ export class EventStore {
     return Boolean(
       this.db.prepare("SELECT 1 FROM approvals WHERE task_id = ? AND status = 'approved' AND (? IS NULL OR action = ?)").get(taskId, action ?? null, action ?? null),
     );
+  }
+
+  /** The option a human picked when approving this task, if its approval offered choices (ADR 0031). */
+  decidedChoice(taskId: string): string | undefined {
+    const row = this.db.prepare("SELECT choice FROM approvals WHERE task_id = ? AND status = 'approved' AND choice IS NOT NULL ORDER BY decided_at DESC LIMIT 1").get(taskId) as { choice: string } | undefined;
+    return row?.choice;
   }
 
   /** Instructions sent to a run (ADR 0019), oldest first. */
@@ -405,6 +462,7 @@ export class EventStore {
         ...run,
         agents,
         team: this.teamOf(run.id, flow),
+        compete: this.competeOf(run.id, flow),
         progress: flow ? this.progressOf(run, flow) : null,
         project_id: projectByPath.get(trim(run.repo_path)) ?? null,
       };
@@ -657,6 +715,10 @@ export type TaskRecord = TaskView & {
   team: TeamTaskRef | null;
   /** For team members: the lead's preferred adapter or catalog entry. */
   prefer: string | null;
+  /** The compete node this task is part of (ADR 0031). */
+  compete: CompeteTaskRef | null;
+  /** For approvals that pick among options, the default first. */
+  choices: string[] | null;
 };
 
 type Row = Record<string, unknown>;
@@ -698,6 +760,8 @@ function toApprovalView(row: Row): ApprovalView {
     summary: String(row.summary),
     status: row.shown as ApprovalStatus,
     decision_reason: (row.decision_reason as string | null) ?? null,
+    choices: row.choices ? (JSON.parse(String(row.choices)) as string[]) : [],
+    choice: (row.choice as string | null) ?? null,
     created_at: String(row.created_at),
     decided_at: (row.decided_at as string | null) ?? null,
   };
@@ -763,6 +827,8 @@ function toTaskRecord(row: Row): TaskRecord {
     routing: row.routing === "auto" ? "auto" : null,
     team: row.team ? (JSON.parse(String(row.team)) as TeamTaskRef) : null,
     prefer: (row.prefer as string | null) ?? null,
+    compete: row.compete ? (JSON.parse(String(row.compete)) as CompeteTaskRef) : null,
+    choices: row.choices ? (JSON.parse(String(row.choices)) as string[]) : null,
   };
 }
 

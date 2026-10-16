@@ -55,9 +55,11 @@ export function buildGraph(
   const started = tasks.length > 0;
 
   const leaf = (node: FlowNode, parent: string | null, position: { x: number; y: number }): GraphNode => {
-    // A team node (ADR 0022) stands for its lead's turns, members, checks and approval.
-    const own = node.type === "team" ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
-    const latest = node.type === "team" ? (own.find((t) => TEAM_ACTIVE.has(t.status)) ?? latestTask(own)) : latestTask(own);
+    // A team node (ADR 0022) stands for its lead's turns, members, checks and approval; a compete
+    // node (ADR 0031) for its competitors, their checks, the judge, the pick and the adoption.
+    const composite = node.type === "team" || node.type === "compete";
+    const own = composite ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
+    const latest = composite ? (own.find((t) => TEAM_ACTIVE.has(t.status)) ?? latestTask(own)) : latestTask(own);
     let state: NodeState = latest?.status ?? "not_started";
     if (!latest && skippedSet.has(node.id)) state = "skipped";
     if (!latest && node.type === "trigger" && started) state = "succeeded";
@@ -65,7 +67,7 @@ export function buildGraph(
       id: node.id,
       kind: node.type,
       label: node.name ?? node.id,
-      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : "uses" in node ? node.uses : null,
+      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : node.type === "compete" ? competeDetail(node, params) : "uses" in node ? node.uses : null,
       state,
       task: latest,
       tasks: own,
@@ -184,4 +186,10 @@ function loopState(children: readonly GraphNode[], iteration: number, skipped: b
 function edge(a: GraphNode, b: GraphNode, kind: GraphEdge["kind"], wrap = false): GraphEdge {
   const active = kind === "flow" && a.state === "succeeded" && b.state !== "not_started" && b.state !== "skipped";
   return { id: `${a.id}->${b.id}${kind === "loop-back" ? ":back" : ""}`, source: a.id, target: b.id, kind, active, wrap };
+}
+
+/** "3 × implementer · judge": how many compete, and who judges. */
+function competeDetail(node: Extract<FlowNode, { type: "compete" }>, params: Readonly<Record<string, number | string | boolean>>): string {
+  const n = typeof node.competitors === "number" ? node.competitors : params[/params\.(\w+)/.exec(node.competitors)?.[1] ?? ""];
+  return `${typeof n === "number" ? `${n} × ` : ""}implementer · ${node.judge.profile}`;
 }
