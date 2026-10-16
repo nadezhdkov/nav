@@ -1,6 +1,6 @@
 # Phase 2, slice 2: Compete mode and the judge
 
-Status: in progress · Branch: `feat/compete-mode` · Spec: §6.2.1 (`judge`), §6.3.3 (profile `judge`), §7.2, §16, §19 idea 15 · ADR: 0031
+Status: implemented · Branch: `feat/compete-mode` · Spec: §6.2.1 (`judge`), §6.3.3 (profile `judge`), §7.2, §16, §19 idea 15 · ADR: 0031
 
 The same task goes to N agents at once, each in its own worktree. Each one implements, verifies and fixes on its own. A `judge` agent compares the results that pass the checks and ranks them with reasons. Below autonomy level 3 a human confirms the winner or picks another one. The winner's branch is merged into the run's worktree, and the run goes on to the review and the draft PR.
 
@@ -13,7 +13,7 @@ The same task goes to N agents at once, each in its own worktree. Each one imple
   - `max_fix_iterations` (number or expression, default 2)
   - `judge: { profile }`
   - `approve_pick` (boolean or expression, default `false`)
-- `flows/compete.yaml` has the params `competitors` (3) and `max_fix_iterations` (2). Its chain is `compete -> review -> open_pr`, where `open_pr` runs only when the run has a work item. Start it with `--flow compete` from the CLI, New run, Inbox or the concierge.
+- `flows/compete.yaml` has the params `competitors` (3) and `max_fix_iterations` (2). Its chain is `compete -> review -> open_pr`, where `open_pr` runs only when the run has a work item. Start it with `--flow compete` from the CLI (`navarch run`, `navarch inbox start`), New run on the desktop (a "How the agents work" choice: one agent, team, compete, with competitors and a required budget) or the concierge's `start_run` (`budget`, `competitors`).
 - **Flow params from the caller.** `CreateRunRequest.params` sets a Flow's params, and the CLI does the same with `--param name=value`. Each value must name a param of the Flow and match its type (`int`, `money`, `bool`, `string`). For example, `navarch run --flow compete --param competitors=2 --budget 3 "…"`.
 - **A compete run needs an explicit run budget** (spec §7.2: "custo multiplicado — exige orçamento explícito"). Without `--budget`, starting the run fails with `budget_required` (400).
 
@@ -63,10 +63,14 @@ The same task goes to N agents at once, each in its own worktree. Each one imple
 - Contracts: `parseJudgeVerdict` (missing or duplicated finalists, unknown competitor, score range, last block wins).
 - Router: `spread` puts other providers first, then other entries, and falls back to the rest.
 - Approvals: a choice outside the choices or with a reject is refused (400), and the choice reaches the task's outputs.
-- Daemon end to end with fake agents: three competitors where one fails its checks. The judge ranks the other two, the user picks the second, its file is in the shared worktree and the PR branch, and the loser's file is not. A run without a budget is refused.
+- Daemon end to end with fake agents (scenario `compete`, competitors tell their key from their worktree): three competitors where c3 never passes its check. The judge sees both finalists' diffs and ranks c2 over c1; at autonomy 2 the user picks c1, so the shared worktree holds c1's files only, committed as "Adopt competitor c1", and the reviewer reads why. At autonomy 3 the judge's pick is adopted without asking. An issue run's PR carries the winner's checks, a Compete section and only the shared branch is pushed. A run without a budget, a param of the wrong type and an unknown param are refused. The concierge proposes a compete run with its budget and competitors.
+- Web: approval choices (radio buttons, the default selected, "Approve c1"), the Compete panel, the graph's compete node.
+- Visual check (2026-10-16): demo daemon with the fake `compete` scenario at autonomy 2 waiting for the pick, Chromium 1440×900 and 390×844, dark and light: Approvals with "Pick one" (c2 suggested, c1), the run page with the compete node "3 × implementer · judge · Waiting for approval" and the Compete tab (Picked c2 #1 · 8/10, Finalist c1, Out c3 with its reason), New run with the three modes and the competitors and budget fields, the Fleet tree with each competitor on its own branch; no console errors. It found and fixed: the graph showed the compete node as "Not started" with an untranslated kind, mode radios shrank when their hint wrapped, and "Approve c2" wrapped on phones.
 
 ## 🔴 Open
 
+- The Inbox screen offers no Compete start yet (the CLI's `inbox start --flow compete --budget` does).
+- The Fleet tree draws competitors as plain agents under the run, without their rank or "out" mark; the run page's Compete tab has them.
 - A per-competitor `prefer` list (models A, B, C chosen by the user) — routing spreads providers on its own for now.
 - The "improve the prompt" `llm` node of §7.2 before the fan-out.
 - Pruning losers' worktrees when the run ends (§6.5.2 cleanup policy, also open for team members).

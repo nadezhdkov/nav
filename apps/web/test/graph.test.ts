@@ -136,3 +136,24 @@ describe("buildGraph", () => {
     expect(g.nodes.find((n) => n.id === "implement_loop")?.state).toBe("succeeded");
   });
 });
+
+describe("compete node (ADR 0031)", () => {
+  const competeFlow: FlowDefinition = {
+    apiVersion: "navarch/v1",
+    kind: "Flow",
+    metadata: { name: "compete" },
+    params: { competitors: { type: "int", default: 3 } },
+    nodes: [
+      { id: "compete", type: "compete", competitors: "${{ params.competitors }}", max_fix_iterations: 2, judge: { profile: "judge" }, approve_pick: false },
+      { id: "review", type: "agent", profile: "reviewer" },
+    ],
+    edges: ["compete -> review"],
+  };
+
+  it("takes its state from the competitors, judge and pick, and says how many compete", () => {
+    const tasks = [task("compete.c1", "succeeded"), task("compete.c2", "failed"), task("compete.approve_pick", "waiting_approval")];
+    const node = buildGraph(competeFlow, tasks, [], { competitors: 3 }).nodes.find((n) => n.id === "compete")!;
+    expect(node).toMatchObject({ state: "waiting_approval", detail: "3 × implementer · judge" });
+    expect(node.tasks).toHaveLength(3);
+  });
+});

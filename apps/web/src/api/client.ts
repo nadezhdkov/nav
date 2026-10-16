@@ -164,11 +164,12 @@ export const api = {
   messages: (runId: string) => request<RunMessage[]>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/messages`),
   sendMessage: (runId: string, body: { text: string; task_id?: string; delivery: "next" | "now" }) =>
     request<RunMessage>("POST", `/api/v1/runs/${encodeURIComponent(runId)}/messages`, body),
-  decide: (id: string, decision: "approve" | "reject", reason?: string) =>
-    request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}) }),
+  decide: (id: string, decision: "approve" | "reject", reason?: string, choice?: string) =>
+    request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}), ...(choice ? { choice } : {}) }),
   pause: (id: string) => request<RunView>("POST", `/api/v1/runs/${encodeURIComponent(id)}/pause`),
   stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
-  startRun: (body: { repo_path: string; prompt: string; flow?: string; attachments?: RunAttachment[] }) => request<RunView>("POST", "/api/v1/runs", body),
+  startRun: (body: { repo_path: string; prompt: string; flow?: string; budget?: number; params?: Record<string, number>; attachments?: RunAttachment[] }) =>
+    request<RunView>("POST", "/api/v1/runs", body),
   repos: () => request<RepoView[]>("GET", "/api/v1/repos"),
   remote: () => request<RemoteStatus>("GET", "/api/v1/remote"),
   devices: () => request<DeviceView[]>("GET", "/api/v1/devices"),

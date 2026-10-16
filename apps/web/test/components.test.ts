@@ -1,4 +1,4 @@
-import type { ApprovalView, RunView } from "@navarch/contracts";
+import type { ApprovalView, CompetitorView, RunView } from "@navarch/contracts";
 import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,5 +98,60 @@ describe("ApprovalsView", () => {
     expect(api.decide).toHaveBeenCalledWith("apr_1", "approve", "plan looks right");
     expect(wrapper.find("article").exists()).toBe(false);
     expect(wrapper.text()).toContain("Approved");
+  });
+
+  it("offers an approval's choices with the default picked, and approves another one (ADR 0031)", async () => {
+    const pick = { ...approval, action: "flow.approval", summary: "1. c2 (8/10): smaller", choices: ["c2", "c1"] };
+    api.runs.mockResolvedValue([run]);
+    api.approvals.mockResolvedValueOnce([pick]).mockResolvedValueOnce([{ ...pick, status: "approved", choice: "c1" }]);
+    api.decide.mockResolvedValue({});
+    await useRunsStore().load();
+    await useApprovalsStore().load();
+    const wrapper = mount(ApprovalsView, { global });
+    const radios = wrapper.findAll("input[type=radio]");
+    expect(radios.map((r) => (r.element as HTMLInputElement).value)).toEqual(["c2", "c1"]);
+    expect((radios[0]!.element as HTMLInputElement).checked).toBe(true);
+    expect(wrapper.find("fieldset").text()).toContain("suggested");
+    expect(wrapper.findAll("button").map((b) => b.text())).toContain("Approve c2");
+    await radios[1]!.setValue(true);
+    await wrapper.findAll("button").find((b) => b.text() === "Approve c1")!.trigger("click");
+    await flushPromises();
+    expect(api.decide).toHaveBeenCalledWith("apr_1", "approve", undefined, "c1");
+    expect(wrapper.text()).toContain("picked c1");
+  });
+});
+
+describe("CompetePanel", () => {
+  it("lists competitors best first with their agent, rank and why the others are out", async () => {
+    const { default: CompetePanel } = await import("../src/components/CompetePanel.vue");
+    const competitor = (key: string, over: Partial<CompetitorView>): CompetitorView => ({ key, task_id: `t_${key}`, status: "succeeded", state: "finalist", reason: null, adapter: "claude-code", model: null, iterations: 1, branch: null, summary: null, rank: null, score: null, judge_reason: null, ...over });
+    const wrapper = mount(CompetePanel, {
+      global,
+      props: {
+        compete: {
+          node_id: "compete",
+          competitors: [
+            competitor("c1", { rank: 2, score: 6, judge_reason: "works too" }),
+            competitor("c2", { rank: 1, score: 8, judge_reason: "smaller", adapter: "codex" }),
+            competitor("c3", { state: "out", status: "failed", reason: "the agent failed" }),
+          ],
+          judge_task_id: "t_j",
+          judge_summary: "c2 wins on size.",
+          judge_error: null,
+          winner: "c2",
+          chosen_by: "judge",
+          adopted: true,
+        },
+      },
+    });
+    const rows = wrapper.findAll("li").map((li) => li.text());
+    expect(rows[0]).toContain("Winner");
+    expect(rows[0]).toContain("c2");
+    expect(rows[0]).toContain("#1 · 8/10");
+    expect(rows[0]).toContain("codex");
+    expect(rows[1]).toContain("Finalist");
+    expect(rows[2]).toContain("Out");
+    expect(rows[2]).toContain("the agent failed");
+    expect(wrapper.text()).toContain("Ranked first by the judge.");
   });
 });

@@ -59,8 +59,8 @@ export const useApprovalsStore = defineStore("approvals", () => {
     }
   }
 
-  async function decide(id: string, decision: "approve" | "reject", reason?: string) {
-    await api.decide(id, decision, reason);
+  async function decide(id: string, decision: "approve" | "reject", reason?: string, choice?: string) {
+    await (choice === undefined ? api.decide(id, decision, reason) : api.decide(id, decision, reason, choice));
     await load();
   }
 

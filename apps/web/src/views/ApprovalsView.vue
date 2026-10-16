@@ -15,6 +15,9 @@ const runs = useRunsStore();
 const reasons = reactive<Record<string, string>>({});
 const busy = reactive<Record<string, boolean>>({});
 const errors = reactive<Record<string, string>>({});
+// An approval with choices (a compete pick, ADR 0031) starts on its default, the first one.
+const picks = reactive<Record<string, string>>({});
+const pickOf = (a: ApprovalView) => picks[a.id] ?? a.choices[0];
 
 // A notification opens `/approvals?focus=<id>` (ADR 0020): bring that approval into view.
 const route = useRoute();
@@ -36,7 +39,8 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
   busy[a.id] = true;
   delete errors[a.id];
   try {
-    await store.decide(a.id, decision, reasons[a.id]?.trim() || undefined);
+    const reason = reasons[a.id]?.trim() || undefined;
+    await (decision === "approve" && a.choices.length ? store.decide(a.id, decision, reason, pickOf(a)) : store.decide(a.id, decision, reason));
   } catch (err) {
     errors[a.id] = (err as Error).message;
   } finally {
@@ -86,11 +90,26 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
           <dd class="font-mono text-xs">{{ money(runOf(a)!.cost_total) }} / {{ money(runOf(a)!.budget) }}</dd>
         </div>
       </dl>
+      <fieldset v-if="a.choices.length" class="mt-3">
+        <legend class="mb-1.5 text-xs tracking-wide text-muted uppercase">{{ t("approvals.pick") }}</legend>
+        <div class="flex flex-wrap gap-2">
+          <label
+            v-for="(c, i) in a.choices"
+            :key="c"
+            class="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm"
+            :class="pickOf(a) === c ? 'border-accent bg-accent/10' : 'border-line'"
+          >
+            <input type="radio" :name="`pick-${a.id}`" :value="c" :checked="pickOf(a) === c" class="accent-current" @change="picks[a.id] = c" />
+            <span class="font-mono">{{ c }}</span>
+            <span v-if="i === 0" class="text-xs text-muted">{{ t("approvals.suggested") }}</span>
+          </label>
+        </div>
+      </fieldset>
       <div class="mt-3 flex flex-wrap items-center gap-2">
         <label :for="`reason-${a.id}`" class="sr-only">{{ t("approvals.reason") }}</label>
         <input :id="`reason-${a.id}`" v-model="reasons[a.id]" :placeholder="t('approvals.reason')" class="min-h-11 min-w-48 flex-1 rounded-md border border-line bg-bg px-3 text-sm" />
-        <button :disabled="busy[a.id]" class="tone-success inline-flex min-h-11 items-center max-sm:flex-1 max-sm:justify-center gap-1.5 rounded-md px-4 font-medium disabled:opacity-60" style="background: var(--tone); color: var(--bg)" @click="decide(a, 'approve')">
-          <Check :size="16" aria-hidden="true" />{{ t("approvals.approve") }}
+        <button :disabled="busy[a.id]" class="tone-success inline-flex min-h-11 items-center max-sm:flex-1 max-sm:justify-center gap-1.5 rounded-md px-4 font-medium whitespace-nowrap disabled:opacity-60" style="background: var(--tone); color: var(--bg)" @click="decide(a, 'approve')">
+          <Check :size="16" aria-hidden="true" />{{ a.choices.length ? t("approvals.approvePick", { choice: pickOf(a) }) : t("approvals.approve") }}
         </button>
         <button :disabled="busy[a.id]" class="tone-danger inline-flex min-h-11 items-center max-sm:flex-1 max-sm:justify-center gap-1.5 rounded-md border px-4 font-medium disabled:opacity-60" style="color: var(--tone); border-color: var(--tone)" @click="decide(a, 'reject')">
           <X :size="16" aria-hidden="true" />{{ t("approvals.reject") }}
@@ -105,6 +124,7 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
         <li v-for="a in decided" :key="a.id" class="flex flex-wrap items-center gap-3 px-4 py-2.5">
           <span class="font-medium">{{ a.action }}</span>
           <RouterLink :to="`/runs/${a.run_id}`" class="font-mono text-xs text-muted hover:text-accent">{{ a.run_id }}</RouterLink>
+          <span v-if="a.choice" class="font-mono text-xs">{{ t("approvals.picked", { choice: a.choice }) }}</span>
           <span class="ml-auto text-xs text-muted">{{ t("approvals.by", { status: t(`status.${a.status}`), when: ago(a.decided_at ?? a.created_at) }) }}</span>
         </li>
       </ul>

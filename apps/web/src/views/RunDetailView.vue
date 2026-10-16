@@ -5,6 +5,7 @@ import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { api } from "../api/client.ts";
 import { onEvent, onLog, onReconnect, subscribe } from "../api/stream.ts";
+import CompetePanel from "../components/CompetePanel.vue";
 import FlowGraph from "../components/FlowGraph.vue";
 import InstructionBox from "../components/InstructionBox.vue";
 import NodePanel from "../components/NodePanel.vue";
@@ -17,7 +18,7 @@ const props = defineProps<{ id: string }>();
 const { t, locale } = useI18n();
 const store = useRunStore();
 const selected = ref<string | null>(null);
-const tab = ref<"timeline" | "logs" | "instruct">("timeline");
+const tab = ref<"compete" | "timeline" | "logs" | "instruct">("timeline");
 const filter = ref("");
 const busy = ref(false);
 const actionError = ref<string | null>(null);
@@ -54,8 +55,20 @@ const selectedNode = computed(() => {
   if (!run.value || !flow.value || !selected.value) return null;
   return buildGraph(flow.value, run.value.tasks, store.skipped, params.value).nodes.find((n) => n.id === selected.value) ?? null;
 });
-/** Instructions only make sense while the run can still act on them. */
-const tabs = computed(() => (run.value && canCancel(run.value.status) ? (["timeline", "logs", "instruct"] as const) : (["timeline", "logs"] as const)));
+/** Instructions only make sense while the run can still act on them; a compete run shows its competitors first (ADR 0031). */
+const tabs = computed(() => [
+  ...(run.value?.compete ? (["compete"] as const) : []),
+  ...(["timeline", "logs"] as const),
+  ...(run.value && canCancel(run.value.status) ? (["instruct"] as const) : []),
+]);
+// A compete run opens on its competitors.
+watch(
+  () => run.value?.compete != null,
+  (compete) => {
+    if (compete && tab.value === "timeline") tab.value = "compete";
+  },
+  { immediate: true },
+);
 const eventTypes = computed(() => [...new Set(store.events.map((e) => e.type))].sort());
 const shownEvents = computed(() => {
   const list = filter.value ? store.events.filter((e) => e.type === filter.value) : store.events;
@@ -167,6 +180,9 @@ async function act(kind: "cancel" | "resume" | "pause") {
             <span class="min-w-0 truncate">{{ describe(e.payload as Record<string, unknown>) }}</span>
           </li>
         </ol>
+        <div v-else-if="tab === 'compete' && run.compete" class="min-h-0 flex-1 overflow-auto px-4 py-3">
+          <CompetePanel :compete="run.compete" />
+        </div>
         <div v-else-if="tab === 'instruct'" class="min-h-0 flex-1 overflow-auto px-4 py-3">
           <InstructionBox :run-id="run.id" />
           <p class="mt-2 text-xs text-muted">{{ t("instruct.fleetHint") }}</p>
