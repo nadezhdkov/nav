@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { InboxItemDetail, InboxView, ProjectView, QuotaView, RunDetail, StartInboxResult, SyncInboxResult } from "@navarch/contracts";
+import type { AddProjectResult, InboxItemDetail, InboxView, ProjectView, QuotaView, RunDetail, StartInboxResult, SyncInboxResult } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { fakeModelServer, type FakeServer, type Scripted } from "../../../packages/adapters/native/test/fake-server.ts";
@@ -74,7 +74,7 @@ async function start(opts: { issues?: [number, FakeIssue][]; script?: Scripted[]
     return res.body.results;
   };
   const inbox = async (query = "") => (await api<InboxView>("GET", `/api/v1/inbox${query}`)).body;
-  return { daemon, gh, model, api, addProject, sync, inbox };
+  return { daemon, gh, model, api, addProject, sync, inbox, gitUrl };
 }
 
 describe("projects", () => {
@@ -89,6 +89,18 @@ describe("projects", () => {
     expect((await api<ProjectView[]>("GET", "/api/v1/projects")).body).toHaveLength(1);
     expect((await api("DELETE", `/api/v1/projects/${created.body.id}`)).status).toBe(204);
     expect((await api<ProjectView[]>("GET", "/api/v1/projects")).body).toHaveLength(0);
+  });
+
+  it("warns, but still registers, when the token cannot push to the project's repository", async () => {
+    const { api, gitUrl } = await start();
+    const ok = await api<AddProjectResult>("POST", "/api/v1/projects", { path: clone() });
+    expect(ok.body.warnings).toEqual([]);
+    await api("DELETE", `/api/v1/projects/${ok.body.id}`);
+    // GitHub answers a token without write access like a repository it cannot reach.
+    renameSync(join(gitUrl, "acme", "widgets.git"), join(gitUrl, "acme", "gone.git"));
+    const added = await api<AddProjectResult>("POST", "/api/v1/projects", { path: clone() });
+    expect(added.status).toBe(201);
+    expect(added.body.warnings).toEqual([expect.stringMatching(/cannot push to acme\/widgets.*cannot open PRs.*Contents/s)]);
   });
 });
 

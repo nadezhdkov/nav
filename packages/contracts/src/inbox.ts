@@ -20,6 +20,10 @@ export const ProjectView = z.object({
 });
 export type ProjectView = z.infer<typeof ProjectView>;
 
+/** A project just registered, with what the user should know, e.g. that the token cannot push to it. */
+export const AddProjectResult = ProjectView.extend({ warnings: z.array(z.string()) });
+export type AddProjectResult = z.infer<typeof AddProjectResult>;
+
 export const CreateProjectRequest = z.object({
   path: z.string().min(1),
   /** `owner/name`; read from the clone's `origin` when absent, and must match it when given. */
