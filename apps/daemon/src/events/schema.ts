@@ -215,6 +215,25 @@ CREATE TABLE IF NOT EXISTS budget_overrides (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (scope, target)
 );
+-- Studio Flows (ADR 0033): one row per Flow with its current draft, and its published versions.
+CREATE TABLE IF NOT EXISTS studio_flows (
+  name TEXT PRIMARY KEY,
+  draft_yaml TEXT,
+  draft_revision INTEGER,
+  draft_saved_at TEXT,
+  based_on INTEGER,
+  published_version INTEGER,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS flow_versions (
+  name TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  yaml TEXT NOT NULL,
+  sha256 TEXT NOT NULL,
+  actor TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  PRIMARY KEY (name, version)
+);
 -- budget.threshold events already recorded, so each is notified once per period.
 CREATE TABLE IF NOT EXISTS budget_alerts (
   scope TEXT NOT NULL,
@@ -239,6 +258,8 @@ DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS attempts;
 DROP TABLE IF EXISTS budget_overrides;
 DROP TABLE IF EXISTS budget_alerts;
+DROP TABLE IF EXISTS studio_flows;
+DROP TABLE IF EXISTS flow_versions;
 `;
 
 /**

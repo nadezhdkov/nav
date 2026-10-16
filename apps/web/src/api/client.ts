@@ -29,6 +29,12 @@ import type {
   StartInboxResult,
   SyncInboxResult,
   WorkItemStatus,
+  FlowCatalogView,
+  FlowDetail,
+  FlowSummary,
+  SimulationRequest,
+  SimulationResult,
+  ValidateFlowResponse,
 } from "@navarch/contracts";
 import { ref } from "vue";
 import { bearer, forgetDevice, GATEWAY, isDevice, refresh } from "./session.ts";
@@ -168,7 +174,7 @@ export const api = {
     request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}), ...(choice ? { choice } : {}) }),
   pause: (id: string) => request<RunView>("POST", `/api/v1/runs/${encodeURIComponent(id)}/pause`),
   stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
-  startRun: (body: { repo_path: string; prompt: string; flow?: string; budget?: number; params?: Record<string, number>; attachments?: RunAttachment[] }) =>
+  startRun: (body: { repo_path: string; prompt: string; flow?: string; budget?: number; params?: Record<string, number | string | boolean>; attachments?: RunAttachment[] }) =>
     request<RunView>("POST", "/api/v1/runs", body),
   repos: () => request<RepoView[]>("GET", "/api/v1/repos"),
   remote: () => request<RemoteStatus>("GET", "/api/v1/remote"),
@@ -193,4 +199,14 @@ export const api = {
   usage: (days = 30, profile?: string) =>
     request<UsageView>("GET", `/api/v1/usage?days=${days}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
   setBudget: (body: SetBudgetRequest) => request<BudgetView[]>("PUT", "/api/v1/budgets", body),
+  // Flow Studio (ADR 0033)
+  flows: () => request<FlowSummary[]>("GET", "/api/v1/flows"),
+  flowCatalog: () => request<FlowCatalogView>("GET", "/api/v1/flows/catalog"),
+  flow: (name: string) => request<FlowDetail>("GET", `/api/v1/flows/${encodeURIComponent(name)}`),
+  flowVersion: (name: string, version: number) => request<{ yaml: string }>("GET", `/api/v1/flows/${encodeURIComponent(name)}/versions/${version}`),
+  saveFlowDraft: (name: string, yaml: string, revision: number | null) => request<FlowDetail>("PUT", `/api/v1/flows/${encodeURIComponent(name)}/draft`, { yaml, revision }),
+  discardFlowDraft: (name: string, revision: number) => request<{ flow: FlowDetail | null }>("DELETE", `/api/v1/flows/${encodeURIComponent(name)}/draft`, { revision }),
+  publishFlow: (name: string, revision: number) => request<FlowDetail>("POST", `/api/v1/flows/${encodeURIComponent(name)}/publish`, { revision }),
+  validateFlow: (yaml: string, name?: string) => request<ValidateFlowResponse>("POST", "/api/v1/flows/validate", { yaml, ...(name ? { name } : {}) }),
+  simulateFlow: (body: SimulationRequest) => request<SimulationResult>("POST", "/api/v1/flows/simulate", body),
 };

@@ -1,41 +1,17 @@
-import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type SubflowNode, type TeamTaskRef } from "@navarch/contracts";
-import { parse } from "yaml";
-import { evaluate, exprPaths, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
+import { type FlowDefinition, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type SubflowNode, type TeamTaskRef } from "@navarch/contracts";
+import { checkFlow, NOT_IN_SUBFLOW } from "./check.ts";
+import { evaluate, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
 import { competeOutputs, competeStep, competitorCount } from "./compete.ts";
 import { teamState, teamStep } from "./team.ts";
 
 export class FlowError extends Error {}
 
-/** Operations an `action` or `github` node may name; the daemon registers an executor for each. */
-export const KNOWN_USES: Record<"action" | "github", readonly string[]> = {
-  action: ["verification.run"],
-  github: ["pr.create", "pr.review", "pr.comment"],
-};
-
-/** Parses and validates a Flow YAML document (spec §9.4, ADR 0011). */
+/** Parses and validates a Flow YAML document (spec §9.4, ADR 0011); throws the first error. */
 export function parseFlow(text: string, source = "flow"): FlowDefinition {
-  let raw: unknown;
-  try {
-    raw = parse(text);
-  } catch (err) {
-    throw new FlowError(`${source}: invalid YAML: ${(err as Error).message}`);
-  }
-  const later = laterNodeType(raw);
-  if (later) throw new FlowError(`${source}: node type "${later}" is not supported until Phase 2`);
-  const parsed = FlowDefinition.safeParse(raw);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0]!;
-    throw new FlowError(`${source}: ${issue.path.join(".") || "flow"}: ${issue.message}`);
-  }
-  validate(parsed.data, source);
-  return parsed.data;
-}
-
-function laterNodeType(raw: unknown): string | undefined {
-  const nodes = (raw as { nodes?: unknown })?.nodes;
-  if (!Array.isArray(nodes)) return undefined;
-  const all = nodes.flatMap((n) => [n, ...(Array.isArray(n?.body) ? n.body : [])]);
-  return all.map((n) => n?.type).find((t) => (PHASE_2_NODE_TYPES as readonly string[]).includes(t));
+  const { flow, problems } = checkFlow(text);
+  const first = problems.find((p) => p.severity === "error");
+  if (first || !flow) throw new FlowError(`${source}: ${first?.message ?? "invalid flow"}`);
+  return flow;
 }
 
 /** Top-level nodes in execution order (the `edges` chain). */
@@ -46,74 +22,6 @@ export function chain(flow: FlowDefinition): FlowNode[] {
   for (const id of ids) if (ordered.at(-1) !== id) ordered.push(id);
   return ordered.map((id) => byId.get(id)!);
 }
-
-function validate(flow: FlowDefinition, source: string): void {
-  const fail = (msg: string): never => {
-    throw new FlowError(`${source}: ${msg}`);
-  };
-  const all = flow.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? [n, ...n.body] : [n]));
-  const ids = new Set<string>();
-  for (const n of all) {
-    if (ids.has(n.id)) fail(`duplicate node id "${n.id}"`);
-    ids.add(n.id);
-  }
-
-  // One linear chain naming every top-level node once.
-  const order = flow.edges.flatMap((e) => e.split("->").map((s) => s.trim()));
-  if (order.some((id) => !id)) fail("edges must look like `a -> b -> c`");
-  const seen: string[] = [];
-  for (const id of order) {
-    if (!flow.nodes.some((n) => n.id === id)) fail(`edge names unknown top-level node "${id}"`);
-    if (seen.at(-1) === id) continue;
-    if (seen.includes(id)) fail(`node "${id}" appears twice in edges; Phase 1 flows are a single chain`);
-    seen.push(id);
-  }
-  for (const n of flow.nodes) if (!seen.includes(n.id)) fail(`node "${n.id}" is not in edges`);
-  const trigger = flow.nodes.filter((n) => n.type === "trigger");
-  if (trigger.length > 1 || (trigger.length === 1 && seen[0] !== trigger[0]!.id)) fail("a flow has at most one trigger, and it comes first");
-
-  for (const n of all) {
-    if ((n.type === "action" || n.type === "github") && !KNOWN_USES[n.type].includes(n.uses)) {
-      fail(`node "${n.id}": unknown ${n.type} "${n.uses}" (known: ${KNOWN_USES[n.type].join(", ")})`);
-    }
-    for (const text of expressionsOf(n)) {
-      let expr;
-      try {
-        expr = parseExpr(text);
-      } catch (err) {
-        fail(`node "${n.id}": ${(err as Error).message}`);
-      }
-      for (const path of exprPaths(expr!)) {
-        if (path[0] === "nodes" && !ids.has(path[1] ?? "")) fail(`node "${n.id}" refers to unknown node "${path[1]}"`);
-        if (path[0] === "params" && !(path[1]! in flow.params)) fail(`node "${n.id}" refers to unknown param "${path[1]}"`);
-      }
-    }
-  }
-}
-
-function expressionsOf(n: FlowNode | BodyNode): string[] {
-  const out: string[] = [];
-  if (n.when) out.push(n.when);
-  if (n.type === "agent") out.push(...Object.values(n.inputs ?? {}).filter(isExpression));
-  if (n.type === "loop") {
-    out.push(n.until);
-    if (typeof n.max_iterations === "string") out.push(n.max_iterations);
-  }
-  if (n.type === "approval") out.push(...(n.show ?? []).map((p) => `\${{ ${p} }}`));
-  if (n.type === "team") {
-    for (const v of [n.max_turns, n.max_members, n.approve_first_plan, n.parallel, n.max_parallel]) if (typeof v === "string") out.push(v);
-  }
-  if (n.type === "compete") {
-    for (const v of [n.competitors, n.max_fix_iterations, n.approve_pick]) if (typeof v === "string") out.push(v);
-  }
-  if (n.type === "subflow") {
-    out.push(...[...Object.values(n.with ?? {}), ...Object.values(n.inputs ?? {})].filter((v): v is string => typeof v === "string" && isExpression(v)));
-  }
-  return out;
-}
-
-/** Node types a subflow's child may not hold: one level, and no composite nodes (ADR 0032). */
-const NOT_IN_SUBFLOW = ["team", "compete", "subflow"];
 
 /**
  * The Flows a flow's `subflow` nodes run, by name, checked against the loaded Flows: each must

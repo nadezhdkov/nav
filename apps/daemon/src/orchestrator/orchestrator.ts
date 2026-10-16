@@ -47,6 +47,23 @@ export function loadFlows(dir: string = FLOWS_DIR): Map<string, FlowDefinition> 
   return flows;
 }
 
+/** A Flow a run can name: a built-in, or the latest published version of a Studio Flow (ADR 0033). */
+export type ResolvedFlow = { definition: FlowDefinition; source: "builtin" | "studio"; version?: number };
+
+/** Where the Orchestrator looks Flows up. */
+export interface FlowLookup {
+  get(name: string): ResolvedFlow | undefined;
+  /** Every Flow a run or a subflow can name now. */
+  all(): ReadonlyMap<string, FlowDefinition>;
+  /** Why a name that `get` does not find cannot run, when there is more to say than "not found". */
+  missing?(name: string): string | undefined;
+}
+
+/** The built-in Flows alone, as a lookup. */
+export function builtinLookup(flows: ReadonlyMap<string, FlowDefinition>): FlowLookup {
+  return { get: (name) => (flows.has(name) ? { definition: flows.get(name)!, source: "builtin" } : undefined), all: () => flows };
+}
+
 /** GitHub operations that work on a pull request rather than on an issue (ADR 0032). */
 const PR_USES = ["pr.review", "pr.comment"];
 
@@ -72,7 +89,7 @@ export class Orchestrator {
   private readonly adapters: string[];
   private readonly onReady: () => void;
   private readonly github: GitHubIntegration | undefined;
-  private readonly flows: Map<string, FlowDefinition>;
+  private readonly flows: FlowLookup;
   private readonly policy: PolicyEngine;
 
   constructor(
@@ -81,7 +98,7 @@ export class Orchestrator {
     adapters: string[],
     onReady: () => void,
     github?: GitHubIntegration,
-    flows: Map<string, FlowDefinition> = loadFlows(),
+    flows: Map<string, FlowDefinition> | FlowLookup = loadFlows(),
     policy: PolicyEngine = new PolicyEngine(),
   ) {
     this.store = store;
@@ -89,12 +106,12 @@ export class Orchestrator {
     this.adapters = adapters;
     this.onReady = onReady;
     this.github = github;
-    this.flows = flows;
+    this.flows = flows instanceof Map ? builtinLookup(flows) : flows;
     this.policy = policy;
   }
 
   flowNames(): string[] {
-    return [...this.flows.keys()];
+    return [...this.flows.all().keys()];
   }
 
   async startRun(req: CreateRunRequest, actor: Actor): Promise<RunView> {
@@ -140,10 +157,20 @@ export class Orchestrator {
     }
 
     const flowName = req.flow ?? (pr ? "review-pr" : workItem ? "fix-issue" : "task");
-    const flow = this.flows.get(flowName);
-    if (!flow) throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
+    const resolved = this.flows.get(flowName);
+    if (!resolved) {
+      const why = this.flows.missing?.(flowName);
+      if (why) throw new OrchestratorError("invalid_request", why);
+      throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
+    }
+    const flow = resolved.definition;
     const params = flowParams(flow, flowName, req.params);
-    const subflows = subflowsOf(flow, this.flows);
+    let subflows: Record<string, FlowDefinition>;
+    try {
+      subflows = subflowsOf(flow, this.flows.all());
+    } catch (err) {
+      throw new OrchestratorError("invalid_request", (err as Error).message);
+    }
     const allNodes = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
     const onPr = allNodes.some((n) => n.type === "github" && PR_USES.includes(n.uses));
     if (onPr && !pr) throw new OrchestratorError("invalid_request", `flow "${flowName}" works on a pull request (--pr owner/repo#N)`);
@@ -196,7 +223,7 @@ export class Orchestrator {
           ...(workItem ? { work_item: { source: workItem.source, ...(pr ? { kind: "pull_request" as const } : {}), repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
           verify: project.verify,
           protected_paths: project.protected_paths,
-          flow: { definition: flow, params, ...(Object.keys(subflows).length ? { subflows } : {}) },
+          flow: { definition: flow, params, ...(Object.keys(subflows).length ? { subflows } : {}), ...(resolved.source === "studio" ? { source: "studio" as const, version: resolved.version } : {}) },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
           routing,
           ...(req.attachments?.length ? { attachments: req.attachments } : {}),

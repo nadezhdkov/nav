@@ -5,6 +5,10 @@ import { join, resolve } from "node:path";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import {
+  FlowRevisionRequest,
+  SaveFlowDraftRequest,
+  SimulationRequest,
+  ValidateFlowRequest,
   ApprovalStatus,
   ConciergeMessageRequest,
   CreateConversationRequest,
@@ -37,6 +41,7 @@ import {
   type SyncInboxResult,
 } from "@navarch/contracts";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
+import { FlowStudioError } from "../flows/library.ts";
 import { z } from "zod";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { Daemon } from "../daemon.ts";
@@ -83,6 +88,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (err instanceof ConciergeError) {
       const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
+    }
+    if (err instanceof FlowStudioError) {
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message, ...(err.problems.length ? { problems: err.problems } : {}) });
     }
     if (err instanceof BudgetError) return reply.code(404).send({ error: err.code, message: err.message });
     if (err instanceof InboxError) {
@@ -277,6 +286,48 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     daemon.setBudget(parsed.data, actorOf(req));
     return daemon.budgets.views();
+  });
+
+  // Flow Studio (ADR 0033): desktop only, never in DEVICE_ROUTES.
+  app.get("/api/v1/flows", async () => daemon.flows.list());
+  app.get("/api/v1/flows/catalog", async () => daemon.flows.catalog());
+
+  app.post("/api/v1/flows/validate", async (req, reply) => {
+    const parsed = ValidateFlowRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return { problems: daemon.flows.check(parsed.data.yaml, parsed.data.name).problems };
+  });
+
+  app.post("/api/v1/flows/simulate", async (req, reply) => {
+    const parsed = SimulationRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.flows.simulate(parsed.data);
+  });
+
+  app.get("/api/v1/flows/:name", async (req) => daemon.flows.detail((req.params as { name: string }).name));
+
+  app.get("/api/v1/flows/:name/versions/:version", async (req, reply) => {
+    const { name, version } = req.params as { name: string; version: string };
+    if (!/^[1-9]\d*$/.test(version)) return badRequest(reply, "version must be a positive whole number");
+    return { name, version: Number(version), yaml: daemon.flows.versionYaml(name, Number(version)) };
+  });
+
+  app.put("/api/v1/flows/:name/draft", async (req, reply) => {
+    const parsed = SaveFlowDraftRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.flows.saveDraft((req.params as { name: string }).name, parsed.data, actorOf(req));
+  });
+
+  app.delete("/api/v1/flows/:name/draft", async (req, reply) => {
+    const parsed = FlowRevisionRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return { flow: daemon.flows.discardDraft((req.params as { name: string }).name, parsed.data.revision, actorOf(req)) };
+  });
+
+  app.post("/api/v1/flows/:name/publish", async (req, reply) => {
+    const parsed = FlowRevisionRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.flows.publish((req.params as { name: string }).name, parsed.data.revision, actorOf(req));
   });
 
   app.get("/api/v1/health", async () => ({

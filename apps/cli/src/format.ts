@@ -1,4 +1,4 @@
-import type { ApprovalView, BudgetView, DeviceView, GitHubRepoView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { ApprovalView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -299,4 +299,22 @@ export function formatUsage(u: UsageView): string {
     }
   }
   return lines.join("\n");
+}
+
+/** `navarch flow list`: built-in and Studio Flows (ADR 0033). */
+export function formatFlows(flows: FlowSummary[]): string {
+  const state = (f: FlowSummary) => {
+    if (f.source === "builtin") return "built-in";
+    const parts = [f.published_version ? `v${f.published_version}` : "unpublished", ...(f.draft ? [`draft r${f.draft.revision}`] : []), ...(f.shadowed ? ["shadowed by a built-in"] : [])];
+    return parts.join(" · ");
+  };
+  return table(["NAME", "VERSION", "DESCRIPTION"], flows.map((f) => [f.name, state(f), f.description ?? "-"]));
+}
+
+/** `navarch flow validate`: one line per problem, `file:line: severity: message`. */
+export function formatProblems(file: string, problems: FlowProblem[]): string {
+  if (!problems.length) return `${file}: valid`;
+  const lines = problems.map((p) => `${file}${p.line ? `:${p.line}` : ""}: ${p.severity}: ${p.message}`);
+  const errors = problems.filter((p) => p.severity === "error").length;
+  return [...lines, `${errors} error(s), ${problems.length - errors} warning(s)`].join("\n");
 }

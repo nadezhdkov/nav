@@ -245,6 +245,25 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       ).run(p.scope, p.target ?? "", p.usd, ts);
       return;
     }
+    case "flow.draft.saved": {
+      const p = (event as NavarchEvent<"flow.draft.saved">).payload;
+      db.prepare(
+        `INSERT INTO studio_flows (name, draft_yaml, draft_revision, draft_saved_at, based_on, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+         ON CONFLICT (name) DO UPDATE SET draft_yaml = excluded.draft_yaml, draft_revision = excluded.draft_revision, draft_saved_at = excluded.draft_saved_at, based_on = excluded.based_on, updated_at = excluded.updated_at`,
+      ).run(p.name, p.yaml, p.revision, ts, p.based_on, ts);
+      return;
+    }
+    case "flow.draft.discarded": {
+      const p = (event as NavarchEvent<"flow.draft.discarded">).payload;
+      db.prepare("UPDATE studio_flows SET draft_yaml = NULL, draft_revision = NULL, draft_saved_at = NULL, based_on = NULL, updated_at = ? WHERE name = ?").run(ts, p.name);
+      return;
+    }
+    case "flow.published": {
+      const p = (event as NavarchEvent<"flow.published">).payload;
+      db.prepare("INSERT INTO flow_versions (name, version, yaml, sha256, actor, published_at) VALUES (?, ?, ?, ?, ?, ?)").run(p.name, p.version, p.yaml, p.sha256, actorLabel(event.actor), ts);
+      db.prepare("UPDATE studio_flows SET draft_yaml = NULL, draft_revision = NULL, draft_saved_at = NULL, based_on = NULL, published_version = ?, updated_at = ? WHERE name = ?").run(p.version, ts, p.name);
+      return;
+    }
     case "budget.threshold": {
       const p = (event as NavarchEvent<"budget.threshold">).payload;
       db.prepare("INSERT OR IGNORE INTO budget_alerts (scope, target, period, ratio) VALUES (?, ?, ?, ?)").run(p.scope, p.target ?? "", p.period, p.ratio);
@@ -403,4 +422,9 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
 
 function touchRun(db: DatabaseSync, runId: string | null, ts: string): void {
   if (runId) db.prepare("UPDATE runs SET updated_at = ? WHERE id = ?").run(ts, runId);
+}
+
+/** Who did something, in a few words, for views that show it. */
+function actorLabel(actor: NavarchEvent["actor"]): string {
+  return actor.kind === "user" ? `user via ${actor.via}` : actor.kind === "system" ? actor.component : actor.kind;
 }

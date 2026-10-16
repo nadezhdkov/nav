@@ -99,6 +99,9 @@ export const RunFlow = z.object({
   params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
   /** Copies of the Flows its `subflow` nodes run, by name (ADR 0032). */
   subflows: z.record(z.string(), FlowDefinition).optional(),
+  /** A Studio Flow and its published version (ADR 0033); absent for built-ins. */
+  source: z.enum(["builtin", "studio"]).optional(),
+  version: z.number().int().positive().optional(),
 });
 export type RunFlow = z.infer<typeof RunFlow>;
 

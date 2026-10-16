@@ -39,6 +39,18 @@ export type EventListener = (event: NavarchEvent) => void;
  * Event store (spec §6.1.3): events are validated, written and projected in one transaction,
  * and only published to listeners after the commit (outbox semantics within one process).
  */
+export type StudioFlowRecord = {
+  name: string;
+  draft_yaml: string | null;
+  draft_revision: number | null;
+  draft_saved_at: string | null;
+  based_on: number | null;
+  published_version: number | null;
+  updated_at: string;
+};
+
+export type FlowVersionRecord = { version: number; yaml: string; sha256: string; actor: string; published_at: string };
+
 export class EventStore {
   readonly db: DatabaseSync;
   private readonly listeners = new Set<EventListener>();
@@ -479,6 +491,26 @@ export class EventStore {
       skipped: this.skippedNodes(run.id),
       ...(flow.subflows ? { subflows: flow.subflows } : {}),
     });
+  }
+
+  /** Studio Flows (ADR 0033) with their current draft, by name. */
+  studioFlows(name?: string): StudioFlowRecord[] {
+    const rows = this.db.prepare("SELECT * FROM studio_flows WHERE ? IS NULL OR name = ? ORDER BY name").all(name ?? null, name ?? null) as Row[];
+    return rows.map((r) => ({
+      name: String(r.name),
+      draft_yaml: r.draft_yaml === null ? null : String(r.draft_yaml),
+      draft_revision: r.draft_revision === null ? null : Number(r.draft_revision),
+      draft_saved_at: r.draft_saved_at === null ? null : String(r.draft_saved_at),
+      based_on: r.based_on === null ? null : Number(r.based_on),
+      published_version: r.published_version === null ? null : Number(r.published_version),
+      updated_at: String(r.updated_at),
+    }));
+  }
+
+  /** A Studio Flow's published versions, oldest first, or one of them. */
+  flowVersions(name: string, version?: number): FlowVersionRecord[] {
+    const rows = this.db.prepare("SELECT * FROM flow_versions WHERE name = ? AND (? IS NULL OR version = ?) ORDER BY version").all(name, version ?? null, version ?? null) as Row[];
+    return rows.map((r) => ({ version: Number(r.version), yaml: String(r.yaml), sha256: String(r.sha256), actor: String(r.actor), published_at: String(r.published_at) }));
   }
 
   /** Registered projects (ADR 0021), oldest first; removed ones only with `withRemoved`. */
