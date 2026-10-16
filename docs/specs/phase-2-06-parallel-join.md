@@ -1,6 +1,6 @@
 # Phase 2, slice 6: generic `parallel` nodes and `join`
 
-Status: implemented · Branch: `feat/parallel-join` · Spec: §6.2.1, §6.2.3, §16 · ADR: 0036
+Status: implemented (PR #52) · Branch: `feat/parallel-join` · Spec: §6.2.1, §6.2.3, §16 · ADR: 0036
 
 A Flow can run independent read-only steps at once: a `parallel` node holds named branches, each a short sequence of agent or action nodes, and its `join` field says when the node is done.
 
