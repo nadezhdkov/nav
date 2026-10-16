@@ -72,6 +72,17 @@ describe("OpencodeAdapter (contract, fake CLI)", () => {
     expect(Date.parse(result.error!.retry_at!)).toBeGreaterThanOrEqual(before + 30_000);
   });
 
+  it("stops after the step that crosses the task's cap, as budget_exceeded (ADR 0030)", async () => {
+    const fake = fakeCli(script, "expensive");
+    const ctx = taskContext();
+    ctx.budget.maxCost = 0.5;
+    const started = Date.now();
+    const result = await new OpencodeAdapter(fake.options).run(ctx, collect().io);
+    expect(Date.now() - started).toBeLessThan(20_000);
+    expect(result).toMatchObject({ status: "failed", error: { kind: "budget_exceeded", message: "spent $0.6000 of $0.50" } });
+    expect(result.usage[0]?.cost).toBeCloseTo(0.6);
+  });
+
   it("cancels a running task", async () => {
     const fake = fakeCli(script, "slow");
     const adapter = new OpencodeAdapter(fake.options);

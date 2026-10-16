@@ -92,3 +92,5 @@ Computed per finished agent attempt (the `attempts` projection: one row per `tas
 - Cost is known only when a task ends (the adapters report usage at the end), so a long metered task can overshoot its `maxCost` except on `native`, which checks after every call.
 - Expected cost uses medians of past tasks; there is no prediction from the prompt size yet.
 - Gemini with a paid AI Studio key is metered but reports no cost; it is recorded as `plan` until the adapter can price its tokens from configuration.
+
+> Follow-up (2026-10-16, ADR 0030): billed agents running at once hold their caps, so together they never get more than what is left; OpenCode is stopped after the step that crosses its cap.

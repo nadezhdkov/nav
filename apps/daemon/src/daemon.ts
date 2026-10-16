@@ -111,6 +111,7 @@ export class Daemon {
       },
       actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
       onSucceeded: (runId) => this.orchestrator.advance(runId),
+      billingOf: (adapter) => adapters.get(adapter)?.capabilities().billing ?? "metered",
     });
     this.devices = new DeviceService(this.store, join(this.home, "device-key"));
     this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });
