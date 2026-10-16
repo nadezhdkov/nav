@@ -141,9 +141,10 @@ function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n - 1)}…` : s;
 }
 
-function table(header: string[], rows: string[][]): string {
+/** Cells may be missing when the daemon is older than the CLI (a new field it does not send yet). */
+function table(header: string[], rows: (string | undefined)[][]): string {
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
-  const line = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i] ?? 0)).join("  ").trimEnd();
+  const line = (cells: (string | undefined)[]) => cells.map((c, i) => (c ?? "").padEnd(widths[i] ?? 0)).join("  ").trimEnd();
   return [line(header), ...rows.map(line)].join("\n");
 }
 

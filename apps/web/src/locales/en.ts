@@ -1,6 +1,12 @@
 /** UI strings, English base locale (AGENTS.md › Language). Every other locale must match its shape. */
 export const en = {
   app: { name: "Navarch", tagline: "orchestrate your fleet of coding agents" },
+  offline: {
+    title: "Can't reach Navarch",
+    phone: "This phone cannot reach the computer running Navarch. Check that Tailscale is connected on the phone and allowed to run in the background, and that the computer is awake.",
+    desktop: "Navarch's daemon does not answer. Check that it is running: navarch daemon status.",
+    retry: "Try again",
+  },
   nav: { home: "Home", usage: "Usage", settings: "Settings", device: "Device", stop: "Stop", runs: "Runs", fleet: "Fleet", approvals: "Approvals", live: "Live", offline: "Reconnecting", main: "Main navigation", language: "Language", inbox: "Inbox", projects: "Projects", activeRuns: "{n} active run(s)", noActiveRuns: "No active run" },
   token: {
     title: "Connect to navarchd",

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, openSync, readFileSync } from "node:fs";
 import { basename, join, resolve as resolvePath } from "node:path";
+import { checkoutRoot, installProblem, readTail, startFailureHint } from "./deps.ts";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import {
@@ -474,6 +475,10 @@ async function daemonCommand(sub: string | undefined, json: boolean): Promise<nu
       if (info && alive) return print(json ? { running: true, ...info } : `navarchd already running (pid ${info.pid})`, json);
       mkdirSync(home, { recursive: true, mode: 0o700 });
       const daemonMain = fileURLToPath(import.meta.resolve("@navarch/daemon/main"));
+      // A pull that changed dependencies without `make install` makes the daemon die on an import (F3).
+      const root = checkoutRoot(daemonMain);
+      const stale = root && installProblem(root);
+      if (stale) console.error(`warning: ${stale}`);
       const out = openSync(homeFiles(home).daemonLog, "a");
       const child = spawn(process.execPath, [daemonMain], { detached: true, stdio: ["ignore", out, out], env: process.env });
       child.unref();
@@ -484,7 +489,9 @@ async function daemonCommand(sub: string | undefined, json: boolean): Promise<nu
           return print(json ? { running: true, ...started } : `navarchd started (pid ${started.pid}, ${started.url})`, json);
         }
       }
-      throw new CliError(`navarchd did not start; see ${homeFiles(home).daemonLog}`);
+      const log = homeFiles(home).daemonLog;
+      const hint = startFailureHint(readTail(log));
+      throw new CliError(`navarchd did not start${hint ? `: ${hint}` : ""}; see ${log}`);
     }
     case "stop": {
       if (!info || !alive) return print(json ? { running: false } : "navarchd is not running", json);

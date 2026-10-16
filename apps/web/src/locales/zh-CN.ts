@@ -3,6 +3,12 @@ import type { Messages } from "./en.ts";
 /** Simplified Chinese (Mandarin). Flow and PR stay as in the spec's glossary (§4). */
 export const zhCN: Messages = {
   app: { name: "Navarch", tagline: "编排你的编码智能体舰队" },
+  offline: {
+    title: "无法连接 Navarch",
+    phone: "这台手机无法连接运行 Navarch 的电脑。请检查手机上的 Tailscale 是否已连接并允许在后台运行，以及电脑是否处于唤醒状态。",
+    desktop: "Navarch 守护进程没有响应。请检查它是否在运行：navarch daemon status。",
+    retry: "重试",
+  },
   nav: { home: "首页", usage: "用量", settings: "设置", device: "设备", stop: "停止", runs: "运行", fleet: "舰队", approvals: "审批", live: "实时", offline: "正在重连", main: "主导航", language: "语言", inbox: "收件箱", projects: "项目", activeRuns: "{n} 个活动运行", noActiveRuns: "没有活动的运行" },
   token: {
     title: "连接到 navarchd",
