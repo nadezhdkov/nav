@@ -25,6 +25,7 @@ import {
   type QuotaObservation,
   type QuotaView,
   type VerifyCommand,
+  type ContainerIsolation,
   type WorkItemTriage,
   attachmentInfo,
   type RunAttachment,
@@ -64,7 +65,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice") || !has("runs", "isolation")) {
       this.rebuildProjections();
     }
     // After the rebuild: an older runs table has no name column to index until then.
@@ -182,6 +183,7 @@ export class EventStore {
       model: row.model,
       verify: JSON.parse(row.verify),
       protected_paths: JSON.parse(row.protected_paths),
+      isolation: row.isolation ? (JSON.parse(row.isolation) as ContainerIsolation) : null,
       flow_definition: row.flow ? (JSON.parse(row.flow) as RunFlow) : null,
       routing: row.routing === "auto" ? "auto" : "pinned",
     };
@@ -728,6 +730,8 @@ export type RunRecord = RunView & {
   model: string | null;
   verify: VerifyCommand[];
   protected_paths: string[];
+  /** L2 (ADR 0035); null on the host. */
+  isolation: ContainerIsolation | null;
   flow_definition: RunFlow | null;
   routing: "auto" | "pinned";
 };
@@ -763,6 +767,7 @@ type RunRow = Row & {
   model: string | null;
   verify: string;
   protected_paths: string;
+  isolation: string | null;
   flow: string | null;
   routing: string | null;
 };

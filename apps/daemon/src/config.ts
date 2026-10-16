@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "yaml";
-import { AdapterId } from "@navarch/contracts";
+import { AdapterId, ContainerImage } from "@navarch/contracts";
 import { z } from "zod";
 
 /** An OpenAI-compatible endpoint for the native adapter. Keys are read from an environment variable, never stored here. */
@@ -191,6 +191,19 @@ export const Config = z.object({
     })
     .prefault({}),
   autonomy_level: z.number().int().min(0).max(4).default(2),
+  /** Spec §14.1 `security`: the isolation of projects whose `.navarch/project.yaml` does not choose one (ADR 0035). */
+  security: z.object({ default_isolation: z.enum(["worktree", "container"]).default("worktree") }).prefault({}),
+  /** Isolation level L2 (spec §6.5.1, ADR 0035): defaults for projects that run their checks in a container. */
+  container: z
+    .object({
+      /** The runtime's command; podman takes the same flags. */
+      runtime: z.string().min(1).default("docker"),
+      image: ContainerImage.default("node:22-bookworm-slim"),
+      memory: z.string().regex(/^\d+[kmg]?$/i).default("4g"),
+      cpus: z.number().positive().default(2),
+      pids_limit: z.number().int().positive().default(1024),
+    })
+    .prefault({}),
   /** GitHub Integration (spec §6.7). The token is `secret://github/token` in the Vault (ADR 0007), never here. */
   github: z
     .object({

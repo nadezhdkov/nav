@@ -76,6 +76,8 @@ export function formatEvent(e: NavarchEvent): string {
       const warnings = p.warnings as string[];
       detail = p.passed ? `passed (${checks} check(s))` : `failed: ${truncate(oneLine(failures.join("; ")), 200)}`;
       if (warnings.length) detail += `; ${warnings.length} warning(s)`;
+      const sandbox = p.sandbox as { image: string } | undefined;
+      if (sandbox) detail += ` in container ${sandbox.image}`;
       break;
     }
     case "approval.requested":

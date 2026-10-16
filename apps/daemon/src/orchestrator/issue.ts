@@ -132,6 +132,7 @@ export function prBody(input: PrBodyInput): string {
   } else {
     out.push("_No verify commands are configured (`.navarch/project.yaml`)._");
   }
+  if (report?.sandbox) out.push("", `Checks ran in a container (\`${report.sandbox.image}\`, network \`${report.sandbox.network}\`).`);
   if (input.iterations && input.iterations > 1) out.push("", `Verification passed after ${input.iterations} implementation attempts.`);
   out.push("");
   if (input.compete) out.push(...competeLines(input.compete));

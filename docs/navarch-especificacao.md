@@ -471,6 +471,8 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 | **L2 — Container** | Docker/Podman com a worktree montada, rede restrita, usuário não-root. | Rodar testes, dependências de terceiros. |
 | **L3 — Container endurecido** | L2 + runtime com isolamento extra (ex.: gVisor), sem rede ou rede só para registries permitidos. | Código de PRs de terceiros, repositórios desconhecidos. |
 
+> **Fase 2, slice 5 (ADR 0035):** o L2 cobre os comandos que o próprio Navarch roda, os checks de `verify` e os comandos de `setup`; os agentes continuam em L1. O projeto opta com `isolation: container` (ou o daemon com `security.default_isolation`), e a Run grava a imagem, a rede e os limites em `run.created.isolation`. Cada comando é um `docker run --rm` (ou Podman) com o uid do operador, `--cap-drop ALL`, sistema de arquivos raiz só leitura, limites de memória, CPU e processos, só a worktree montada (e o diretório git só leitura) e nenhuma variável do ambiente do daemon. Os checks rodam sem rede por padrão e o setup com rede. Sem runtime disponível a verificação falha, nunca cai para o host.
+
 #### 6.5.2 Gestão de worktrees
 
 - Convenção de nome: `navarch/<run-id>/<task-slug>` para branches e `~/.navarch/worktrees/<repo>/<run-id>-<task>` para diretórios.
@@ -1307,7 +1309,10 @@ security:
 ```yaml
 autonomy_level: 2
 tags: []                         # ex.: [confidential]
-isolation: worktree
+isolation: worktree              # ou container: verify e setup num container L2 (ADR 0035)
+container:                       # opcional; padrões em `container` no config.yaml
+  image: node:22-bookworm-slim
+  network: none                  # rede dos checks de verify; o setup sempre tem rede
 
 setup:                           # rodados pelo Runner na worktree antes da 1ª tentativa do agente,
   - npm ci                       # com rede e fora da concessão do agente (ADR 0006); nunca detectados
@@ -1426,7 +1431,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 ### Fase 2 — Flow Studio e orquestração avançada (4–6 semanas)
 
-> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031); slice 3, nó `subflow`, Runs sobre pull requests e os fluxos `review-pr` e `ci-fix` (ADR 0032; a correção de CI abre PR de `navarch/<run>/ci-fix` para o branch do PR e só comenta, sem alterar código, quando a falha é instável ou de infraestrutura); slice 4, Flow Studio (ADR 0033: Flows do Studio no event store como texto YAML, edição visual sem perda, validação ao vivo, simulação com o próprio passo do motor, rascunho e versões publicadas imutáveis).
+> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031); slice 3, nó `subflow`, Runs sobre pull requests e os fluxos `review-pr` e `ci-fix` (ADR 0032; a correção de CI abre PR de `navarch/<run>/ci-fix` para o branch do PR e só comenta, sem alterar código, quando a falha é instável ou de infraestrutura); slice 4, Flow Studio (ADR 0033: Flows do Studio no event store como texto YAML, edição visual sem perda, validação ao vivo, simulação com o próprio passo do motor, rascunho e versões publicadas imutáveis); slice 5, container L2 para `verify` e `setup` (ADR 0035).
 
 **Escopo**
 - Editor visual com validação, simulação, versionamento.

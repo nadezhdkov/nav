@@ -299,6 +299,7 @@ export class Scheduler {
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.
         setupCommands: profile!.edits ? run.setup_commands : [],
+        ...(run.isolation ? { container: { runtime: this.config.container.runtime, isolation: run.isolation } } : {}),
         ...(profile!.id === "planner" ? { summaryArtifact: "plan" as const } : {}),
         budget: {
           // Billed agents stop at the smallest amount left (0: no limit, or approved beyond it).

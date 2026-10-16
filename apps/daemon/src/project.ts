@@ -1,4 +1,5 @@
-import { VerifyCommand } from "@navarch/contracts";
+import { ContainerImage, VerifyCommand, type ContainerIsolation } from "@navarch/contracts";
+import type { Config } from "./config.ts";
 import { readFileAtCommit } from "@navarch/runner";
 import { parse } from "yaml";
 import { z } from "zod";
@@ -15,6 +16,17 @@ export const ProjectConfig = z.object({
   verify: z.array(VerifyCommand).default([]),
   allowlist: z.array(z.string().min(1)).default([]),
   protected_paths: z.array(z.string().min(1)).default([]),
+  /** Spec §14.2: `container` runs the verify checks and setup commands in a container (L2, ADR 0035). */
+  isolation: z.enum(["worktree", "container"]).optional(),
+  /** Overrides the daemon's `container` defaults; `network` is the verify checks' (setup always has one). */
+  container: z
+    .object({
+      image: ContainerImage.optional(),
+      network: z.enum(["none", "bridge"]).default("none"),
+      memory: z.string().regex(/^\d+[kmg]?$/i).optional(),
+      cpus: z.number().positive().optional(),
+    })
+    .prefault({}),
 });
 export type ProjectConfig = z.infer<typeof ProjectConfig>;
 
@@ -33,4 +45,18 @@ export async function loadProjectConfig(repoPath: string, commit: string): Promi
   const parsed = ProjectConfig.safeParse(parse(text) ?? {});
   if (!parsed.success) throw new Error(`${file} at ${commit.slice(0, 10)} is invalid: ${parsed.error.message}`);
   return parsed.data;
+}
+
+/** The run's isolation, resolved once at creation: undefined runs on the host (L1). */
+export function resolveIsolation(project: ProjectConfig, config: Pick<Config, "security" | "container">): ContainerIsolation | undefined {
+  if ((project.isolation ?? config.security.default_isolation) !== "container") return undefined;
+  const c = project.container;
+  return {
+    kind: "container",
+    image: c.image ?? config.container.image,
+    network: c.network,
+    memory: c.memory ?? config.container.memory,
+    cpus: c.cpus ?? config.container.cpus,
+    pids_limit: config.container.pids_limit,
+  };
 }

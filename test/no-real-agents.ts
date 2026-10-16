@@ -8,8 +8,11 @@ import { delimiter, join } from "node:path";
  * first on PATH and fail loudly; tests use fake CLIs by absolute path instead. Provider keys are
  * removed so the native adapter cannot reach a paid API either.
  */
-/** `secret-tool` too: a test must not read the operator's keychain (provider keys, the GitHub token); `tailscale` reads the operator's tailnet. */
-const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "grok", "ollama", "secret-tool", "tailscale"];
+/**
+ * `secret-tool` too: a test must not read the operator's keychain (provider keys, the GitHub token); `tailscale` reads the operator's tailnet;
+ * `docker` and `podman` would pull images and start containers (tests use a fake runtime, the real-Docker test calls it by absolute path).
+ */
+const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "grok", "ollama", "secret-tool", "tailscale", "docker", "podman"];
 
 const dir = mkdtempSync(join(tmpdir(), "navarch-no-agents-"));
 for (const name of AGENT_COMMANDS) {

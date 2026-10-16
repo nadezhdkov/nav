@@ -9,6 +9,7 @@ import { fakeClaude, type FakeScenario } from "../../../packages/adapters/claude
 import { fakeCli } from "../../../packages/adapters/kit/test/fake-cli.ts";
 
 import { fakeGitHub, type FakeGitHub } from "../../../packages/github/test/fake-github.ts";
+import { fakeDocker } from "../../../packages/runner/test/fake-docker.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
 import { Config } from "../src/config.ts";
 import { Daemon } from "../src/daemon.ts";
@@ -51,7 +52,7 @@ const VERIFY_OK = `verify:
  * Starts a daemon with the fake Claude. With `copilot` (a fake Copilot scenario) the Model Router
  * is on and may pick either; without it routing is off and every agent is Claude.
  */
-async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string; grok?: string }) {
+async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string; grok?: string; containerRuntime?: string }) {
   const gh = opts.gh ?? (await fakeGitHub());
   if (!opts.gh) {
     servers.push(gh);
@@ -73,6 +74,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     routing: { enabled: Boolean(copilot || grok) },
     autonomy_level: opts.autonomy ?? 2,
     github: { api_url: gh.apiUrl, git_url: opts.gitUrl },
+    ...(opts.containerRuntime ? { container: { runtime: opts.containerRuntime, image: "navarch-test:1" } } : {}),
   });
   const home = opts.home ?? tempHome();
   const daemon = new Daemon({
@@ -210,6 +212,40 @@ describe("issue → verified draft PR", () => {
     expect(run.tasks.map((t) => t.node_id)).toEqual(ISSUE_FLOW.filter((n) => n !== "approve_plan"));
     const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
     expect(events.find((e) => e.type === "flow.node.skipped")?.payload).toMatchObject({ node_id: "approve_plan" });
+  });
+
+  it("runs setup and verify in a container when the project asks for it (L2, ADR 0035)", async () => {
+    const docker = fakeDocker();
+    const { repo, gitUrl } = project(`isolation: container\ncontainer:\n  memory: 1g\nsetup:\n  - echo installing\n${VERIFY_OK}`);
+    const { api, gh, waitRun } = await start({ gitUrl, autonomy: 3, containerRuntime: docker.runtime });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    expect(created.status).toBe(201);
+    await waitRun(created.body.id, (r) => r.status === "done");
+
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    // Resolved once at creation: the project's memory over the daemon's image and limits.
+    expect(events.find((e) => e.type === "run.created")?.payload).toMatchObject({ isolation: { kind: "container", image: "navarch-test:1", network: "none", memory: "1g", cpus: 2, pids_limit: 1024 } });
+    expect(events.find((e) => e.type === "verification.completed")?.payload).toMatchObject({ passed: true, sandbox: { kind: "container", image: "navarch-test:1", network: "none" } });
+    expect(events.find((e) => e.type === "sandbox.setup")?.payload).toMatchObject({ command: "echo installing", exit_code: 0 });
+
+    const runs = docker.calls().filter((c) => c[0] === "run");
+    const command = (c: string[]) => c.at(-1);
+    // Setup gets a network to install dependencies; the checks do not.
+    expect(runs.find((c) => command(c) === "echo installing")).toContain("--network=bridge");
+    expect(runs.find((c) => command(c) === "test -f hello.txt")).toEqual(expect.arrayContaining(["--network=none", "--memory=1g", "navarch-test:1"]));
+    expect(gh.pulls[0]!.body).toContain("Checks ran in a container (`navarch-test:1`, network `none`).");
+  });
+
+  it("verifies on the host when the project does not ask for a container", async () => {
+    const docker = fakeDocker();
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, waitRun } = await start({ gitUrl, autonomy: 3, containerRuntime: docker.runtime });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    await waitRun(created.body.id, (r) => r.status === "done");
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    expect((events.find((e) => e.type === "run.created")?.payload as { isolation?: unknown }).isolation).toBeUndefined();
+    expect((events.find((e) => e.type === "verification.completed")?.payload as { sandbox?: unknown }).sandbox).toBeUndefined();
+    expect(docker.calls()).toEqual([]);
   });
 
   it("opens the PR of a compete run with the winner's checks and a Compete section (ADR 0031)", async () => {

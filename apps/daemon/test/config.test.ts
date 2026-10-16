@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { parse } from "yaml";
 import { describe, expect, it } from "vitest";
 import { Config } from "../src/config.ts";
+import { ProjectConfig, resolveIsolation } from "../src/project.ts";
 
 describe("routing config", () => {
   it("adds catalog entries to the built-in ones, and the free-models example is valid", () => {
@@ -20,5 +21,20 @@ describe("routing config", () => {
 
   it("refuses a provider key written into the config", () => {
     expect(() => Config.parse({ adapters: { native: { providers: { x: { base_url: "https://x.example/v1", api_key: "sk-live-123" } } } } })).toThrow();
+  });
+});
+
+describe("isolation (ADR 0035)", () => {
+  it("runs on the host unless the project or the daemon asks for a container", () => {
+    const config = Config.parse({});
+    expect(resolveIsolation(ProjectConfig.parse({}), config)).toBeUndefined();
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "container" }), config)).toEqual({ kind: "container", image: "node:22-bookworm-slim", network: "none", memory: "4g", cpus: 2, pids_limit: 1024 });
+    const containers = Config.parse({ security: { default_isolation: "container" }, container: { image: "ci:1" } });
+    expect(resolveIsolation(ProjectConfig.parse({ container: { network: "bridge", cpus: 4 } }), containers)).toMatchObject({ image: "ci:1", network: "bridge", cpus: 4 });
+    // A project may still choose the host when the daemon defaults to containers.
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "worktree" }), containers)).toBeUndefined();
+    expect(() => ProjectConfig.parse({ container: { memory: "lots" } })).toThrow();
+    // An image that the runtime would read as a flag.
+    expect(() => ProjectConfig.parse({ container: { image: "--privileged" } })).toThrow();
   });
 });

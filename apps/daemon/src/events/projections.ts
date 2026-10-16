@@ -69,8 +69,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "run.created": {
       const p = (event as NavarchEvent<"run.created">).payload;
       db.prepare(
-        `INSERT INTO runs (id, name, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, flow, autonomy_level, routing, work_item_id, created_at, updated_at)
-         VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO runs (id, name, status, repo_path, base_commit, prompt, budget, adapter, profile, allow_commands, setup_commands, model, work_item, verify, protected_paths, isolation, flow, autonomy_level, routing, work_item_id, created_at, updated_at)
+         VALUES (?, ?, 'created', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.run_id,
         p.name ?? codename(event.run_id!),
@@ -86,6 +86,7 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.work_item ? JSON.stringify(p.work_item) : null,
         JSON.stringify(p.verify ?? []),
         JSON.stringify(p.protected_paths ?? []),
+        p.isolation ? JSON.stringify(p.isolation) : null,
         p.flow ? JSON.stringify(p.flow) : null,
         p.autonomy_level ?? null,
         p.routing ?? null,

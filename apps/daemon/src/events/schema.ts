@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS runs (
   pr_url TEXT,
   verify TEXT NOT NULL DEFAULT '[]',
   protected_paths TEXT NOT NULL DEFAULT '[]',
+  isolation TEXT,
   flow TEXT,
   autonomy_level INTEGER,
   routing TEXT,

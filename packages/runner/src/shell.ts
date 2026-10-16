@@ -15,9 +15,23 @@ export type ShellOptions = {
  * on one line. The command runs in its own process group so that killing it also ends what it started.
  */
 export function runShell(command: string, options: ShellOptions): Promise<{ code: number | null; tail: string }> {
+  return runProcess("sh", ["-c", command], options);
+}
+
+/**
+ * `runShell` for any program and arguments. `onKill` runs once when the command is killed on
+ * timeout or abort, for what lives outside its process group (a container, ADR 0035).
+ */
+export function runProcess(file: string, args: string[], options: ShellOptions & { onKill?: () => void }): Promise<{ code: number | null; tail: string }> {
   if (options.signal?.aborted) return Promise.resolve({ code: null, tail: "" });
   return new Promise((resolve) => {
-    const child = spawn("sh", ["-c", command], {
+    let killed = false;
+    const kill = (child: ChildProcess, signal: NodeJS.Signals) => {
+      if (!killed) options.onKill?.();
+      killed = true;
+      killGroup(child, signal);
+    };
+    const child = spawn(file, args, {
       cwd: options.cwd,
       env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
@@ -31,10 +45,10 @@ export function runShell(command: string, options: ShellOptions): Promise<{ code
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
-    const timer = setTimeout(() => killGroup(child, "SIGKILL"), options.timeoutMs);
+    const timer = setTimeout(() => kill(child, "SIGKILL"), options.timeoutMs);
     let force: NodeJS.Timeout | undefined;
     const onAbort = () => {
-      killGroup(child, "SIGTERM");
+      kill(child, "SIGTERM");
       force = setTimeout(() => killGroup(child, "SIGKILL"), 2_000);
     };
     options.signal?.addEventListener("abort", onAbort, { once: true });
@@ -43,7 +57,7 @@ export function runShell(command: string, options: ShellOptions): Promise<{ code
       clearTimeout(timer);
       clearTimeout(force);
       options.signal?.removeEventListener("abort", onAbort);
-      resolve({ code: signal ? null : code, tail: tail.trim().replace(/\s+/g, " ") });
+      resolve({ code: signal || killed ? null : code, tail: tail.trim().replace(/\s+/g, " ") });
     });
   });
 }
