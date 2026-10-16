@@ -87,6 +87,7 @@ describe("QrCode", () => {
 describe("HomeView", () => {
   const run = (id: string, status: RunView["status"]): RunView => ({
     id,
+    name: `${id}-name`,
     status,
     repo_path: "/src/widget",
     base_commit: "abc",

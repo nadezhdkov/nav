@@ -23,6 +23,7 @@ CREATE TRIGGER IF NOT EXISTS events_no_delete BEFORE DELETE ON events
 export const projectionTables = `
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
   status TEXT NOT NULL,
   repo_path TEXT NOT NULL,
   base_commit TEXT NOT NULL,

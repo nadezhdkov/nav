@@ -187,7 +187,7 @@ async function main(argv: string[]): Promise<number> {
         ...(values.flow ? { flow: values.flow } : {}),
       });
       if (json && !values.follow) return print(run, json);
-      if (!json) console.log(`run ${run.id} created (${run.status})`);
+      if (!json) console.log(`run ${run.name} (${run.id}) created (${run.status})`);
       return values.follow ? follow(api, run.id, json) : EXIT.ok;
     }
     case "logs": {

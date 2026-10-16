@@ -89,6 +89,8 @@ export type ArtifactKind = z.infer<typeof ArtifactKind>;
 /** Payload schema for each event type. New types are added here first (contracts first). */
 export const EventPayloads = {
   "run.created": z.object({
+    /** The run's codename, e.g. "brave-frigate" (ADR 0027); absent before names, derived from the id then. */
+    name: z.string().optional(),
     repo_path: z.string(),
     base_commit: z.string(),
     prompt: z.string(),

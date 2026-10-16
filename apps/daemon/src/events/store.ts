@@ -48,9 +48,11 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name")) {
       this.rebuildProjections();
     }
+    // After the rebuild: an older runs table has no name column to index until then.
+    this.db.exec("CREATE INDEX IF NOT EXISTS runs_name ON runs(name)");
   }
 
   close(): void {
@@ -124,6 +126,7 @@ export class EventStore {
     try {
       this.db.exec(dropProjections);
       this.db.exec(projectionTables);
+      this.db.exec("CREATE INDEX IF NOT EXISTS runs_name ON runs(name)");
       for (const row of this.db.prepare("SELECT * FROM events ORDER BY seq").all()) {
         applyEvent(this.db, rowToEvent(row));
       }
@@ -143,6 +146,12 @@ export class EventStore {
   getRun(id: string): RunView | undefined {
     const row = this.db.prepare("SELECT * FROM runs WHERE id = ?").get(id);
     return row ? toRunView(row) : undefined;
+  }
+
+  /** The run a codename belongs to, the newest when runs from before names share one (ADR 0027). */
+  runIdByName(name: string): string | undefined {
+    const row = this.db.prepare("SELECT id FROM runs WHERE name = ? ORDER BY created_at DESC LIMIT 1").get(name) as { id: string } | undefined;
+    return row?.id;
   }
 
   getRunRecord(id: string): RunRecord | undefined {
@@ -668,6 +677,7 @@ function toApprovalView(row: Row): ApprovalView {
 function toRunView(row: Row): RunView {
   return {
     id: String(row.id),
+    name: String(row.name),
     status: row.status as RunView["status"],
     repo_path: String(row.repo_path),
     base_commit: String(row.base_commit),

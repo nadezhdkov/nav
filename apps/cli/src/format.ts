@@ -5,13 +5,13 @@ const time = (iso: string) => iso.slice(11, 19);
 
 export function formatRunList(runs: RunView[]): string {
   if (!runs.length) return "no runs yet";
-  const rows = runs.map((r) => [r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(runTitle(r), 50)]);
-  return table(["RUN", "STATUS", "COST", "CREATED", "PROMPT"], rows);
+  const rows = runs.map((r) => [r.name, r.id, r.status, `${usd(r.cost_total)}/${usd(r.budget)}`, r.created_at.slice(0, 16).replace("T", " "), truncate(runTitle(r), 50)]);
+  return table(["NAME", "RUN", "STATUS", "COST", "CREATED", "PROMPT"], rows);
 }
 
 export function formatRunDetail(run: RunDetail): string {
   const lines = [
-    `run      ${run.id}`,
+    `run      ${run.name} (${run.id})`,
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
     `cost     ${usd(run.cost_total)} of ${usd(run.budget)}${run.plan_cost > 0 ? ` (plus ${usd(run.plan_cost)} plan-equivalent, not billed)` : ""}`,

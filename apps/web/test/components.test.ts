@@ -18,6 +18,7 @@ const { useApprovalsStore, useRunsStore } = await import("../src/stores/runs.ts"
 
 const run: RunView = {
   id: "run_01ABC",
+  name: "brave-frigate",
   status: "awaiting_approval",
   repo_path: "/home/me/src/widget",
   base_commit: "abc123",

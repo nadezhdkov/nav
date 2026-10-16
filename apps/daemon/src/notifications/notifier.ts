@@ -231,7 +231,7 @@ export function render(notice: Notice, more: number, run: RunView | undefined, l
 function runTitle(run: RunView): string {
   const line = run.prompt.split("\n").find((l) => l.trim())?.trim() ?? "";
   const ref = run.work_item ? `${run.work_item.repo}#${run.work_item.number}` : "";
-  const text = [ref, line].filter(Boolean).join(" · ") || run.id;
+  const text = [run.name, ref, line].filter(Boolean).join(" · ");
   const clean = text.replace(/[\u0000-\u001f\u007f]/g, " ");
   return clean.length > TITLE_MAX ? `${clean.slice(0, TITLE_MAX - 1)}…` : clean;
 }
