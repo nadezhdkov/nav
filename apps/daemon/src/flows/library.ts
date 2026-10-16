@@ -136,6 +136,9 @@ export class FlowLibrary implements FlowLookup {
 
   /** Every problem of a document, against the profiles, adapters and Flows known now. */
   check(yaml: string, name?: string): FlowCheck {
+    if (Buffer.byteLength(yaml) > FLOW_YAML_MAX_BYTES) {
+      return { flow: null, problems: [{ severity: "error", message: `a flow is at most ${FLOW_YAML_MAX_BYTES / 1024} KiB` }] };
+    }
     const drafts = this.deps.store.studioFlows().filter((r) => !r.published_version).map((r) => r.name);
     const result = checkFlow(yaml, { profiles: [...PROFILES.keys()], adapters: this.deps.adapters, flows: this.all(), drafts });
     const declared = declaredName(yaml);

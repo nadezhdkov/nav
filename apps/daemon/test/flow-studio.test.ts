@@ -118,6 +118,8 @@ describe("Flow Studio API (ADR 0033)", () => {
     const sim = (await api<SimulationResult>("POST", "/api/v1/flows/simulate", { yaml: myTask(), outcomes: { verify: { outputs: { passed: false } } } })).body;
     expect(sim.steps.map((s) => s.node)).toEqual(["implement", "verify", "implement", "verify"]);
     expect(sim.end).toEqual({ kind: "fail", reason: expect.stringMatching(/work stopped after 2/) });
+    const huge = (await api<ValidateFlowResponse>("POST", "/api/v1/flows/validate", { yaml: `# ${"x".repeat(70_000)}\n${myTask()}` })).body.problems;
+    expect(huge).toEqual([expect.objectContaining({ message: "a flow is at most 64 KiB" })]);
     const invalid = (await api<SimulationResult>("POST", "/api/v1/flows/simulate", { yaml: "kind: Flow" })).body;
     expect(invalid.end).toBeNull();
     expect(invalid.problems.length).toBeGreaterThan(0);
