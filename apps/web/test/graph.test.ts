@@ -180,3 +180,30 @@ describe("subflow node (ADR 0032)", () => {
     expect(buildGraph(ciFix, [task("diagnose", "succeeded")], ["fix"]).nodes.find((n) => n.id === "fix")!.state).toBe("skipped");
   });
 });
+
+describe("buildGraph with a parallel node (ADR 0036)", () => {
+  const parallel: FlowDefinition = {
+    apiVersion: "navarch/v1",
+    kind: "Flow",
+    metadata: { name: "reviews" },
+    params: {},
+    nodes: [
+      {
+        id: "reviews",
+        type: "parallel",
+        join: "any",
+        branches: { security: [{ id: "threat", type: "agent", profile: "researcher" }], standards: [{ id: "style", type: "agent", profile: "reviewer" }] },
+      },
+      { id: "report", type: "agent", profile: "planner" },
+    ],
+    edges: ["reviews -> report"],
+  };
+
+  it("draws it as one node standing for its branches' tasks", () => {
+    const { nodes } = buildGraph(parallel, [task("threat", "cancelled"), task("style", "running")], []);
+    const node = nodes.find((n) => n.id === "reviews")!;
+    expect(node).toMatchObject({ kind: "parallel", detail: "2 × · any", state: "running", branchOf: { threat: "security", style: "standards" } });
+    expect(node.tasks.map((t) => t.node_id)).toEqual(["threat", "style"]);
+    expect(nodes.map((n) => n.id)).toEqual(["reviews", "report"]);
+  });
+});

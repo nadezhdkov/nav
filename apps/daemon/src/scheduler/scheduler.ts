@@ -60,6 +60,7 @@ export class Scheduler {
   private readonly billingOf: (adapter: string) => "metered" | "plan";
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
+  private readonly stopRequested = new Map<string, string>();
   /** Running tasks the user interrupted, with why: an instruction (ADR 0019) or a pause (ADR 0020). */
   private readonly interruptRequested = new Map<string, string>();
   /** One per active task; aborting ends its setup or agent whatever stage it is in. */
@@ -135,6 +136,18 @@ export class Scheduler {
       this.pump();
     }, delay);
     this.wakeTimer.unref();
+  }
+
+  /**
+   * Stops a running task that its Flow no longer needs (a parallel branch after its join, ADR 0036):
+   * the task ends `cancelled` and the run goes on.
+   */
+  requestStop(taskId: string, reason: string): boolean {
+    if (!this.active.has(taskId) || this.stopRequested.has(taskId)) return false;
+    this.stopRequested.set(taskId, reason);
+    this.aborts.get(taskId)?.abort();
+    void this.cancelHook(taskId);
+    return true;
   }
 
   requestCancel(taskId: string): void {
@@ -391,6 +404,16 @@ export class Scheduler {
     ];
 
     const run = this.store.getRun(runId)!;
+    const stopReason = this.stopRequested.get(task.id);
+    if (stopReason !== undefined) {
+      this.stopRequested.delete(task.id);
+      if (!this.cancelRequested.has(task.id) && !isTerminalRun(run.status)) {
+        events.push(taskStatus(runId, task.id, "running", "cancelled", attempt, stopReason));
+        this.store.append(events);
+        this.onSucceeded(runId);
+        return;
+      }
+    }
     if (!cancelled && interrupted && !isTerminalRun(run.status)) {
       events.push(
         taskStatus(runId, task.id, "running", "interrupted", attempt, interruptReason, {
@@ -425,9 +448,10 @@ export class Scheduler {
         events.push(...this.waitForQuota(task, attempt, run.status, error.retry_at));
       } else if (RETRYABLE.has(kind) && attempts < task.max_attempts && !isTerminalRun(run.status)) {
         events.push(taskStatus(runId, task.id, "failed", "ready", attempt, `retry after ${kind}`));
-      } else if ((task.team?.role === "member" || task.team?.role === "integrate") && kind !== "budget_exceeded" && !isTerminalRun(run.status)) {
+      } else if (flowDecidesFailure(task) && kind !== "budget_exceeded" && !isTerminalRun(run.status)) {
         // A member that failed does not fail the team: its lead reads the failure next turn (ADR 0022),
-        // nor does a failed merge of a parallel member (ADR 0029).
+        // nor does a failed merge of a parallel member (ADR 0029), a competitor whose agent failed
+        // (it is out, ADR 0031) or a parallel branch (its join decides, ADR 0036).
         this.store.append(events);
         this.onSucceeded(runId);
         return;
@@ -583,4 +607,9 @@ export class Scheduler {
 function describeBudget(b: BudgetView): string {
   const scope = b.scope === "run" ? "run" : b.scope === "project_daily" ? `project ${b.label} today` : `global ${b.period}`;
   return `${scope} $${b.used.toFixed(2)} of $${(b.limit ?? 0).toFixed(2)}`;
+}
+
+/** Tasks whose failure the Flow engine weighs instead of failing the run at once. */
+function flowDecidesFailure(task: TaskRecord): boolean {
+  return task.team?.role === "member" || task.team?.role === "integrate" || task.compete?.role === "competitor" || task.parallel !== null;
 }

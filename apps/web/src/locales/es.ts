@@ -76,6 +76,7 @@ export const es: Messages = {
     noTask: "Aún no ha empezado.",
     close: "Cerrar",
     steps: "Pasos del subflujo",
+    branches: "Ramas",
     kind: {
       trigger: "Disparador",
       agent: "Agente",
@@ -86,6 +87,7 @@ export const es: Messages = {
       team: "Equipo",
       compete: "Competencia",
       subflow: "Subflujo",
+      parallel: "Paralelo",
     },
   },
   fleet: {
@@ -596,6 +598,7 @@ export const es: Messages = {
         loop: "Repite sus pasos hasta una condición o un límite.",
         github: "Abre un PR en borrador, revisa o comenta.",
         subflow: "Ejecuta otro Flow dentro de este.",
+        parallel: "Ejecuta ramas de solo lectura a la vez y las une.",
         team: "Un agente líder que delega en otros.",
         compete: "Varios agentes en la misma tarea; un juez elige.",
         trigger: "Donde empieza el Flow.",
@@ -621,6 +624,10 @@ export const es: Messages = {
       maxFixIterations: "Iteraciones de corrección por competidor",
       approvePick: "Una persona confirma el ganador",
       flow: "Flow a ejecutar",
+      join: "Unión",
+      joinHelp: "all: todas las ramas deben tener éxito · any: gana la primera · quorum:N: ganan las N primeras. Las ramas que ya no hacen falta se detienen.",
+      branches: "Ramas",
+      branchesHelp: "Las ramas ejecutan agentes y comprobaciones de solo lectura. Edítalas en la vista YAML.",
       with: "Params de ese Flow",
       inputs: "Entradas para sus agentes",
       key: "Nombre",
@@ -670,6 +677,7 @@ export const es: Messages = {
       state: {
         succeeded: "ejecutado",
         failed: "falla",
+        cancelled: "detenida",
         skipped: "omitido",
       },
     },

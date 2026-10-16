@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   newId,
   parseDeclaredOutputs,
@@ -17,7 +17,7 @@ import {
 } from "@navarch/contracts";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import { route, type RouteDecision, type RouteRequest, type RouterConfig } from "@navarch/model-router";
-import { branchName, changedFiles, containerRuntimeProblem, createWorktree, forkWorktree, gitCommonDir, hostUser, runInContainer, runShell, worktreeDiff, worktreePath } from "@navarch/runner";
+import { branchName, changedFiles, containerRuntimeProblem, createWorktree, forkWorktree, gitCommonDir, hostUser, runInContainer, runShell, serialized, worktreeDiff, worktreePath } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -205,7 +205,9 @@ export class AgentRuntime {
         ...worktree,
         from: { id: "", kind: "worktree", path: worktreePath(this.deps.home, spec.repoPath, spec.runId, from), branch: branchName(spec.runId, from), baseCommit: spec.baseCommit },
       })
-      : await createWorktree(worktree);
+      // Parallel branches may start together on a run whose worktree does not exist yet (ADR 0036):
+      // the first creates it, the next reuses it. Git writes run one at a time per repository (ADR 0029).
+      : await serialized(resolve(spec.repoPath), () => createWorktree(worktree));
     this.publish(spec, { kind: "system", component: "runner" }, "sandbox.created", {
       sandbox_id: handle.id,
       kind: handle.kind,

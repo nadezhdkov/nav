@@ -89,6 +89,17 @@ describe("Flow document operations", () => {
     expect(() => edit(text, addNode("approval", "verify"))).toThrow(/inside a loop/);
   });
 
+  it("adds a parallel node with two branches whose ids are taken (ADR 0036)", () => {
+    let text = edit(base, addNode("parallel", "implement"));
+    const node = readDraft(text)!.nodes.find((n) => n.type === "parallel")!;
+    expect(node).toMatchObject({ id: "reviews", branchIds: ["security_review", "standards_review"] });
+    expect(node.raw).toMatchObject({ join: "all", branches: { security: [{ profile: "reviewer" }], standards: [{ profile: "reviewer" }] } });
+    expect(readDraft(text)!.chain).toEqual(["implement", "reviews"]);
+    text = edit(text, addNode("parallel", "reviews"));
+    expect(readDraft(text)!.nodes.find((n) => n.id === "reviews_2")!.branchIds).toEqual(["security_review_2", "standards_review_2"]);
+    expect(() => edit(text, renameNode("implement", "security_review"))).toThrow(/already exists/);
+  });
+
   it("removes a node and closes the chain", () => {
     let text = edit(base, addNode("action", "implement"));
     text = edit(text, addNode("github", "verify"));

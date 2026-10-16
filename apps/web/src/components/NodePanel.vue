@@ -62,6 +62,16 @@ watch(
         <dt class="text-muted">{{ t("node.cost") }}</dt><dd class="font-mono text-xs">{{ money(node.tasks.reduce((s, x) => s + x.cost, 0)) }}</dd>
         <template v-if="task.not_before"><dt class="text-muted">{{ t("node.retryAt") }}</dt><dd><time :datetime="task.not_before">{{ new Date(task.not_before).toLocaleString(locale) }}</time></dd></template>
       </dl>
+      <section v-if="node.kind === 'parallel' && node.tasks.length">
+        <h3 class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ t("node.branches") }}</h3>
+        <ul class="space-y-1">
+          <li v-for="x in node.tasks" :key="x.id" class="flex items-center gap-2">
+            <span class="text-xs text-muted">{{ node.branchOf?.[x.node_id] }}</span>
+            <span class="font-mono text-xs">{{ x.node_id }}</span>
+            <span class="ml-auto"><StatusBadge :look="nodeLook[x.status]" :status="x.status" /></span>
+          </li>
+        </ul>
+      </section>
       <section v-if="node.kind === 'subflow' && node.tasks.length">
         <h3 class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ t("node.steps") }}</h3>
         <ul class="space-y-1">

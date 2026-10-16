@@ -8,7 +8,7 @@ import { lineDiff } from "./lineDiff.ts";
  * This is editing, not validation: the daemon checks the result (`POST /api/v1/flows/validate`).
  */
 
-export const NODE_TYPES = ["agent", "action", "approval", "loop", "github", "subflow", "team", "compete", "trigger"] as const;
+export const NODE_TYPES = ["agent", "action", "approval", "loop", "parallel", "github", "subflow", "team", "compete", "trigger"] as const;
 export type NodeType = (typeof NODE_TYPES)[number];
 
 /** One node as the canvas sees it, whatever its state: missing fields are simply absent. */
@@ -21,6 +21,8 @@ export type DraftNode = {
   /** Every field as written, for the properties panel. */
   raw: Record<string, unknown>;
   body: DraftNode[];
+  /** Ids of a parallel node's branch nodes. */
+  branchIds?: string[];
 };
 
 export type DraftParam = { type: string; default: unknown };
@@ -52,6 +54,8 @@ export function readDraft(text: string): DraftView | null {
     const node: DraftNode = { id: raw.id, type: String(raw.type ?? ""), parent, raw, body: [] };
     if (typeof raw.name === "string") node.name = raw.name;
     if (Array.isArray(raw.body)) node.body = raw.body.map((b) => toNode(b, node.id)).filter((b): b is DraftNode => b !== null);
+    // A parallel node's branches (ADR 0036) are edited in the YAML view; their ids are taken all the same.
+    if (isObject(raw.branches)) node.branchIds = Object.values(raw.branches).flatMap((list) => (Array.isArray(list) ? list : [])).flatMap((b) => (isObject(b) && typeof b.id === "string" ? [b.id] : []));
     return node;
   };
   const nodes = (Array.isArray(js.nodes) ? js.nodes : []).map((n) => toNode(n, null)).filter((n): n is DraftNode => n !== null);
@@ -155,7 +159,7 @@ export function addNode(type: NodeType, after: string | null, connect = true, ou
     const node = doc.createNode(template) as YAMLMap;
     const anchor = after ? findNode(doc, after) : undefined;
     if (anchor?.parent) {
-      if (type === "loop" || type === "trigger" || type === "team" || type === "compete" || type === "subflow" || type === "approval" || type === "github") {
+      if (type === "loop" || type === "parallel" || type === "trigger" || type === "team" || type === "compete" || type === "subflow" || type === "approval" || type === "github") {
         throw new Error(`a ${type} node cannot go inside a loop`);
       }
       anchor.seq.items.splice(anchor.index + 1, 0, node);
@@ -285,7 +289,7 @@ function findNode(doc: Document, id: string): Found | undefined {
 
 function allIds(doc: Document): string[] {
   const view = readDraft(doc.toString(STRINGIFY));
-  return (view?.nodes ?? []).flatMap((n) => [n.id, ...n.body.map((b) => b.id)]);
+  return (view?.nodes ?? []).flatMap((n) => [n.id, ...n.body.map((b) => b.id), ...(n.branchIds ?? [])]);
 }
 
 function ensureSeq(doc: Document, key: string): YAMLSeq {
@@ -336,6 +340,19 @@ function templateFor(type: NodeType, unique: (base: string) => string): Record<s
           { id: implement, type: "agent", profile: "implementer" },
           { id: verify, type: "action", uses: "verification.run" },
         ],
+      };
+    }
+    case "parallel": {
+      // Two read-only reviews at once; a branch is a list of agent or action nodes (ADR 0036).
+      const id = unique("reviews");
+      return {
+        id,
+        type,
+        join: "all",
+        branches: {
+          security: [{ id: unique("security_review"), type: "agent", profile: "reviewer" }],
+          standards: [{ id: unique("standards_review"), type: "agent", profile: "reviewer" }],
+        },
       };
     }
     case "team":

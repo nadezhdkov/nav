@@ -6,7 +6,7 @@ import type { ClaudeCodeOptions } from "../src/adapter.ts";
 
 export const fakeClaudePath = fileURLToPath(new URL("./fixtures/fake-claude.mjs", import.meta.url));
 
-export type FakeScenario = "flow" | "edit" | "slow" | "fail" | "ratelimit-once" | "limit-once" | "limit-weekly" | "secret" | "lead" | "lead-question" | "lead-parallel" | "lead-conflict" | "compete" | "pulls";
+export type FakeScenario = "flow" | "edit" | "slow" | "fail" | "ratelimit-once" | "limit-once" | "limit-weekly" | "secret" | "lead" | "lead-question" | "lead-parallel" | "lead-conflict" | "compete" | "pulls" | "parallel";
 
 /** Adapter options that run the fake CLI for a scenario; `stateDir` records each call. */
 export function fakeClaude(scenario: FakeScenario): { options: ClaudeCodeOptions; stateDir: string; calls: () => FakeCall[] } {

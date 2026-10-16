@@ -124,6 +124,11 @@ switch (scenario) {
     const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1];
     if (profile === "implementer") {
       const key = /-compete-(c\d)$/.exec(process.cwd())?.[1] ?? "shared";
+      // A run prompt naming "c1 crashes" makes c1's agent fail outright.
+      if (key === "c1" && prompt.includes("c1 crashes")) {
+        result(false, "c1 crashed", 0);
+        process.exit(1);
+      }
       if (key === "c3") writeFileSync("wrong.txt", "c3\n");
       else {
         writeFileSync("answer.txt", `${key}\n`);
@@ -166,6 +171,23 @@ switch (scenario) {
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });
     writeFileSync("hello.txt", "hello from fake claude\n");
     result(true, "Created hello.txt with a greeting.");
+    break;
+  }
+  case "parallel": {
+    // Parallel branches (ADR 0036): a branch given the input `pace: slow` keeps working until it
+    // is stopped; the others answer at once as their profile.
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1] ?? "unknown";
+    if (/<input name="pace">[\s\S]*?slow/.test(prompt)) {
+      writeFileSync(join(stateDir, `slow-${process.pid}`), "started");
+      out({ type: "assistant", message: { content: [{ type: "text", text: "Taking a long look" }] } });
+      await sleep(60_000);
+    }
+    if (/<input name="pace">[\s\S]*?broken/.test(prompt)) {
+      result(false, "the review tool crashed", 0);
+      process.exit(1);
+    }
+    const reviews = (prompt.split('<input name="reviews">')[1] ?? "").split("</input>")[0].trim();
+    result(true, reviews ? `Report from: ${reviews.replace(/\s+/g, " ")}` : `${profile} looked at the change.`);
     break;
   }
   case "slow": {

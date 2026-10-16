@@ -1,4 +1,4 @@
-import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type FlowNode, type FlowProblem } from "@navarch/contracts";
+import { FlowDefinition, joinNeeds, PHASE_2_NODE_TYPES, type BodyNode, type FlowNode, type FlowProblem } from "@navarch/contracts";
 import { isNode, LineCounter, parseDocument, type Document } from "yaml";
 import { exprPaths, isExpression, parseExpr } from "./expr.ts";
 
@@ -16,6 +16,8 @@ export type FlowCatalog = {
   flows?: ReadonlyMap<string, FlowDefinition>;
   /** Studio Flows that have only a draft. */
   drafts?: readonly string[];
+  /** Profiles that edit the worktree; a parallel branch may not use them (ADR 0036). */
+  editing?: readonly string[];
 };
 
 export type FlowCheck = { flow: FlowDefinition | null; problems: FlowProblem[] };
@@ -46,7 +48,8 @@ export function checkFlow(text: string, catalog: FlowCatalog = {}): FlowCheck {
   const raw = doc.toJS() as unknown;
   const later = laterNodeType(raw);
   if (later) {
-    problems.push({ severity: "error", message: `node type "${later.type}" is not supported until Phase 2`, path: later.path, line: lineOf(later.path) });
+    const message = later.type === "join" ? `node type "join" does not exist on its own: a parallel node's \`join\` field (all, any, quorum:N) says how its branches join` : `node type "${later.type}" is not supported yet`;
+    problems.push({ severity: "error", message, path: later.path, line: lineOf(later.path) });
     return { flow: null, problems };
   }
   const parsed = FlowDefinition.safeParse(raw);
@@ -69,7 +72,7 @@ type Report = (severity: FlowProblem["severity"], message: string, at?: { node?:
 
 function checkStructure(flow: FlowDefinition, catalog: FlowCatalog, report: Report): void {
   const error = (message: string, at?: { node?: string; path?: Path }) => report("error", message, at);
-  const all = flow.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? [n, ...n.body] : [n]));
+  const all = flow.nodes.flatMap((n): (FlowNode | BodyNode)[] => [n, ...innerNodes(n)]);
   const ids = new Set<string>();
   for (const n of all) {
     if (ids.has(n.id)) error(`duplicate node id "${n.id}"`, { path: nodePath(flow, n.id, true) });
@@ -107,8 +110,14 @@ function checkStructure(flow: FlowDefinition, catalog: FlowCatalog, report: Repo
     const visible = new Set([...done, ...body]);
     before.set(id, visible);
     for (const b of body) before.set(b, visible);
+    // A branch node sees what came before the parallel node and the earlier nodes of its own branch.
+    if (node.type === "parallel") {
+      for (const nodes of Object.values(node.branches)) {
+        nodes.forEach((b, i) => before.set(b.id, new Set([...done, ...nodes.slice(0, i).map((x) => x.id)])));
+      }
+    }
     done.add(id);
-    for (const b of body) done.add(b);
+    for (const b of innerNodes(node)) done.add(b.id);
   }
 
   for (const n of all) {
@@ -122,6 +131,17 @@ function checkStructure(flow: FlowDefinition, catalog: FlowCatalog, report: Repo
     }
     for (const [profile, field] of profiles) {
       if (catalog.profiles && !catalog.profiles.includes(profile)) error(`node "${n.id}": unknown agent profile "${profile}" (known: ${catalog.profiles.join(", ")})`, at(...field));
+    }
+    if (n.type === "parallel") {
+      const count = Object.keys(n.branches).length;
+      if (joinNeeds(n.join, count) > count) error(`node "${n.id}": join ${n.join} needs more branches than its ${count}`, at("join"));
+      for (const [key, nodes] of Object.entries(n.branches)) {
+        nodes.forEach((b, j) => {
+          if (b.type === "agent" && catalog.editing?.includes(b.profile)) {
+            error(`node "${b.id}": profile "${b.profile}" edits the worktree, and parallel branches run read-only agents; edit in parallel with a team or compete node`, { node: b.id, path: [...nodePath(flow, n.id), "branches", key, j, "profile"] });
+          }
+        });
+      }
     }
     if (n.type === "subflow" && catalog.flows) checkSubflow(n, catalog, (m, field) => error(`node "${n.id}": ${m}`, at(...field)));
 
@@ -152,7 +172,7 @@ function checkStructure(flow: FlowDefinition, catalog: FlowCatalog, report: Repo
   }
 
   // Warnings: never block publishing.
-  const workers = new Set(["agent", "team", "compete", "subflow"]);
+  const workers = new Set(["agent", "team", "compete", "subflow", "parallel"]);
   if (!all.some((n) => workers.has(n.type))) report("warning", "the flow has no agent, team, compete or subflow node, so nothing would do the work");
   for (const id of seen) {
     const n = flow.nodes.find((x) => x.id === id)!;
@@ -198,20 +218,30 @@ function expressionsOf(n: FlowNode | BodyNode): [string, Path][] {
 function laterNodeType(raw: unknown): { type: string; path: Path } | undefined {
   const nodes = (raw as { nodes?: unknown })?.nodes;
   if (!Array.isArray(nodes)) return undefined;
-  const later = (n: unknown) => (PHASE_2_NODE_TYPES as readonly string[]).includes((n as { type?: string })?.type ?? "");
+  const later = (n: unknown) => [...PHASE_2_NODE_TYPES, "join"].includes((n as { type?: string })?.type ?? "");
   for (const [i, n] of nodes.entries()) {
     if (later(n)) return { type: n.type, path: ["nodes", i] };
     for (const [j, b] of (Array.isArray(n?.body) ? n.body : []).entries()) if (later(b)) return { type: b.type, path: ["nodes", i, "body", j] };
+    const branches = n?.branches && typeof n.branches === "object" ? Object.entries(n.branches as Record<string, unknown>) : [];
+    for (const [key, list] of branches) {
+      for (const [j, b] of (Array.isArray(list) ? list : []).entries()) if (later(b)) return { type: b.type, path: ["nodes", i, "branches", key, j] };
+    }
   }
   return undefined;
 }
 
-/** The YAML path of a node, top-level or in a loop body; the last one with the id when `last`. */
+/** A node's loop body or parallel branches. */
+export function innerNodes(n: FlowNode): BodyNode[] {
+  return n.type === "loop" ? n.body : n.type === "parallel" ? Object.values(n.branches).flat() : [];
+}
+
+/** The YAML path of a node, top-level, in a loop body or in a parallel branch; the last one with the id when `last`. */
 function nodePath(flow: FlowDefinition, id: string, last = false): Path {
   const found: Path[] = [];
   flow.nodes.forEach((n, i) => {
     if (n.id === id) found.push(["nodes", i]);
     if (n.type === "loop") n.body.forEach((b, j) => b.id === id && found.push(["nodes", i, "body", j]));
+    if (n.type === "parallel") for (const [key, nodes] of Object.entries(n.branches)) nodes.forEach((b, j) => b.id === id && found.push(["nodes", i, "branches", key, j]));
   });
   return (last ? found.at(-1) : found[0]) ?? [];
 }
@@ -219,8 +249,9 @@ function nodePath(flow: FlowDefinition, id: string, last = false): Path {
 /** The node a schema issue is in, from the raw document. */
 function nodeAt(raw: unknown, path: Path): { node?: string } {
   if (path[0] !== "nodes" || typeof path[1] !== "number") return {};
-  let n = (raw as { nodes: unknown[] }).nodes[path[1]] as { id?: unknown; body?: unknown[] } | undefined;
+  let n = (raw as { nodes: unknown[] }).nodes[path[1]] as { id?: unknown; body?: unknown[]; branches?: Record<string, unknown[]> } | undefined;
   if (path[2] === "body" && typeof path[3] === "number") n = n?.body?.[path[3]] as typeof n;
+  else if (path[2] === "branches" && typeof path[3] === "string" && typeof path[4] === "number") n = n?.branches?.[path[3]]?.[path[4]] as typeof n;
   return typeof n?.id === "string" ? { node: n.id } : {};
 }
 

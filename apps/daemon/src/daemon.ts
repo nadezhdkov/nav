@@ -121,6 +121,7 @@ export class Daemon {
     this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });
     this.flows = new FlowLibrary({ store: this.store, policy, adapters: [...adapters.keys()], autonomyLevel: this.config.autonomy_level });
     this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github, this.flows, policy);
+    this.orchestrator.stopRunning = (taskId, reason) => this.scheduler.requestStop(taskId, reason);
     this.concierge = new ConciergeService({
       config: this.config,
       store: this.store,

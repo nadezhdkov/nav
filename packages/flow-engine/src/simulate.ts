@@ -14,8 +14,9 @@ export type SimulateOptions = {
 
 /**
  * A dry run (spec §6.2.3, ADR 0033): walks the Flow with the engine's own `next()`, finishing each
- * started task at once with the outputs the caller chose. No tasks, events or agents. A `team` or
- * `compete` node is one step, since what happens inside it is decided by agents.
+ * started task with the outputs the caller chose once the engine waits, so the branches of a
+ * `parallel` node start together as in a run. No tasks, events or agents. A `team` or `compete`
+ * node is one step, since what happens inside it is decided by agents.
  */
 export function simulateFlow(flow: FlowDefinition, opts: SimulateOptions = {}): Omit<SimulationResult, "problems"> {
   const types = new Map<string, string>();
@@ -34,11 +35,24 @@ export function simulateFlow(flow: FlowDefinition, opts: SimulateOptions = {}): 
   };
   const steps: SimulatedStep[] = [];
   const max = opts.maxSteps ?? 200;
+  // Started tasks run until the engine has nothing else to start, then finish together.
+  const running: { task: RunContext["tasks"][number]; step: Extract<SimulatedStep, { kind: "start" }>; status: "succeeded" | "failed" }[] = [];
   while (steps.length < max) {
     const step = next(sim, ctx);
     if (step.kind === "done") return { steps, end: { kind: "done", pr_opened: step.prOpened } };
     if (step.kind === "fail") return { steps, end: { kind: "fail", reason: step.reason } };
-    if (step.kind === "wait") return { steps, end: { kind: "fail", reason: "the flow waits for a task that never finishes" } };
+    if (step.kind === "wait") {
+      if (!running.length) return { steps, end: { kind: "fail", reason: "the flow waits for a task that never finishes" } };
+      for (const r of running.splice(0)) r.task.status = r.step.status = r.status;
+      continue;
+    }
+    if (step.kind === "cancel") {
+      for (const r of running.filter((x) => step.nodeIds.includes(x.task.node_id))) {
+        running.splice(running.indexOf(r), 1);
+        r.task.status = r.step.status = "cancelled";
+      }
+      continue;
+    }
     if (step.kind === "skip") {
       ctx.skipped.push(step.nodeId);
       steps.push({ kind: "skip", node: step.nodeId, reason: step.reason });
@@ -49,9 +63,11 @@ export function simulateFlow(flow: FlowDefinition, opts: SimulateOptions = {}): 
     const given = Array.isArray(outcome?.outputs) ? outcome.outputs[Math.min(iteration, outcome.outputs.length) - 1] : outcome?.outputs;
     const outputs: Record<string, unknown> = given ?? defaultOutputs(node);
     if (types.has(node.id) && !("summary" in outputs)) outputs.summary = "(simulated)";
-    const status = outcome?.fail ? "failed" : "succeeded";
-    ctx.tasks.push({ node_id: node.id, iteration, status, outputs });
-    steps.push({ kind: "start", node: node.id, type: types.get(node.id) ?? node.type, iteration, stage, status, outputs });
+    const task: RunContext["tasks"][number] = { node_id: node.id, iteration, status: "running", outputs };
+    ctx.tasks.push(task);
+    const started: Extract<SimulatedStep, { kind: "start" }> = { kind: "start", node: node.id, type: types.get(node.id) ?? node.type, iteration, stage, status: "succeeded", outputs };
+    steps.push(started);
+    running.push({ task, step: started, status: outcome?.fail ? "failed" : "succeeded" });
   }
   return { steps, end: { kind: "limit" } };
 }

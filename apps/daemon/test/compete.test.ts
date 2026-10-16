@@ -130,4 +130,16 @@ describe("compete runs (ADR 0031)", () => {
     expect(detail.tasks.some((t) => t.node_id === "compete.approve_pick")).toBe(false);
     expect(claude.calls().filter((c) => c.prompt.includes("You are the Navarch judge agent"))).toHaveLength(1);
   });
+
+  it("keeps going when a competitor's agent fails: that competitor is out, not the run", async () => {
+    const { api } = await start();
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo(3), prompt: "write answer.txt (c1 crashes)", flow: "compete", budget: 2, params: { max_fix_iterations: 1 } })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status, tasksOf(detail)).toBe("done");
+    // It never fails on the way (it used to go failed, then back when the others were dispatched).
+    const events = (await api<{ type: string; payload: { to: string } }[]>("GET", `/api/v1/runs/${run.id}/events`)).body;
+    expect(events.filter((e) => e.type === "run.status_changed").map((e) => e.payload.to)).not.toContain("failed");
+    expect(detail.tasks.find((t) => t.node_id === "compete.c1")?.status).toBe("failed");
+    expect(detail.compete).toMatchObject({ winner: "c2", chosen_by: "only_finalist", adopted: true });
+  });
 });

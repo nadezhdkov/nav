@@ -122,8 +122,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       // The run's model belongs to the run's adapter; a routed task gets its own with model.routed.
       const model = p.type === "agent" && p.adapter === run.adapter ? run.model : null;
       db.prepare(
-        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, team, prefer, compete, choices, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, team, prefer, compete, parallel, choices, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.task_id,
         event.run_id,
@@ -141,6 +141,7 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.team ? JSON.stringify(p.team) : null,
         p.prefer ?? null,
         p.compete ? JSON.stringify(p.compete) : null,
+        p.parallel ? JSON.stringify(p.parallel) : null,
         p.choices ? JSON.stringify(p.choices) : null,
         ts,
       );

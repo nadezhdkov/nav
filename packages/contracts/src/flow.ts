@@ -4,9 +4,9 @@ import { z } from "zod";
  * Flow definition, spec §9.4: versioned YAML, the source of truth for what a run does. A running
  * instance is a TaskGraph (§6.2), made of tasks the Orchestrator creates as nodes become due.
  *
- * Phase 1 runs linear flows (an `edges` chain) with `trigger`, `agent`, `action`, `approval`,
- * `loop`, `github`, `team` (ADR 0022), `compete` (ADR 0031) and `subflow` (ADR 0032) nodes; `switch`,
- * `parallel`, `join`, `judge` and `llm` are refused when a flow is loaded (ADR 0011).
+ * Flows are linear (an `edges` chain) with `trigger`, `agent`, `action`, `approval`, `loop`,
+ * `github`, `team` (ADR 0022), `compete` (ADR 0031), `subflow` (ADR 0032) and `parallel` (ADR 0036)
+ * nodes; `switch`, `fan-out`, `judge` and `llm` are refused when a flow is loaded (ADR 0011).
  */
 
 const NodeId = z.string().regex(/^[a-z][a-z0-9_]*$/, "node ids are lowercase letters, digits and _");
@@ -137,7 +137,37 @@ export const SubflowNode = z.strictObject({
 });
 export type SubflowNode = z.infer<typeof SubflowNode>;
 
-export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode, CompeteNode, SubflowNode]);
+/** How a `parallel` node joins its branches: all of them, the first one, or the first N (spec §6.2.1). */
+export const JoinMode = z.union([z.enum(["all", "any"]), z.string().regex(/^quorum:[1-9]\d*$/, "join is all, any or quorum:N")]);
+export type JoinMode = z.infer<typeof JoinMode>;
+
+/**
+ * Branches that run at once, each a sequence of agent or action nodes, joined by `join` (ADR 0036).
+ * Branch nodes keep their own ids, unique in the Flow, so later nodes read `nodes.<id>`. Branches
+ * work read-only in the run's worktree; editing in parallel is Team and Compete mode's job.
+ */
+export const ParallelNode = z.strictObject({
+  ...base,
+  type: z.literal("parallel"),
+  join: JoinMode.default("all"),
+  branches: z
+    .record(z.string().regex(/^[a-z][a-z0-9_]*$/, "branch names are lowercase letters, digits and _"), z.array(BodyNode).min(1))
+    .refine((b) => Object.keys(b).length >= 2 && Object.keys(b).length <= 8, "a parallel node has 2 to 8 branches"),
+});
+export type ParallelNode = z.infer<typeof ParallelNode>;
+
+/** The parallel node and branch a task belongs to (ADR 0036). */
+export const ParallelTaskRef = z.object({ node_id: z.string(), branch: z.string() });
+export type ParallelTaskRef = z.infer<typeof ParallelTaskRef>;
+
+/** How many branches a join needs to succeed. */
+export function joinNeeds(join: JoinMode, branches: number): number {
+  if (join === "all") return branches;
+  if (join === "any") return 1;
+  return Number(join.slice("quorum:".length));
+}
+
+export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode, CompeteNode, SubflowNode, ParallelNode]);
 export type FlowNode = z.infer<typeof FlowNode>;
 
 export const FlowParam = z.strictObject({
@@ -160,4 +190,4 @@ export const FlowDefinition = z.strictObject({
 export type FlowDefinition = z.infer<typeof FlowDefinition>;
 
 /** Node types the spec defines but the engine does not run yet. */
-export const PHASE_2_NODE_TYPES = ["switch", "parallel", "fan-out", "join", "judge", "llm"] as const;
+export const PHASE_2_NODE_TYPES = ["switch", "fan-out", "judge", "llm"] as const;

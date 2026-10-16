@@ -76,6 +76,7 @@ export const zhCN: Messages = {
     noTask: "尚未开始。",
     close: "关闭",
     steps: "子流程步骤",
+    branches: "分支",
     kind: {
       trigger: "触发器",
       agent: "智能体",
@@ -86,6 +87,7 @@ export const zhCN: Messages = {
       team: "团队",
       compete: "竞赛",
       subflow: "子流程",
+      parallel: "并行",
     },
   },
   fleet: {
@@ -596,6 +598,7 @@ export const zhCN: Messages = {
         loop: "重复其步骤，直到满足条件或达到上限。",
         github: "创建草稿 PR、评审或评论。",
         subflow: "在此流程中运行另一个流程。",
+        parallel: "同时运行只读分支并汇合。",
         team: "由负责人智能体委派给其他智能体。",
         compete: "多个智能体做同一任务，由评委选出。",
         trigger: "流程的起点。",
@@ -621,6 +624,10 @@ export const zhCN: Messages = {
       maxFixIterations: "每位参赛者的修复迭代",
       approvePick: "由人工确认胜者",
       flow: "要运行的流程",
+      join: "汇合",
+      joinHelp: "all：所有分支都须成功 · any：第一个成功即可 · quorum:N：前 N 个成功即可。不再需要的分支会被停止。",
+      branches: "分支",
+      branchesHelp: "分支运行只读的智能体和检查。请在 YAML 视图中编辑。",
       with: "该流程的参数",
       inputs: "其智能体的输入",
       key: "名称",
@@ -670,6 +677,7 @@ export const zhCN: Messages = {
       state: {
         succeeded: "已运行",
         failed: "失败",
+        cancelled: "已停止",
         skipped: "已跳过",
       },
     },

@@ -5,3 +5,4 @@ export * from "./render.ts";
 export * from "./team.ts";
 export * from "./compete.ts";
 export * from "./simulate.ts";
+export * from "./parallel.ts";

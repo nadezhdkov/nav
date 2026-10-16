@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   team TEXT,
   prefer TEXT,
   compete TEXT,
+  parallel TEXT,
   choices TEXT,
   subagents TEXT,
   updated_at TEXT NOT NULL

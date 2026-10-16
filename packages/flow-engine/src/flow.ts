@@ -1,7 +1,8 @@
-import { type FlowDefinition, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type SubflowNode, type TeamTaskRef } from "@navarch/contracts";
+import { type FlowDefinition, type BodyNode, type CompeteTaskRef, type FlowNode, type ParallelTaskRef, type RunStatus, type SubflowNode, type TeamTaskRef } from "@navarch/contracts";
 import { checkFlow, NOT_IN_SUBFLOW } from "./check.ts";
 import { evaluate, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
 import { competeOutputs, competeStep, competitorCount } from "./compete.ts";
+import { parallelOutputs, parallelStarted, parallelStep } from "./parallel.ts";
 import { teamState, teamStep } from "./team.ts";
 
 export class FlowError extends Error {}
@@ -108,12 +109,16 @@ export type NodeToStart = {
   compete?: CompeteTaskRef;
   /** Options an approval lets the approver pick, the default first. */
   choices?: string[];
+  /** The parallel node and branch a task belongs to (ADR 0036). */
+  parallel?: ParallelTaskRef;
 };
 
 export type Step =
   | { kind: "start"; start: NodeToStart }
   | { kind: "skip"; nodeId: string; reason: string }
   | { kind: "wait" }
+  /** Stop the active tasks of these nodes: branches a join no longer needs (ADR 0036). */
+  | { kind: "cancel"; nodeIds: string[]; reason: string }
   | { kind: "done"; prOpened: boolean }
   | { kind: "fail"; reason: string };
 
@@ -154,6 +159,14 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
       if (step) return step;
       continue;
     }
+    if (node.type === "parallel") {
+      if (node.when && !parallelStarted(node, ctx) && !truthy(evaluate(parseExpr(node.when), scope))) {
+        return { kind: "skip", nodeId: node.id, reason: `when ${node.when.replace(/^\$\{\{\s*|\s*\}\}$/g, "")} is false` };
+      }
+      const step = parallelStep(node, ctx, scope, toStart);
+      if (step) return step;
+      continue;
+    }
     const latest = latestTask(ctx, node.id);
     if (!latest) {
       if (node.when && !truthy(evaluate(parseExpr(node.when), scope))) {
@@ -189,6 +202,8 @@ function subflowStep(node: SubflowNode, ctx: RunContext, scope: Scope): Step | u
       return undefined;
     case "wait":
       return step;
+    case "cancel":
+      return { ...step, nodeIds: step.nodeIds.map((id) => prefix + id) };
     case "fail":
       return { kind: "fail", reason: `subflow ${node.id}: ${step.reason}` };
     case "skip":
@@ -199,7 +214,8 @@ function subflowStep(node: SubflowNode, ctx: RunContext, scope: Scope): Step | u
       if (start.node.type === "agent") {
         for (const [name, value] of Object.entries(node.inputs ?? {})) extra[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;
       }
-      return { kind: "start", start: { ...start, node: { ...start.node, id: prefix + start.node.id }, inputs: { ...extra, ...start.inputs } } };
+      const parallel = start.parallel ? { parallel: { ...start.parallel, node_id: prefix + start.parallel.node_id } } : {};
+      return { kind: "start", start: { ...start, node: { ...start.node, id: prefix + start.node.id }, inputs: { ...extra, ...start.inputs }, ...parallel } };
     }
   }
 }
@@ -228,14 +244,14 @@ function childContext(node: SubflowNode, child: FlowDefinition, ctx: RunContext,
 function subflowOutputs(node: SubflowNode, ctx: RunContext): Record<string, unknown> | undefined {
   const child = ctx.subflows?.[node.flow];
   if (!child) return undefined;
-  const agents = new Set(child.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? n.body : [n])).filter((n) => n.type === "agent").map((n) => `${node.id}.${n.id}`));
+  const agents = new Set(child.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? n.body : n.type === "parallel" ? Object.values(n.branches).flat() : [n])).filter((n) => n.type === "agent").map((n) => `${node.id}.${n.id}`));
   return ctx.tasks.filter((t) => agents.has(t.node_id) && t.status === "succeeded").at(-1)?.outputs ?? undefined;
 }
 
 /**
  * Step progress of a run (slice 10): Flow nodes the engine has passed, in chain order, over all
  * nodes but the trigger. A loop counts its body nodes, and only those finished in its current
- * iteration, so a fix iteration counts once; a team, a compete node or a subflow counts once, when it is done.
+ * iteration, so a fix iteration counts once; a team, a compete node, a subflow or a parallel node counts once, when it is done.
  */
 export function progress(flow: FlowDefinition, ctx: RunContext): { done: number; total: number } {
   const steps = chain(flow).filter((n) => n.type !== "trigger");
@@ -258,6 +274,11 @@ export function progress(flow: FlowDefinition, ctx: RunContext): { done: number;
       const current = Math.max(...iterations);
       done += node.body.filter((b) => ctx.tasks.some((t) => t.node_id === b.id && t.iteration === current && t.status === "succeeded" && t.outputs?.passed !== false)).length;
       break;
+    }
+    if (node.type === "parallel") {
+      if (!parallelStarted(node, ctx) || safely(() => parallelStep(node, ctx, scope, toStart)) !== undefined) break;
+      done++;
+      continue;
     }
     if (node.type === "team" || node.type === "compete" || node.type === "subflow") {
       const step = () => (node.type === "team" ? teamStep(node, ctx, scope) : node.type === "compete" ? competeStep(node, ctx, scope) : subflowStep(node, ctx, scope));
@@ -338,10 +359,16 @@ function scopeOf(ctx: RunContext, flow?: FlowDefinition): Scope {
     const outputs = subflowOutputs(n, ctx);
     if (outputs) nodes[n.id] = { outputs, status: "succeeded", iteration: 1 };
   }
+  // A parallel node's output is its branches' summaries, once joined (ADR 0036).
+  for (const n of flow?.nodes ?? []) {
+    if (n.type !== "parallel") continue;
+    const outputs = parallelOutputs(n, ctx);
+    if (outputs) nodes[n.id] = { outputs, status: "succeeded", iteration: 1 };
+  }
   return { nodes, params: ctx.params, project: ctx.project };
 }
 
-function toStart(node: Exclude<FlowNode, { type: "team" | "compete" | "subflow" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
+function toStart(node: Exclude<FlowNode, { type: "team" | "compete" | "subflow" | "parallel" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
   const inputs: Record<string, unknown> = {};
   if (node.type === "agent") {
     for (const [name, value] of Object.entries(node.inputs ?? {})) inputs[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;

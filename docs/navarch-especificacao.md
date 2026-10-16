@@ -349,6 +349,8 @@ flowchart TB
 | `subflow` | Executa outro Flow. | Reaproveitar fluxo de revisão |
 | `github` | Operação no GitHub via política. | Abrir PR em rascunho, comentar |
 
+> **Fase 2, slice 6 (ADR 0036):** `parallel` é um nó composto com `branches` (2 a 8 ramos nomeados, cada um uma sequência de nós `agent`/`action`) e um campo `join` (`all`, `any`, `quorum:N`) no lugar de um nó `join` separado. Os ramos são só leitura e compartilham a worktree da Run (editar em paralelo continua com Team e Compete). Quando o `join` é satisfeito, ou não pode mais ser, os ramos ainda ativos são cancelados sem cancelar a Run. A falha de um ramo é decidida pelo `join`, não pelo Scheduler.
+
 #### 6.2.2 Propriedades comuns de nó
 
 - `id`, `type`, `name`
@@ -1431,7 +1433,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 ### Fase 2 — Flow Studio e orquestração avançada (4–6 semanas)
 
-> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031); slice 3, nó `subflow`, Runs sobre pull requests e os fluxos `review-pr` e `ci-fix` (ADR 0032; a correção de CI abre PR de `navarch/<run>/ci-fix` para o branch do PR e só comenta, sem alterar código, quando a falha é instável ou de infraestrutura); slice 4, Flow Studio (ADR 0033: Flows do Studio no event store como texto YAML, edição visual sem perda, validação ao vivo, simulação com o próprio passo do motor, rascunho e versões publicadas imutáveis); slice 5, container L2 para `verify` e `setup` (ADR 0035).
+> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031); slice 3, nó `subflow`, Runs sobre pull requests e os fluxos `review-pr` e `ci-fix` (ADR 0032; a correção de CI abre PR de `navarch/<run>/ci-fix` para o branch do PR e só comenta, sem alterar código, quando a falha é instável ou de infraestrutura); slice 4, Flow Studio (ADR 0033: Flows do Studio no event store como texto YAML, edição visual sem perda, validação ao vivo, simulação com o próprio passo do motor, rascunho e versões publicadas imutáveis); slice 5, container L2 para `verify` e `setup` (ADR 0035); slice 6, nó `parallel` com `join` (ADR 0036).
 
 **Escopo**
 - Editor visual com validação, simulação, versionamento.
