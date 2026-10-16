@@ -6,7 +6,7 @@
 | Campo | Valor |
 |---|---|
 | Nome do projeto | **Navarch** (antes VECTR; ver [§19.1](#191-nome-do-produto) e ADR 0008) |
-| Versão do documento | 0.16 (listagem e clone de repositórios do GitHub em §6.7.4, ADR 0026). 0.15 (retomada de Run `failed` em §8.4, ADR 0025). 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
+| Versão do documento | 0.17 (codinome da Run em §4, ADR 0027). 0.16 (listagem e clone de repositórios do GitHub em §6.7.4, ADR 0026). 0.15 (retomada de Run `failed` em §8.4, ADR 0025). 0.14 (tela Fleet e instruções a uma Run: §15.1, motivo `instruction` em §8.3, eventos `run.message`/`run.message.delivered` em §9.2, ADR 0019). 0.13 (licença MIT de novo no lugar da PolyForm Noncommercial, §19.9, ADR 0018). 0.12 (Model Router v1 da Fase 1: nota em §6.4.3, evento `model.routed`, ADR 0013). 0.11 (Flow engine da Fase 1: §8.4 loop de correção, nota em §9.4, ADR 0011). 0.10 (licença PolyForm Noncommercial no lugar da MIT, §19.9, ADR 0010). 0.9 (licença MIT, §19.9, ADR 0009; nome conferido em registros de marca, §19.1). 0.8 (nome do produto: VECTR → Navarch, §19.1, ADR 0008). 0.7 (`setup` da worktree em §14.2, eventos `sandbox.setup` e `quota.observed` em §9.2, configuração própria dos agentes em T1; ADR 0006). 0.6: regras de trabalho dos perfis em §6.3.3, arquivos de instrução do repositório-alvo em T1, §10.2. 0.5: decisões da Fase 0 (§19.2, §19.4), cancelamento em §8.3, eventos em §9.2 |
 | Status | Rascunho para análise |
 | Data | Outubro de 2026 |
 | Autor | Nestif |
@@ -169,7 +169,7 @@ Esta seção registra o que foi ajustado em relação ao esboço inicial e por q
 | **WorkSource** | Fonte de itens de trabalho (GitHub Issues, PRs, falhas de CI, arquivo local, agendamento). |
 | **WorkItem** | Unidade de trabalho de origem externa (uma issue, um PR, uma falha de CI). |
 | **Flow** | Definição declarativa (YAML) de um processo de trabalho em forma de grafo. Versionado. |
-| **Run** | Uma execução de um Flow para um WorkItem. Possui um **TaskGraph**. |
+| **Run** | Uma execução de um Flow para um WorkItem. Possui um **TaskGraph**. Identificada por um id (`run_…`) e por um codinome legível, adjetivo + navio (`brave-frigate`), aceito onde o id é aceito (ADR 0027). |
 | **TaskGraph** | Grafo dirigido de **Tasks** instanciado a partir de um Flow. Pode crescer dinamicamente (o Planner adiciona nós). |
 | **Task** | Nó executável do TaskGraph (ex.: "implementar", "rodar testes"). |
 | **Agent Profile** | Configuração reutilizável de um agente: papel, instruções, ferramentas permitidas, requisitos de modelo. |

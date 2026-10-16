@@ -57,6 +57,8 @@ Slice 11, [budgets, quota-aware routing and token metrics](docs/specs/phase-1-11
 
 Slice 12, [GitHub repositories in New run](docs/specs/phase-1-12-github-repos.md) (ADR 0026): the GitHub Integration lists every repository the token reaches (`GET /user/repos`, owner, collaborator and organization member, kept 60 s; `GET /api/v1/github/repos[?refresh=1]`, `navarch repos`), marked with their project when registered. New run on desktop shows them grouped by owner with a search field; picking one with no project clones it into `<home>/repos/<owner>/<name>` and registers it (`POST /api/v1/github/repos/clone`, `navarch project clone <owner/name>`). Only listed repositories can be cloned, `repo.clone` is allowed for the user only, and the token reaches `git clone` for that one command, as for pushes. Neither route is open to paired devices. Managed clones are not fetched before later runs yet.
 
+Run codenames (ADR 0027): every run gets an adjective-ship codename (`brave-frigate`, `apps/daemon/src/orchestrator/names.ts`), recorded in `run.created` and derived from the id for older runs. It is `RunView.name`, it leads run titles in the Web UI, CLI and push notifications, and the API takes it wherever a run id goes (`navarch run show brave-frigate`). Ids stay in events, branches and worktrees.
+
 Not yet: parallel team members with their own worktrees and other branching Flow nodes (Phase 2), label triggers and webhooks, the morning summary (§7.4), WebAuthn (comes with the first action that needs re-authentication), relay.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):

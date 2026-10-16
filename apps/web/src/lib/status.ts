@@ -68,11 +68,11 @@ export function canPause(status: RunStatus): boolean {
 }
 
 /** `owner/repo#N` for issue runs, then the first line of the prompt. */
+/** The run's codename (ADR 0027), then its issue and the first line of its prompt. */
 export function runTitle(run: RunView): string {
   const line = run.prompt.split("\n").find((l) => l.trim())?.trim() ?? "";
-  if (!run.work_item) return line || run.id;
-  const ref = `${run.work_item.repo}#${run.work_item.number}`;
-  return line ? `${ref} · ${line}` : ref;
+  const ref = run.work_item ? `${run.work_item.repo}#${run.work_item.number}` : "";
+  return [run.name, ref, line].filter(Boolean).join(" · ");
 }
 
 export function money(n: number): string {

@@ -43,6 +43,22 @@ async function waitFor<T>(fn: () => Promise<T>, done: (v: T) => boolean, timeout
 }
 
 describe("navarchd", () => {
+  it("names each run with a unique codename that the API takes in place of the id (ADR 0027)", async () => {
+    const { api } = await startDaemon(tempHome(), "edit");
+    const repo = makeRepo();
+    const a = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "add hello.txt" })).body;
+    const b = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, prompt: "add bye.txt" })).body;
+    expect(a.name).toMatch(/^[a-z]+-[a-z-]+$/);
+    expect(b.name).not.toBe(a.name);
+    const byName = await api<RunDetail>("GET", `/api/v1/runs/${a.name}`);
+    expect(byName).toMatchObject({ status: 200, body: { id: a.id, name: a.name } });
+    expect((await api<unknown>("GET", `/api/v1/runs/${a.name}/events`)).status).toBe(200);
+    expect((await api<unknown>("GET", "/api/v1/runs/no-such-ship")).status).toBe(404);
+    // Branches keep the id: names are for people.
+    await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${a.id}`), (r) => r.body.status === "done");
+    expect((await api<RunDetail>("GET", `/api/v1/runs/${a.id}`)).body.tasks[0]!.branch).toContain(a.id);
+  });
+
   it("tells the agent exactly which commands it may run", async () => {
     const { api, fake } = await startDaemon(tempHome(), "edit");
     const created = await api<RunView>("POST", "/api/v1/runs", {

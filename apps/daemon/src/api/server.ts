@@ -44,6 +44,7 @@ import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 import { ConciergeError } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
+import { isRunName } from "../orchestrator/names.ts";
 import { BudgetError } from "../budgets/budgets.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
@@ -127,6 +128,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   // Remote access and paired devices (ADR 0020). Pairing and the device list stay on the desktop.
+  // A run's codename works wherever its id does (ADR 0027): `/api/v1/runs/brave-frigate/…`.
+  app.addHook("preHandler", async (req, reply) => {
+    if (!req.routeOptions.url?.startsWith("/api/v1/runs/:id")) return;
+    const params = req.params as { id: string };
+    if (!isRunName(params.id)) return;
+    const id = daemon.store.runIdByName(params.id);
+    if (!id) return reply.code(404).send({ error: "not_found", message: `no run named ${params.id}` });
+    params.id = id;
+  });
+
   app.get("/api/v1/remote", async () => daemon.remoteStatus());
 
   app.post("/api/v1/devices/pairings", async (_req, reply) => {

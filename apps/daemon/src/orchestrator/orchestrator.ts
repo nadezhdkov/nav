@@ -29,6 +29,7 @@ import { loadProjectConfig } from "../project.ts";
 import { PolicyEngine } from "../policy/engine.ts";
 import { issuePrompt } from "./issue.ts";
 import { implementer, PROFILES } from "./profiles.ts";
+import { uniqueCodename } from "./names.ts";
 
 /** The repository's built-in Flows (spec §13 `flows/`). */
 export const FLOWS_DIR = fileURLToPath(new URL("../../../../flows/", import.meta.url));
@@ -138,6 +139,7 @@ export class Orchestrator {
     if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
 
     const runId = newId("run");
+    const name = uniqueCodename(runId, (n) => this.store.runIdByName(n) !== undefined);
     this.store.append([
       {
         type: "run.created",
@@ -145,6 +147,7 @@ export class Orchestrator {
         task_id: null,
         actor,
         payload: {
+          name,
           repo_path: repoPath,
           base_commit: baseCommit,
           prompt,

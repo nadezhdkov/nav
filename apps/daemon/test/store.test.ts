@@ -5,6 +5,7 @@ import type { Actor, NewEvent } from "@navarch/contracts";
 import { parseFlow } from "@navarch/flow-engine";
 import { describe, expect, it } from "vitest";
 import { tempHome } from "../../../packages/runner/test/helpers.ts";
+import { codename } from "../src/orchestrator/names.ts";
 import { EventStore } from "../src/events/store.ts";
 
 const user: Actor = { kind: "user", via: "cli" };
@@ -98,6 +99,19 @@ describe("EventStore", () => {
 
     const store = new EventStore(path);
     expect(store.tasksOfRun("run_1")).toEqual([expect.objectContaining({ id: "task_1", status: "ready", not_before: null })]);
+    store.close();
+  });
+
+  it("opens a database from before run names and names its runs from their ids (ADR 0027)", () => {
+    const path = join(tempHome(), "navarch.db");
+    const old = new EventStore(path);
+    seed(old);
+    old.db.exec("DROP INDEX runs_name; ALTER TABLE runs DROP COLUMN name");
+    old.close();
+
+    const store = new EventStore(path);
+    expect(store.getRun("run_1")?.name).toBe(codename("run_1"));
+    expect(store.runIdByName(codename("run_1"))).toBe("run_1");
     store.close();
   });
 

@@ -5,6 +5,7 @@ import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatGitHu
 function run(prompt: string): RunView {
   return {
     id: "run_1",
+    name: "brave-frigate",
     status: "executing",
     repo_path: "/repo",
     base_commit: "abc",

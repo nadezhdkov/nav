@@ -56,6 +56,7 @@ const view: FleetView = {
   runs: [
     {
       id: "run_1",
+      name: "brave-frigate",
       status: "executing",
       repo_path: "/home/me/src/widget",
       base_commit: "abc",

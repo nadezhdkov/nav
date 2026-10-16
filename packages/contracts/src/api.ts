@@ -63,6 +63,8 @@ export type TaskView = z.infer<typeof TaskView>;
 
 export const RunView = z.object({
   id: z.string(),
+  /** Codename people read and type, e.g. "brave-frigate" (ADR 0027); the id stays the identifier. */
+  name: z.string(),
   status: RunStatus,
   repo_path: z.string(),
   base_commit: z.string(),
