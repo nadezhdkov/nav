@@ -16,5 +16,5 @@
     "skipLibCheck": true
   },
   "exclude": ["apps/web"],
-  "include": ["apps/*/src", "apps/*/test", "packages/*/src", "packages/*/test", "packages/adapters/*/src", "packages/adapters/*/test", "vitest.config.ts", "test"]
+  "include": ["apps/*/src", "apps/*/test", "packages/*/src", "packages/*/test", "packages/adapters/*/src", "packages/adapters/*/test", "vitest.config.ts", "apps/cli/vitest.config.ts", "apps/daemon/vitest.config.ts", "packages/*/vitest.config.ts", "packages/adapters/*/vitest.config.ts", "test"]
 }
