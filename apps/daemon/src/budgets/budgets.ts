@@ -10,6 +10,11 @@ import type { EventStore, ProjectRecord } from "../events/store.ts";
 export class Budgets {
   private readonly deps: { store: EventStore; config: Config };
   private readonly now: () => number;
+  /**
+   * What each running billed agent may still spend, by the limited scopes it counts towards
+   * (ADR 0030). In memory like the running tasks themselves: a restart requeues them.
+   */
+  private readonly held = new Map<string, { scopes: string[]; cap: number }>();
 
   constructor(deps: { store: EventStore; config: Config; now?: () => number }) {
     this.deps = deps;
@@ -41,6 +46,44 @@ export class Budgets {
       0,
       Math.min(...this.scopesOf(run).map((s) => (s.limit === null ? Infinity : s.limit - s.used))),
     );
+  }
+
+  /**
+   * What a new billed agent of this run may spend (ADR 0030): the smallest amount left across the
+   * run's limited scopes, less what the running billed agents of each scope hold and have not spent
+   * yet. Infinity when no scope is limited.
+   */
+  available(run: Pick<RunView, "id" | "repo_path" | "budget" | "prompt">, except?: string): number {
+    const limited = this.scopesOf(run).filter((s) => s.limit !== null);
+    if (!limited.length) return Infinity;
+    const outstanding = new Map<string, number>();
+    for (const [taskId, h] of this.held) {
+      if (taskId === except) continue;
+      const left = Math.max(0, h.cap - this.deps.store.taskSpend(taskId));
+      for (const key of h.scopes) outstanding.set(key, (outstanding.get(key) ?? 0) + left);
+    }
+    return Math.max(0, Math.min(...limited.map((s) => s.limit! - s.used - (outstanding.get(scopeKey(s)) ?? 0))));
+  }
+
+  /** Whether running billed agents hold part of a scope this run counts towards. */
+  heldFor(run: Pick<RunView, "id" | "repo_path" | "budget" | "prompt">): boolean {
+    const keys = new Set(this.scopesOf(run).filter((s) => s.limit !== null).map(scopeKey));
+    return [...this.held.values()].some((h) => h.scopes.some((k) => keys.has(k)));
+  }
+
+  /** The limited scopes a run counts towards, as keys: two runs compete for a budget when they share one. */
+  limitedScopes(run: Pick<RunView, "id" | "repo_path" | "budget" | "prompt">): string[] {
+    return this.scopesOf(run).filter((s) => s.limit !== null).map(scopeKey);
+  }
+
+  /** A billed agent starts with this cap: it is held from the run's scopes until `release`. */
+  reserve(run: Pick<RunView, "id" | "repo_path" | "budget" | "prompt">, taskId: string, cap: number): void {
+    if (!Number.isFinite(cap)) return;
+    this.held.set(taskId, { scopes: this.limitedScopes(run), cap });
+  }
+
+  release(taskId: string): void {
+    this.held.delete(taskId);
   }
 
   /** `budget.threshold` events for scopes of the run (or only the global month) that crossed a threshold not recorded yet. */
@@ -138,6 +181,8 @@ export class BudgetError extends Error {
 export function spends(event: NavarchEvent): boolean {
   return (event.type === "model.call.completed" && (event as NavarchEvent<"model.call.completed">).payload.billing !== "plan") || event.type === "workitem.triaged";
 }
+
+const scopeKey = (s: Pick<BudgetView, "scope" | "target" | "period">) => `${s.scope}:${s.target ?? ""}:${s.period}`;
 
 function view(
   scope: BudgetView["scope"],

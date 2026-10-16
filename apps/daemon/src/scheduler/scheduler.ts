@@ -11,6 +11,8 @@ import type { PolicyEngine } from "../policy/engine.ts";
 const RETRYABLE = new Set(["transient", "interrupted"]);
 /** Margin after a provider's reset time, for clock skew. */
 const RESET_MARGIN_MS = 5_000;
+/** The smallest cap a billed agent starts with; below it the agent waits for running ones (ADR 0030). */
+const MIN_SHARE = 0.01;
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
 /** Ready tasks in dispatch order: already-attempted tasks first, FIFO within each group. */
@@ -54,6 +56,7 @@ export class Scheduler {
   private readonly cancelHook: CancelHook;
   private readonly actions: Map<string, ActionExecutor>;
   private readonly onSucceeded: (runId: string) => void;
+  private readonly billingOf: (adapter: string) => "metered" | "plan";
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
   /** Running tasks the user interrupted, with why: an instruction (ADR 0019) or a pause (ADR 0020). */
@@ -75,7 +78,10 @@ export class Scheduler {
     actions?: Map<string, ActionExecutor>;
     /** Called after a task succeeded, to advance the run's TaskGraph (the Orchestrator). */
     onSucceeded?: (runId: string) => void;
+    /** How an adapter declares its use is paid for (ADR 0023); unknown adapters count as billed. */
+    billingOf?: (adapter: string) => "metered" | "plan";
   }) {
+    this.billingOf = deps.billingOf ?? (() => "metered");
     this.actions = deps.actions ?? new Map();
     this.onSucceeded = deps.onSucceeded ?? (() => {});
     this.store = deps.store;
@@ -186,7 +192,18 @@ export class Scheduler {
     const exceeded = executor ? [] : this.budgets.scopesOf(run).filter((s) => s.state === "exceeded");
     const overBudget = exceeded.length > 0 && !this.store.taskApproved(task.id, "budget.exceed");
     const action = overBudget ? "budget.exceed" : runAction;
-    const budgetRemaining = this.budgets.remaining(run);
+    // Billed agents running at once share what is left (ADR 0030): this one gets an equal part of
+    // what the running ones do not hold, and waits, still ready, while they hold all of it.
+    const billed = !executor && !overBudget && this.billed(task.adapter);
+    let budgetRemaining = this.budgets.remaining(run);
+    if (billed) {
+      const available = this.budgets.available(run);
+      if (Number.isFinite(available)) {
+        const share = Math.floor((available / (1 + this.billedPeers(run, task))) * 100) / 100;
+        if (share < MIN_SHARE && this.budgets.heldFor(run)) return;
+        budgetRemaining = Math.min(budgetRemaining, Math.max(share, MIN_SHARE));
+      }
+    }
     const decision = this.policy.decide(scheduler, action, task.id, {
       autonomyLevel: run.autonomy_level ?? this.config.autonomy_level,
       budgetRemaining,
@@ -261,6 +278,7 @@ export class Scheduler {
     const sandboxId = task.sandbox_id ?? runSandboxId;
     const abort = new AbortController();
     this.aborts.set(task.id, abort);
+    if (billed) this.budgets.reserve(run, task.id, budgetRemaining);
     const execution = executor
       ? executor.execute({ run, task, attempt, signal: abort.signal })
       : this.runtime.execute({
@@ -312,6 +330,7 @@ export class Scheduler {
         // finish() only fails if the store is closed during shutdown.
       })
       .finally(() => {
+        this.budgets.release(task.id);
         this.active.delete(task.id);
         this.aborts.delete(task.id);
         this.cancelRequested.delete(task.id);
@@ -319,6 +338,25 @@ export class Scheduler {
         this.pump();
       });
     this.active.set(task.id, work);
+  }
+
+  /** Whether an agent's use is expected to be billed: its adapter says so, or its latest use was. */
+  private billed(adapter: string): boolean {
+    return (this.store.lastBillingOf(adapter) ?? this.billingOf(adapter)) === "metered";
+  }
+
+  /** Other billed agent tasks ready to start that count towards one of this run's limited budgets. */
+  private billedPeers(run: RunRecord, task: TaskRecord): number {
+    const keys = new Set(this.budgets.limitedScopes(run));
+    const runs = new Map<string, boolean>();
+    return this.store.tasksWithStatus("ready").filter((t) => {
+      if (t.id === task.id || t.type !== "agent" || this.active.has(t.id) || !this.billed(t.adapter)) return false;
+      if (!runs.has(t.run_id)) {
+        const other = this.store.getRunRecord(t.run_id);
+        runs.set(t.run_id, !!other && this.budgets.limitedScopes(other).some((k) => keys.has(k)));
+      }
+      return runs.get(t.run_id)!;
+    }).length;
   }
 
   private finish(task: TaskRecord, attempt: number, outcome: TaskOutcome): void {
@@ -432,7 +470,8 @@ export class Scheduler {
       exhausted: this.store.exhaustedQuotas(),
       exclude,
       ...(prefer ? { prefer } : {}),
-      budgetRemaining: this.budgets.remaining(run),
+      // What running billed agents hold is not there to spend (ADR 0030).
+      budgetRemaining: this.budgets.available(run),
       quotaUse,
       observed: (id) => observed(id, task.profile),
     });

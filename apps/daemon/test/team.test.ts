@@ -172,6 +172,23 @@ describe("team runs (ADR 0022)", () => {
     expect(own.files.map((f) => f.path)).toEqual(["a.txt"]);
   });
 
+  it("splits what is left of the budget between billed members running at once (ADR 0030)", async () => {
+    const { api, claude } = await start("lead-parallel");
+    writeFileSync(join(claude.stateDir, "api-key-source"), "ANTHROPIC_API_KEY");
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo("test -f a.txt && test -f b.txt"), prompt: "add a.txt and b.txt", flow: "team", budget: 1 })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status, JSON.stringify(detail.tasks.map((t) => [t.node_id, t.status, t.error]))).toBe("done");
+    const cap = (key: string) => {
+      const args = claude.calls().find((c) => c.prompt.includes(`Create ${key}.txt`))!.args;
+      return Number(args[args.indexOf("--max-budget-usd") + 1]);
+    };
+    // The lead spent $0.01 of $1; the two members together may spend at most the $0.99 left.
+    expect(cap("a")).toBeGreaterThan(0);
+    expect(cap("b")).toBeGreaterThan(0);
+    expect(cap("a") + cap("b")).toBeLessThanOrEqual(0.99);
+    expect(Math.abs(cap("a") - cap("b"))).toBeLessThan(0.011);
+  });
+
   it("sends a merge conflict to an implementer and concludes the merge (ADR 0029)", async () => {
     const { api } = await start("lead-conflict");
     const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo('grep -q "from a and b" shared.txt'), prompt: "write shared.txt", flow: "team" })).body;

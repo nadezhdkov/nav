@@ -27,6 +27,6 @@ Two questions are open: where a member's branch starts, and how a conflict is re
 
 - Teams with independent members finish sooner. Each member worktree runs the project's `setup` commands once (e.g. `npm ci`), which costs disk and time per member.
 - Member worktrees and branches are kept until the run ends, for inspection (§6.5.2). The Worktree tab of a member's panel reads its own worktree (`GET /api/v1/runs/:id/worktree?task=`); the run's default stays the shared one.
-- Budgets are checked when each agent is dispatched. Members dispatched together each see the same budget left, so a billed run can go over its budget by what the members running at that moment spend; quotas and `max_parallel` bound it. A budget split across running members is open.
+- Budgets are checked when each agent is dispatched. Billed members running at once split what is left of the budget instead of each getting all of it (ADR 0030).
 - `TeamTaskRef.role` gains `integrate`, `TeamMemberView` gains `merge` (`pending`, `merging`, `resolving`, `merged`, `conflict`) and `branch`. No new event types: integrations are tasks, and their outcome is the task's output.
 - Generic `parallel`/`join` Flow nodes, the Compete mode and `judge` (spec §16) reuse the same worktree fork and integrate steps in later slices.

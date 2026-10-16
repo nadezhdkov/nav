@@ -150,6 +150,7 @@ export class OpencodeAdapter implements AgentAdapter {
   private async attempt(ctx: TaskContext, io: AdapterIO, resume?: string): Promise<TaskResult> {
     let lastText = "";
     let failure = "";
+    let overBudget = "";
     let session = resume;
     const usage = { tokensIn: 0, tokensOut: 0, cached: 0, cost: 0, steps: 0 };
     const configDir = mkdtempSync(join(tmpdir(), "navarch-opencode-"));
@@ -192,6 +193,11 @@ export class OpencodeAdapter implements AgentAdapter {
               usage.cached += item.cached;
               usage.cost += item.cost;
               usage.steps += 1;
+              // OpenCode has no spending cap of its own: Navarch stops it after the step that crosses the task's (ADR 0030).
+              if (ctx.budget.maxCost > 0 && usage.cost > ctx.budget.maxCost && !overBudget) {
+                overBudget = `spent $${usage.cost.toFixed(4)} of $${ctx.budget.maxCost.toFixed(2)}`;
+                void this.processes.cancel(ctx.taskId);
+              }
               break;
             case "failed":
               failure = item.message;
@@ -204,6 +210,7 @@ export class OpencodeAdapter implements AgentAdapter {
       const records: UsageRecord[] = usage.steps
         ? [{ model: ctx.model || "opencode", tokens_in: usage.tokensIn, tokens_out: usage.tokensOut, cached_tokens: usage.cached, cost: usage.cost }]
         : [];
+      if (overBudget) return { status: "failed", summary: lastText, artifacts: [], claims: [], usage: records, error: { kind: "budget_exceeded", message: overBudget } };
       const final = session || failure ? { ok: !failure, summary: lastText, usage: records, ...(failure ? { error: failure } : {}) } : undefined;
       return cliOutcome("opencode", exit, final, lastText);
     } finally {

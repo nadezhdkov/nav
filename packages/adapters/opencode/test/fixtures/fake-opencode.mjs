@@ -70,6 +70,15 @@ switch (scenario) {
     out("error", { error: { type: "provider.rate-limit", message: "Rate limit exceeded, retry in 30s", status: 429 } });
     process.exit(1);
     break;
+  case "expensive":
+    // Metered steps of $0.30 each, then a long wait: only a cap stops it.
+    for (let i = 0; i < 5; i++) {
+      out("step_finish", { part: { type: "step-finish", reason: "tool-calls", cost: 0.3, tokens: { input: 1000, output: 100, reasoning: 0, cache: { read: 0, write: 0 } } } });
+      out("step_start", { part: { type: "step-start" } });
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    await new Promise((r) => setTimeout(r, 60_000));
+    break;
   case "slow":
     writeFileSync(join(stateDir, "started"), "1");
     await new Promise((r) => setTimeout(r, 60_000));

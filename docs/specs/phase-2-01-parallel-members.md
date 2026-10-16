@@ -53,5 +53,5 @@ Navarch's git writes to a repository's worktrees (fork, integrate) run one at a 
 ## 🔴 Open
 
 - Generic `parallel`/`join` Flow nodes outside a team, Compete mode and `judge` (next slices).
-- Splitting the budget left across members running at once.
+- ~~Splitting the budget left across members running at once~~: done, ADR 0030.
 - Pruning member worktrees when the run ends (§6.5.2 cleanup policy).

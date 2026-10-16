@@ -114,6 +114,33 @@ describe("Cost Ledger (ADR 0023)", () => {
   });
 });
 
+describe("budget held by running agents (ADR 0030)", () => {
+  it("leaves to a new agent only what running billed agents do not hold, across shared scopes", () => {
+    const store = new EventStore(":memory:");
+    seedRun(store, "r1", "/a", 2);
+    seedRun(store, "r2", "/b", 2);
+    const budgets = new Budgets({ store, config: Config.parse({ budgets: { global_monthly: 3 } }) });
+    const r1 = store.getRun("r1")!;
+    const r2 = store.getRun("r2")!;
+    expect(budgets.available(r1)).toBe(2);
+
+    budgets.reserve(r1, "r1_t", 1.2);
+    expect(budgets.available(r1)).toBeCloseTo(0.8);
+    // The global month is shared: r2 may use what r1 does not hold of it.
+    expect(budgets.available(r2)).toBeCloseTo(1.8);
+    expect(budgets.heldFor(r2)).toBe(true);
+
+    // What the agent already spent counts once, in `used`, not twice.
+    spend(store, "r1", 0.5);
+    expect(budgets.available(r1)).toBeCloseTo(0.8);
+    expect(budgets.available(r1, "r1_t")).toBeCloseTo(1.5);
+
+    budgets.release("r1_t");
+    expect(budgets.available(r1)).toBeCloseTo(1.5);
+    expect(budgets.heldFor(r2)).toBe(false);
+  });
+});
+
 describe("observed metrics (ADR 0023)", () => {
   const now = Date.parse("2026-10-15T12:00:00Z");
   const attempt = (over: Partial<AttemptRecord>): AttemptRecord => ({

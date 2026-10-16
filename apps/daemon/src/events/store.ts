@@ -479,6 +479,20 @@ export class EventStore {
    * Billed and plan-equivalent cost and tokens of the Cost Ledger since `from` (ISO 8601), for all
    * use, one run, or the runs of one repository path (ADR 0023).
    */
+  /** Billed spend recorded so far by one task (ADR 0030). */
+  taskSpend(taskId: string): number {
+    const row = this.db.prepare("SELECT COALESCE(SUM(cost), 0) AS cost FROM usage WHERE task_id = ? AND billing = 'metered'").get(taskId) as { cost: number };
+    return row.cost;
+  }
+
+  /** How an adapter's latest recorded use was paid for; undefined before it was used. */
+  lastBillingOf(adapter: string): "metered" | "plan" | undefined {
+    const row = this.db
+      .prepare("SELECT u.billing FROM usage u JOIN tasks t ON t.id = u.task_id WHERE t.adapter = ? ORDER BY u.seq DESC LIMIT 1")
+      .get(adapter) as { billing: "metered" | "plan" } | undefined;
+    return row?.billing;
+  }
+
   usageTotals(from: string | null, scope: { runId?: string; repoPath?: string } = {}): UsageTotals {
     const where = ["(? IS NULL OR u.ts >= ?)"];
     const args: (string | null)[] = [from, from];
