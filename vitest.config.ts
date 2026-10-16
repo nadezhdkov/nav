@@ -1,8 +1,9 @@
 import { defineConfig } from "vitest/config";
+import { NO_REAL_AGENTS, TEST_TIMEOUT } from "./test/package-vitest.ts";
 
 export default defineConfig({
   test: {
-    testTimeout: 20_000,
+    testTimeout: TEST_TIMEOUT,
     projects: [
       {
         extends: true,
@@ -10,7 +11,7 @@ export default defineConfig({
           name: "core",
           include: ["apps/*/test/**/*.test.ts", "packages/**/test/**/*.test.ts"],
           exclude: ["apps/web/**", "**/node_modules/**"],
-          setupFiles: ["test/no-real-agents.ts"],
+          setupFiles: [NO_REAL_AGENTS],
         },
       },
       // The Web UI compiles .vue files and runs in a DOM (ADR 0017).
