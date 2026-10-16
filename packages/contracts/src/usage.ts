@@ -46,6 +46,11 @@ export const ModelMetricsView = z.object({
   success_rate: z.number().min(0).max(1).nullable(),
   /** Failures other than rate limits and cancellations over finished tasks of the last 24 h; null below 4 tasks. */
   error_rate_24h: z.number().min(0).max(1).nullable(),
+  /**
+   * Tasks that ended on a rate limit or exhausted quota. They are left out of both rates, which
+   * judge the model, but show how often the agent was not available.
+   */
+  rate_limited: z.number().int().nonnegative(),
   tokens_in: z.number().int().nonnegative(),
   tokens_out: z.number().int().nonnegative(),
   cached_tokens: z.number().int().nonnegative(),

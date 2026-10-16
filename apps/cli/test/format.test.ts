@@ -177,6 +177,7 @@ describe("budgets and usage (ADR 0023)", () => {
           succeeded: 9,
           success_rate: 0.9,
           error_rate_24h: null,
+          rate_limited: 3,
           tokens_in: 900_000,
           tokens_out: 40_000,
           cached_tokens: 0,
@@ -191,7 +192,7 @@ describe("budgets and usage (ADR 0023)", () => {
     });
     expect(text).toContain("today       $0.5000 billed · $3.00 plan-equivalent · 12.3k tokens");
     expect(text).toContain("2.5M tokens");
-    expect(text).toMatch(/claude-code\s+plan\s+10\s+90 %\s+-\s+900\.0k\/40\.0k\s+80\.0k\s+\$1\.20\s+\$0\.00\s+95s/);
+    expect(text).toMatch(/claude-code\s+plan\s+10\s+90 %\s+-\s+3\s+900\.0k\/40\.0k\s+80\.0k\s+\$1\.20\s+\$0\.00\s+95s/);
     expect(text).toContain("claude-code five_hour: 40 %, resets 2026-10-15 18:00");
   });
 });

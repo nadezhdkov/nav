@@ -26,6 +26,7 @@ function model(id: string, over: Partial<ModelMetricsView> = {}): ModelMetricsVi
     succeeded: 3,
     success_rate: 0.75,
     error_rate_24h: null,
+    rate_limited: 0,
     tokens_in: 120_000,
     tokens_out: 8_000,
     cached_tokens: 0,
