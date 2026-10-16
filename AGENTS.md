@@ -59,6 +59,8 @@ Slice 12, [GitHub repositories in New run](docs/specs/phase-1-12-github-repos.md
 
 Run codenames (ADR 0027): every run gets an adjective-ship codename (`brave-frigate`, `apps/daemon/src/orchestrator/names.ts`), recorded in `run.created` and derived from the id for older runs. It is `RunView.name`, it leads run titles in the Web UI, CLI and push notifications, and the API takes it wherever a run id goes (`navarch run show brave-frigate`). Ids stay in events, branches and worktrees.
 
+Phase 1 go/no-go met on 2026-10-15. Six issue runs ended in draft PRs, and the user accepted all five on claude-toolkit as they were. Every write went to a `navarch/*` branch, the billed cost was $0 and the plan-equivalent cost averaged $0.47 per run against a $2 budget, and approvals were given from the phone on mobile data. The report and findings F1–F6 are in [`docs/reports/2026-10-15-phase-1-go-no-go.md`](docs/reports/2026-10-15-phase-1-go-no-go.md).
+
 Not yet: parallel team members with their own worktrees and other branching Flow nodes (Phase 2), label triggers and webhooks, the morning summary (§7.4), WebAuthn (comes with the first action that needs re-authentication), relay.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
