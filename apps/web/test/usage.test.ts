@@ -1,11 +1,12 @@
-import type { BudgetView, ModelMetricsView, UsageView } from "@navarch/contracts";
+import type { BudgetView, MetricsView, ModelMetricsView, UsageView } from "@navarch/contracts";
 import { flushPromises, mount, RouterLinkStub } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { i18n } from "../src/i18n.ts";
+import { dayBars, meetsTarget, niceCeil, shareBars } from "../src/lib/metrics.ts";
 import { budgetPercent, sortModels, visibleBudgets } from "../src/lib/usage.ts";
 
-const api = vi.hoisted(() => ({ usage: vi.fn(), setBudget: vi.fn() }));
+const api = vi.hoisted(() => ({ usage: vi.fn(), setBudget: vi.fn(), metrics: vi.fn() }));
 const mode = vi.hoisted(() => ({ client: "web" as "web" | "mobile" }));
 vi.mock("../src/api/client.ts", async (orig) => ({ ...(await orig<object>()), api, client: () => mode.client }));
 
@@ -54,6 +55,43 @@ const view: UsageView = {
   quotas: [],
 };
 
+const metrics: MetricsView = {
+  generated_at: "2026-10-16T12:00:00Z",
+  window_days: 30,
+  cost: {
+    total: { cost: 0.5, plan_cost: 4, tokens: 90_000 },
+    days: [
+      { day: "2026-10-15", cost: 0, plan_cost: 0, tokens: 0 },
+      { day: "2026-10-16", cost: 0.5, plan_cost: 4, tokens: 90_000 },
+    ],
+    projects: [
+      { kind: "project", project_id: "prj_1", label: "acme", runs: 3, cost: 0.4, plan_cost: 4, tokens: 80_000 },
+      { kind: "outside", project_id: null, label: "outside runs", runs: 0, cost: 0.1, plan_cost: 0, tokens: 10_000 },
+    ],
+    profiles: [{ profile: "implementer", tasks: 3, cost: 0.4, plan_cost: 4, tokens: 80_000 }],
+    models: [{ model: "sonnet", calls: 12, cost: 0.4, plan_cost: 4, tokens: 80_000 }],
+  },
+  quality: {
+    profiles: [{ profile: "implementer", tasks: 5, succeeded: 4, success_rate: 0.8, rate_limited: 1 }],
+    models: [model("claude-code")],
+    pull_requests: {
+      opened: 4,
+      open: 1,
+      merged: 1,
+      closed: 2,
+      gone: 0,
+      acceptance_rate: 0.333,
+      accepted_as_is: 1,
+      rework: 0,
+      rework_rate: 0,
+      cost_per_merged: 1.2,
+      recent: [
+        { run_id: "run_1", run_name: "brave-frigate", repo: "o/acme", number: 12, url: "https://github.com/o/acme/pull/12", state: "merged", opened_at: "2026-10-16T10:00:00Z", closed_at: "2026-10-16T11:00:00Z", commits_after: 0, cost: 0, plan_cost: 1.2 },
+      ],
+    },
+  },
+};
+
 const global = { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } };
 
 beforeEach(() => {
@@ -62,6 +100,8 @@ beforeEach(() => {
   mode.client = "web";
   api.usage.mockReset().mockResolvedValue(view);
   api.setBudget.mockReset().mockResolvedValue([]);
+  api.metrics.mockReset().mockResolvedValue(metrics);
+  localStorage.clear();
 });
 
 describe("usage helpers (ADR 0023)", () => {
@@ -79,7 +119,63 @@ describe("usage helpers (ADR 0023)", () => {
   });
 });
 
+describe("metrics helpers (ADR 0037)", () => {
+  it("rounds the chart's top to 1, 2 or 5 × 10ⁿ and scales bars to it", () => {
+    expect([niceCeil(0), niceCeil(0.03), niceCeil(0.3), niceCeil(4.5), niceCeil(12)]).toEqual([1, 0.05, 0.5, 5, 20]);
+    const { top, bars } = dayBars(metrics.cost.days);
+    expect(top).toBe(5);
+    expect(bars[1]).toMatchObject({ billedPct: 10, planPct: 80 });
+    expect(shareBars(metrics.cost.projects).map((r) => Math.round(r.billedPct + r.planPct))).toEqual([100, 2]);
+  });
+
+  it("compares rates with the §17 targets", () => {
+    expect([meetsTarget("acceptance", 0.5), meetsTarget("acceptance", 0.49), meetsTarget("rework", 0.25), meetsTarget("rework", null)]).toEqual([true, false, false, null]);
+  });
+});
+
 describe("Usage view", () => {
+  it("loads the cost panel only when its tab opens, and remembers the tab", async () => {
+    const wrapper = mount(UsagePage, { global });
+    await flushPromises();
+    expect(api.metrics).not.toHaveBeenCalled();
+    await wrapper.find("#usage-tab-cost").trigger("click");
+    await flushPromises();
+    expect(api.metrics).toHaveBeenCalledWith(30);
+    const text = wrapper.text();
+    expect(text).toContain("Spend per day");
+    expect(text).toContain("Outside runs (Inbox triage)");
+    expect(wrapper.findAll('[role="listitem"]').map((b) => b.attributes("aria-label"))).toEqual([expect.stringContaining("$0.000 billed"), expect.stringContaining("$0.500 billed, $4.00 plan-equivalent")]);
+    expect(localStorage.getItem("navarch.usage.tab")).toBe("cost");
+
+    await wrapper.findAll('[role="group"] button').find((b) => b.text() === "90 days")!.trigger("click");
+    await flushPromises();
+    expect(api.metrics).toHaveBeenLastCalledWith(90);
+  });
+
+  it("shows PR rates against their targets in text, and success per profile", async () => {
+    localStorage.setItem("navarch.usage.tab", "quality");
+    const wrapper = mount(UsagePage, { global });
+    await flushPromises();
+    const text = wrapper.text();
+    expect(text).toContain("33%");
+    expect(text).toContain("1 merged of 3 closed");
+    expect(text).toContain("Off target · target at least 50%");
+    expect(text).toContain("On target · target below 25%");
+    expect(text).toContain("$1.20");
+    expect(text).toContain("1 rate-limited, not counted");
+    expect(wrapper.find('a[href="https://github.com/o/acme/pull/12"]').exists()).toBe(true);
+    expect(text).toContain("Merged");
+  });
+
+  it("moves between tabs with the arrow keys", async () => {
+    const wrapper = mount(UsagePage, { global, attachTo: document.body });
+    await flushPromises();
+    await wrapper.find('[role="tablist"]').trigger("keydown", { key: "ArrowLeft" });
+    await flushPromises();
+    expect(wrapper.find("#usage-tab-quality").attributes("aria-selected")).toBe("true");
+    wrapper.unmount();
+  });
+
   it("shows spend apart from plan use, and budget states in text with meters", async () => {
     const wrapper = mount(UsagePage, { global });
     await flushPromises();

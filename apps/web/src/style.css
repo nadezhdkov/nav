@@ -23,6 +23,9 @@
   --tone-danger: #fb7185;
   --tone-warning: #f59e0b;
   --tone-muted: #8b93a1;
+  /* Cost chart series (ADR 0037), checked for colour-blind separation and contrast on --surface. */
+  --series-billed: #3987e5;
+  --series-plan: #d95926;
   --card-shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 8px 24px -12px rgb(0 0 0 / 0.6);
   --glow: 0 0 0 1px var(--tone), 0 0 18px -2px color-mix(in srgb, var(--tone) 55%, transparent);
 }
@@ -46,6 +49,8 @@
     --tone-danger: #be123c;
     --tone-warning: #a14a07;
     --tone-muted: #5f6673;
+    --series-billed: #2a78d6;
+    --series-plan: #eb6834;
     --card-shadow: 0 1px 2px rgb(17 19 24 / 0.06);
   }
 }

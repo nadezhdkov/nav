@@ -1,4 +1,4 @@
-import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView } from "@navarch/contracts";
+import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -206,6 +206,39 @@ export const useProjectsStore = defineStore("projects", () => {
 });
 
 /** Budgets, spend and observed metrics per model (ADR 0023), for Usage and Home's cost card. */
+/**
+ * The cost and quality panels (ADR 0037). Nothing is fetched before the Usage screen opens their
+ * tab (`open`); after that, `load` and events keep the view fresh like the other stores.
+ */
+export const useMetricsStore = defineStore("metrics", () => {
+  const view = ref<MetricsView | null>(null);
+  const days = ref(30);
+  const error = ref<string | null>(null);
+  let wanted = false;
+
+  async function open() {
+    wanted = true;
+    await load();
+  }
+
+  async function load() {
+    if (!wanted) return;
+    try {
+      view.value = await api.metrics(days.value);
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^github\.pr\./.test(event.type) || ["model.call.completed", "task.completed", "workitem.triaged"].includes(event.type)) refetch();
+  }
+
+  return { view, days, error, open, load, apply };
+});
+
 export const useUsageStore = defineStore("usage", () => {
   const view = ref<UsageView | null>(null);
   const days = ref(30);
