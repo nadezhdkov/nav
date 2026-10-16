@@ -30,6 +30,7 @@ export const zhCN: Messages = {
     loading: "正在加载运行…",
   },
   run: {
+    projectWarning: "已添加为项目，但有一条警告：",
     attachments: "附加文档",
     attachmentHint: "此运行的每个代理都会在任务之后阅读此文档。",
     pause: "暂停运行",

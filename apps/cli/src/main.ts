@@ -246,7 +246,8 @@ async function main(argv: string[]): Promise<number> {
         return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); sync now with: navarch sync`, json);
       }
       if (rest[0] === "clone") {
-        const project = await api.request<ProjectView>("POST", "/api/v1/github/repos/clone", { repo: required(rest[1], "owner/name") });
+        const project = await api.request<AddProjectResult>("POST", "/api/v1/github/repos/clone", { repo: required(rest[1], "owner/name") });
+        if (!json) for (const w of project.warnings ?? []) console.error(`warning: ${w}`);
         return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); start a run with: navarch run --repo ${project.path} <prompt>`, json);
       }
       if (rest[0] === "remove") {

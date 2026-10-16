@@ -30,6 +30,7 @@ export const de: Messages = {
     loading: "Runs werden geladen…",
   },
   run: {
+    projectWarning: "Als Projekt hinzugefügt, mit einer Warnung:",
     attachments: "Angehängte Dokumente",
     attachmentHint: "Jeder Agent dieses Runs liest dieses Dokument nach seiner Aufgabe.",
     pause: "Run pausieren",

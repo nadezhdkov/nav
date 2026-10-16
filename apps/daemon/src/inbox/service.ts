@@ -161,11 +161,12 @@ export class InboxService {
 
   /**
    * The project for a GitHub repository the token lists: the registered one, or a new clone in
-   * `<home>/repos/<owner>/<name>` registered as a project. `created` says which.
+   * `<home>/repos/<owner>/<name>` registered as a project. `created` says which; only a new one carries the
+   * push warnings of addProject, since a registered one gave them when it was added.
    */
-  async cloneProject(req: CloneRepoRequest, actor: Actor): Promise<{ project: ProjectView; created: boolean }> {
+  async cloneProject(req: CloneRepoRequest, actor: Actor): Promise<{ project: AddProjectResult; created: boolean }> {
     const existing = this.deps.store.listProjects().find((p) => p.repo.toLowerCase() === req.repo.toLowerCase());
-    if (existing) return { project: this.projectView(existing, this.deps.store.workItems()), created: false };
+    if (existing) return { project: { ...this.projectView(existing, this.deps.store.workItems()), warnings: [] }, created: false };
     const listed = (await this.listGitHubRepos()).find((r) => r.repo.toLowerCase() === req.repo.toLowerCase());
     if (!listed) throw new InboxError("not_found", `${req.repo} is not among the repositories the GitHub token reaches`);
     const [owner, name] = listed.repo.split("/") as [string, string];
