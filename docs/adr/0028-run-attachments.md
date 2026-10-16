@@ -16,6 +16,7 @@ The user wants to start runs from a spec or other notes about a new or existing 
 - **Every agent of the run reads them after its task**, in an `<attachments>` block of its instructions, one `<attachment name="…">` per document. A document cannot close the block early: attachment tags inside it are escaped. The user chose these documents, so the agents read them as requirements. Unlike issue text, which is untrusted, they are not delimited as hostile data. The profile's rules and the list of allowed commands still bound what an agent does with them.
 - **Team members do not get them**: a member gets only the lead's brief (ADR 0022), and the lead quotes what a member needs.
 - Paired devices may attach files too, since they can already start prompt runs.
+- **The concierge's `start_run` takes `attach`**, a list of paths. The model names them, so the daemon reads them only after the operator confirms the proposal, which lists them, and only when each one resolves, symlinks followed, to a file inside the run's repository or the operator's directory. Nothing else, such as `~/.ssh` or the Navarch home, can reach the agents this way.
 
 ## Consequences
 

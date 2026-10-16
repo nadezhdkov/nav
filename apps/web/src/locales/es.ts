@@ -30,6 +30,7 @@ export const es: Messages = {
     loading: "Cargando runs…",
   },
   run: {
+    projectWarning: "Añadido como proyecto, con un aviso:",
     attachments: "Documentos adjuntos",
     attachmentHint: "Cada agente de esta run lee este documento después de su tarea.",
     pause: "Pausar run",

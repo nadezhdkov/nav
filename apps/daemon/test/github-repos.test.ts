@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { GitHubRepoView, ProjectView, RunView } from "@navarch/contracts";
+import type { AddProjectResult, GitHubRepoView, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { fakeGitHub, type FakeGitHub } from "../../../packages/github/test/fake-github.ts";
@@ -72,10 +72,10 @@ describe("GitHub repositories for New run (ADR 0026)", () => {
 
   it("clones a repository into the Navarch home, registers it as a project, and starts a run there", async () => {
     const { api, home, source } = await start();
-    const cloned = await api<ProjectView>("POST", "/api/v1/github/repos/clone", { repo: "acme/widgets" });
+    const cloned = await api<AddProjectResult>("POST", "/api/v1/github/repos/clone", { repo: "acme/widgets" });
     expect(cloned.status).toBe(201);
     const path = join(home, "repos", "acme", "widgets");
-    expect(cloned.body).toMatchObject({ repo: "acme/widgets", name: "widgets", path });
+    expect(cloned.body).toMatchObject({ repo: "acme/widgets", name: "widgets", path, warnings: [] });
     expect(git(path, "rev-parse", "HEAD")).toBe(git(source, "rev-parse", "HEAD"));
     expect(readFileSync(join(path, ".git", "config"), "utf8")).not.toContain("github_pat");
 
@@ -83,8 +83,8 @@ describe("GitHub repositories for New run (ADR 0026)", () => {
     expect(listed[0]).toMatchObject({ repo: "acme/widgets", project_id: cloned.body.id, path });
 
     // Picking it again returns the same project instead of cloning twice.
-    const again = await api<ProjectView>("POST", "/api/v1/github/repos/clone", { repo: "acme/widgets" });
-    expect(again).toMatchObject({ status: 200, body: { id: cloned.body.id } });
+    const again = await api<AddProjectResult>("POST", "/api/v1/github/repos/clone", { repo: "acme/widgets" });
+    expect(again).toMatchObject({ status: 200, body: { id: cloned.body.id, warnings: [] } });
 
     const run = await api<RunView>("POST", "/api/v1/runs", { repo_path: path, prompt: "add hello.txt" });
     expect(run.status).toBe(201);

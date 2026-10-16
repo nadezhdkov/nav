@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConciergeTurn, NavarchEvent, ProposalDecision, RunDetail, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -111,6 +111,33 @@ describe("concierge API", () => {
       ["concierge.action.decided", "user"],
     ]);
     expect(events.find((e) => e.type === "concierge.action.decided")?.run_id).toBe(runs[0]!.id);
+  });
+
+  it("attaches files from the repository to a run it starts, and nothing outside it (ADR 0028)", async () => {
+    const repo = makeRepo();
+    mkdirSync(join(repo, "docs"));
+    writeFileSync(join(repo, "docs", "spec.md"), "# Spec\nhello.txt says hi\n");
+    const outside = join(tempHome(), "secret.txt");
+    writeFileSync(outside, "do not send");
+    const { api, conversation } = await start([
+      { tool_calls: [{ name: "start_run", args: { prompt: "follow the spec", attach: ["docs/spec.md"] } }] },
+      { content: "Proposed." },
+      { tool_calls: [{ name: "start_run", args: { prompt: "read it", attach: [outside] } }] },
+      { content: "Proposed." },
+    ]);
+    const id = await conversation(repo);
+    const turn = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "start it with the spec" });
+    const proposal = turn.body.proposals[0]!;
+    expect(proposal.summary).toBe(`start a task run in ${repo} (routed): "follow the spec", attaching docs/spec.md`);
+    const decided = await api<ProposalDecision>("POST", `/api/v1/concierge/conversations/${id}/proposals/${proposal.id}`, { decision: "approve" });
+    expect(decided.body.reply).toMatch(/^run run_\w+ created/);
+    const [run] = (await api<RunView[]>("GET", "/api/v1/runs")).body;
+    expect((await api<RunDetail>("GET", `/api/v1/runs/${run!.id}`)).body.attachments).toEqual([{ name: "spec.md", bytes: 25 }]);
+
+    const second = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "and attach that file" });
+    const refused = await api<ProposalDecision>("POST", `/api/v1/concierge/conversations/${id}/proposals/${second.body.proposals[0]!.id}`, { decision: "approve" });
+    expect(JSON.stringify(refused.body)).toMatch(/outside the repository/);
+    expect((await api<RunView[]>("GET", "/api/v1/runs")).body).toHaveLength(1);
   });
 
   it("shows the whole prompt in a start_run proposal, however long", async () => {

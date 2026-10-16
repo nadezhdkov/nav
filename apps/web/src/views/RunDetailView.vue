@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Ban, CirclePause, ExternalLink, FileText, Play } from "@lucide/vue";
+import { ArrowLeft, Ban, CirclePause, ExternalLink, FileText, Play, TriangleAlert } from "@lucide/vue";
 import type { TaskStatus } from "@navarch/contracts";
 import { computed, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -21,11 +21,15 @@ const tab = ref<"timeline" | "logs" | "instruct">("timeline");
 const filter = ref("");
 const busy = ref(false);
 const actionError = ref<string | null>(null);
+/** Warnings New run got when it registered this run's repository as a project, passed in the history state. */
+const projectWarnings = ref<string[]>([]);
 
 let offs: (() => void)[] = [];
 function open(id: string) {
   offs.forEach((off) => off());
   selected.value = null;
+  const state = window.history.state as { warnings?: unknown } | null;
+  projectWarnings.value = Array.isArray(state?.warnings) ? state.warnings.filter((w): w is string => typeof w === "string") : [];
   offs = [
     subscribe(`run:${id}`),
     onEvent((e) => store.apply(e)),
@@ -111,6 +115,10 @@ async function act(kind: "cancel" | "resume" | "pause") {
         </ul>
       </template>
       <p v-if="actionError || store.error" class="tone-danger w-full text-sm" style="color: var(--tone)" role="alert">{{ actionError ?? store.error }}</p>
+      <p v-for="(w, i) in projectWarnings" :key="i" class="tone-warning flex w-full items-start gap-2 text-sm" role="status">
+        <TriangleAlert :size="16" class="mt-0.5 shrink-0" style="color: var(--tone)" aria-hidden="true" />
+        <span><strong>{{ t("run.projectWarning") }}</strong> {{ w }}</span>
+      </p>
     </header>
 
     <p v-if="!run" class="p-6 text-muted">{{ t("run.loading") }}</p>

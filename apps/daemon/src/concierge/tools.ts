@@ -1,5 +1,7 @@
+import { readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { ConciergeTool } from "@navarch/concierge";
-import { CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView } from "@navarch/contracts";
+import { ATTACHMENT_LIMITS, CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 
@@ -37,6 +39,42 @@ function text(args: Record<string, unknown>, key: string): string {
 function optionalText(args: Record<string, unknown>, key: string): string | undefined {
   const value = args[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function textList(args: Record<string, unknown>, key: string): string[] {
+  const value = args[key];
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim()) : [];
+}
+
+/**
+ * The files `start_run` attaches (ADR 0028), read after the operator confirms. The model names them, so
+ * only files inside the run's repository or the operator's directory can be sent to the agents: never
+ * `~/.ssh`, the Navarch home or anything else the operator did not point at.
+ */
+function readAttachments(paths: string[], roots: string[]): { name: string; content: string }[] {
+  const allowed = roots.flatMap((r) => {
+    try {
+      return [realpathSync(r)];
+    } catch {
+      return [];
+    }
+  });
+  return paths.map((path) => {
+    let real: string;
+    try {
+      real = realpathSync(isAbsolute(path) ? path : resolve(roots[0] ?? ".", path));
+    } catch {
+      throw new Error(`cannot attach ${path}: no such file`);
+    }
+    const inside = allowed.some((root) => {
+      const rel = relative(root, real);
+      return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+    });
+    if (!inside) throw new Error(`cannot attach ${path}: it is outside the repository and the operator's directory`);
+    if (!statSync(real).isFile()) throw new Error(`cannot attach ${path}: not a file`);
+    if (statSync(real).size > ATTACHMENT_LIMITS.fileBytes) throw new Error(`cannot attach ${path}: each attachment is at most ${ATTACHMENT_LIMITS.fileBytes / 1000} kB`);
+    return { name: basename(real), content: readFileSync(real, "utf8") };
+  });
 }
 
 function runSummary(run: RunView) {
@@ -204,6 +242,11 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, grok, native)."),
         model: str("Pin the model, e.g. openrouter/<id> with the native adapter."),
         flow: str("Flow name: fix-issue (default for issues), task (default for prompts) or team (a lead agent that delegates parts to other agents)."),
+        attach: {
+          type: "array",
+          items: { type: "string" },
+          description: "Text files every agent of the run reads, such as a spec the operator named; paths inside the repository or the operator's directory.",
+        },
       }),
       kind: "act",
       summarize: (args) => {
@@ -212,16 +255,21 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         const agent = [optionalText(args, "adapter"), optionalText(args, "model")].filter(Boolean).join(" ");
         // The whole prompt: the operator confirms exactly what the agents will be told.
         const what = [optionalText(args, "issue"), optionalText(args, "prompt") && `"${optionalText(args, "prompt")}"`].filter(Boolean).join(" with ");
-        return `start a ${flow} run in ${repo}${agent ? ` on ${agent}` : " (routed)"}: ${what}`;
+        const attach = textList(args, "attach");
+        return `start a ${flow} run in ${repo}${agent ? ` on ${agent}` : " (routed)"}: ${what}${attach.length ? `, attaching ${attach.join(", ")}` : ""}`;
       },
       run: async (args) => {
+        const repoPath = optionalText(args, "repo_path") ?? deps.cwd;
+        const attach = textList(args, "attach");
+        const attachments = attach.length ? readAttachments(attach, [repoPath, deps.cwd].filter((r): r is string => !!r)) : undefined;
         const parsed = CreateRunRequest.safeParse({
-          repo_path: optionalText(args, "repo_path") ?? deps.cwd,
+          repo_path: repoPath,
           prompt: optionalText(args, "prompt"),
           issue: optionalText(args, "issue"),
           adapter: optionalText(args, "adapter"),
           model: optionalText(args, "model"),
           flow: optionalText(args, "flow"),
+          attachments,
         });
         if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "request"}: ${i.message}`).join("; "));
         return orchestrator.startRun(parsed.data, deps.actor());

@@ -105,9 +105,10 @@ async function start() {
   error.value = null;
   try {
     let path = repo.value.slice("local:".length);
+    let warnings: string[] = [];
     if (picked.value) {
       cloning.value = picked.value.repo;
-      path = (await api.cloneRepo(picked.value.repo)).path;
+      ({ path, warnings } = await api.cloneRepo(picked.value.repo));
     }
     const run = await api.startRun({
       repo_path: path,
@@ -115,7 +116,8 @@ async function start() {
       ...(team.value && !isDevice.value ? { flow: "team" } : {}),
       ...(attachments.value.length ? { attachments: attachments.value.map(({ name, content }) => ({ name, content })) } : {}),
     });
-    await router.push(`/runs/${run.id}`);
+    // The run page shows them: the run starts either way, but issue runs there cannot open PRs.
+    await router.push({ path: `/runs/${run.id}`, state: warnings.length ? { warnings } : {} });
   } catch (err) {
     error.value = (err as Error).message;
   } finally {

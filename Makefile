@@ -38,7 +38,8 @@ lint-workflows: ## Lint the GitHub Actions workflows (needs actionlint)
 
 ci: verify web-build audit secrets lint-workflows ## Every quality gate the CI pipelines run
 
-daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch)
+daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch); warns when dependencies are stale
+	@node apps/cli/src/check-deps.ts
 	node apps/daemon/src/main.ts
 
 cli: ## Run the CLI: make cli ARGS="run list"

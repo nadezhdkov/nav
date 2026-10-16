@@ -30,6 +30,7 @@ export const ptBR: Messages = {
     loading: "Carregando runs…",
   },
   run: {
+    projectWarning: "Adicionado como projeto, com um aviso:",
     attachments: "Documentos anexados",
     attachmentHint: "Todo agente desta run lê este documento depois da tarefa.",
     pause: "Pausar run",

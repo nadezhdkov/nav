@@ -28,6 +28,7 @@ export const en = {
     loading: "Loading runs…",
   },
   run: {
+    projectWarning: "Added as a project with a warning:",
     attachments: "Attached documents",
     attachmentHint: "Every agent of this run reads this document after its task.",
     pause: "Pause run",
