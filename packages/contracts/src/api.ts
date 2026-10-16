@@ -18,6 +18,8 @@ export const CreateRunRequest = z
     prompt: z.string().min(1).optional(),
     /** `owner/repo#N`: the run implements this GitHub issue; the repository's origin must match. */
     issue: z.string().regex(ISSUE_REF, "expected owner/repo#number").optional(),
+    /** A pull request of the clone's origin, `owner/repo#N` (ADR 0032); not with `issue`. */
+    pull_request: z.string().regex(ISSUE_REF, "expected owner/repo#number").optional(),
     /**
      * Pins every agent of the run to this adapter. Without it (and without `model`) the Model
      * Router picks one per task, or the daemon's `default_adapter` when routing is off.
@@ -35,7 +37,8 @@ export const CreateRunRequest = z
     /** Values for the Flow's params, checked against their declared types (ADR 0031). */
     params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])).optional(),
   })
-  .refine((r) => r.prompt || r.issue, { message: "a run needs a prompt or an issue" });
+  .refine((r) => r.prompt || r.issue || r.pull_request, { message: "a run needs a prompt, an issue or a pull request" })
+  .refine((r) => !(r.issue && r.pull_request), { message: "a run works on an issue or a pull request, not both" });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
 
 export const TaskView = z.object({
@@ -94,6 +97,8 @@ export type RunView = z.infer<typeof RunView>;
 export const RunFlow = z.object({
   definition: FlowDefinition,
   params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
+  /** Copies of the Flows its `subflow` nodes run, by name (ADR 0032). */
+  subflows: z.record(z.string(), FlowDefinition).optional(),
 });
 export type RunFlow = z.infer<typeof RunFlow>;
 

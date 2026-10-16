@@ -20,14 +20,14 @@ import {
   type SendRunMessage,
   type TaskStatus,
 } from "@navarch/contracts";
-import { next, parseFlow, renderInputs, renderValue, resolveParams, type TaskState } from "@navarch/flow-engine";
-import { resolveHead, resolveRepoRoot } from "@navarch/runner";
+import { next, parseFlow, renderInputs, renderValue, resolveParams, subflowsOf, type TaskState } from "@navarch/flow-engine";
+import { pullRequestDiff, resolveHead, resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
 import { loadProjectConfig } from "../project.ts";
 import { PolicyEngine } from "../policy/engine.ts";
-import { issuePrompt } from "./issue.ts";
+import { issuePrompt, prPrompt } from "./issue.ts";
 import { implementer, PROFILES } from "./profiles.ts";
 import { uniqueCodename } from "./names.ts";
 
@@ -42,8 +42,13 @@ export function loadFlows(dir: string = FLOWS_DIR): Map<string, FlowDefinition> 
     if (flows.has(flow.metadata.name)) throw new Error(`flows/${file}: a flow named ${flow.metadata.name} already exists`);
     flows.set(flow.metadata.name, flow);
   }
+  // Every subflow names a loaded Flow it may run (ADR 0032).
+  for (const flow of flows.values()) subflowsOf(flow, flows);
   return flows;
 }
+
+/** GitHub operations that work on a pull request rather than on an issue (ADR 0032). */
+const PR_USES = ["pr.review", "pr.comment"];
 
 export class OrchestratorError extends Error {
   readonly code: string;
@@ -112,29 +117,46 @@ export class Orchestrator {
       throw new OrchestratorError("invalid_repo", `${req.repo_path} is not a git repository with at least one commit`);
     }
 
-    let project;
-    try {
-      project = await loadProjectConfig(repoPath, baseCommit);
-    } catch (err) {
-      throw new OrchestratorError("invalid_project", (err as Error).message);
-    }
+    if (req.issue && req.pull_request) throw new OrchestratorError("invalid_request", "a run works on an issue or a pull request, not both");
     let workItem: WorkItem | undefined;
-    if (req.issue) {
+    if (req.issue || req.pull_request) {
       if (!this.github) throw new OrchestratorError("github_unavailable", "the GitHub Integration is not configured");
       try {
-        workItem = await this.github.readIssue(repoPath, req.issue);
+        workItem = req.pull_request ? await this.github.readPullRequest(repoPath, req.pull_request) : await this.github.readIssue(repoPath, req.issue!);
       } catch (err) {
         if (err instanceof GitHubIntegrationError) throw new OrchestratorError(err.code, err.message);
         throw new OrchestratorError("github_error", (err as Error).message);
       }
     }
-    const prompt = workItem ? issuePrompt(workItem, req.prompt) : req.prompt;
-    if (!prompt) throw new OrchestratorError("invalid_request", "a run needs a prompt or an issue");
+    const pr = workItem?.pull_request;
+    // A run on a pull request works on its head, but its project config comes from its base: the
+    // pull request cannot change what Navarch runs on it (ADR 0032, T1).
+    if (pr) baseCommit = pr.head_sha;
+    let project;
+    try {
+      project = await loadProjectConfig(repoPath, pr ? pr.base_sha : baseCommit);
+    } catch (err) {
+      throw new OrchestratorError("invalid_project", (err as Error).message);
+    }
 
-    const flowName = req.flow ?? (workItem ? "fix-issue" : "task");
+    const flowName = req.flow ?? (pr ? "review-pr" : workItem ? "fix-issue" : "task");
     const flow = this.flows.get(flowName);
     if (!flow) throw new OrchestratorError("unknown_flow", `flow "${flowName}" not found; available: ${this.flowNames().join(", ")}`);
     const params = flowParams(flow, flowName, req.params);
+    const subflows = subflowsOf(flow, this.flows);
+    const allNodes = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
+    const onPr = allNodes.some((n) => n.type === "github" && PR_USES.includes(n.uses));
+    if (onPr && !pr) throw new OrchestratorError("invalid_request", `flow "${flowName}" works on a pull request (--pr owner/repo#N)`);
+    if (pr && !onPr) throw new OrchestratorError("invalid_request", `flow "${flowName}" does not work on pull requests; use review-pr or ci-fix`);
+    // ci-fix pushes a branch into the pull request's repository and runs its code in verification.
+    if (pr && allNodes.some((n) => n.type === "agent" && n.profile === "ci-fixer")) {
+      if (pr.head_repo.toLowerCase() !== workItem!.repo.toLowerCase()) {
+        throw new OrchestratorError("invalid_request", `${workItem!.repo}#${workItem!.number} comes from ${pr.head_repo}; ${flowName} works on pull requests whose branch is in ${workItem!.repo}`);
+      }
+      if (!pr.failing_checks.length) throw new OrchestratorError("invalid_request", `${workItem!.repo}#${workItem!.number} has no failing checks on ${pr.head_sha.slice(0, 7)}`);
+    }
+    const prompt = pr ? prPrompt(workItem!, await pullRequestDiff(repoPath, pr.base_sha, pr.head_sha), req.prompt) : workItem ? issuePrompt(workItem, req.prompt) : req.prompt;
+    if (!prompt) throw new OrchestratorError("invalid_request", "a run needs a prompt, an issue or a pull request");
     // N competitors multiply the cost: Compete mode needs a budget the user chose (ADR 0031).
     if (flow.nodes.some((n) => n.type === "compete") && req.budget === undefined) {
       throw new OrchestratorError("budget_required", `flow "${flowName}" runs several agents on the same task; give it a run budget (--budget <usd>)`);
@@ -143,7 +165,7 @@ export class Orchestrator {
     const usesGitHub = flow.nodes.some((n) => n.type === "github" && !n.when);
     if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
     // A run that will push finds out now, not after all the agent work (go/no-go finding F5).
-    if (workItem && this.github && flow.nodes.some((n) => n.type === "github")) {
+    if (workItem && this.github && allNodes.some((n) => n.type === "github" && n.uses === "pr.create")) {
       try {
         await this.github.checkPush(repoPath, workItem.repo);
       } catch (err) {
@@ -171,10 +193,10 @@ export class Orchestrator {
           allow_commands: [...this.config.allow_commands, ...project.allowlist, ...(req.allow_commands ?? [])],
           setup_commands: [...project.setup, ...(req.setup_commands ?? [])],
           ...(model ? { model } : {}),
-          ...(workItem ? { work_item: { source: workItem.source, repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
+          ...(workItem ? { work_item: { source: workItem.source, ...(pr ? { kind: "pull_request" as const } : {}), repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
           verify: project.verify,
           protected_paths: project.protected_paths,
-          flow: { definition: flow, params },
+          flow: { definition: flow, params, ...(Object.keys(subflows).length ? { subflows } : {}) },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
           routing,
           ...(req.attachments?.length ? { attachments: req.attachments } : {}),
@@ -214,6 +236,7 @@ export class Orchestrator {
         project: { autonomy_level: run.autonomy_level ?? this.config.autonomy_level, work_item: run.work_item !== null },
         tasks: tasks.map((t): TaskState => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })),
         skipped: this.store.skippedNodes(runId),
+        ...(run.flow_definition.subflows ? { subflows: run.flow_definition.subflows } : {}),
       });
       switch (step.kind) {
         case "wait":

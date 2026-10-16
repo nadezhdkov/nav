@@ -1,0 +1,21 @@
+# Review a pull request (UC-09, ADR 0032): a read-only reviewer reads the change and drafts a
+# review; below autonomy level 3 a human approves the text, and Navarch posts it as one COMMENT
+# review with inline comments on the diff's lines. Never approves or requests changes on GitHub,
+# never pushes, never runs the project's commands.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: review-pr
+  description: Review a pull request and post the review as comments.
+
+nodes:
+  - id: review
+    type: agent
+    profile: pr-reviewer
+
+  - id: post_review
+    type: github
+    uses: pr.review
+
+edges:
+  - review -> post_review

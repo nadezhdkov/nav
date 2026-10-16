@@ -108,7 +108,14 @@ export const EventPayloads = {
     verify: z.array(VerifyCommand).optional(),
     protected_paths: z.array(z.string()).optional(),
     /** The Flow this run executes, copied whole so a later edit of the YAML cannot change a running run. Absent before Flows. */
-    flow: z.object({ definition: FlowDefinition, params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])) }).optional(),
+    flow: z
+      .object({
+        definition: FlowDefinition,
+        params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
+        /** The Flows its `subflow` nodes run, copied as well (ADR 0032). */
+        subflows: z.record(z.string(), FlowDefinition).optional(),
+      })
+      .optional(),
     /** Spec §11: from `.navarch/project.yaml`, else the daemon's configuration. Absent before per-run levels. */
     autonomy_level: z.number().int().min(0).max(4).optional(),
     /** `auto`: the Model Router picks each agent task's adapter; `pinned`: the run's adapter and model (ADR 0013). Absent (pinned) before routing. */
@@ -274,6 +281,10 @@ export const EventPayloads = {
     branch: z.string(),
     draft: z.boolean(),
   }),
+  /** Navarch posted a COMMENT review on a pull request (ADR 0032); `existing` when a retry found its earlier one. */
+  "github.review.posted": z.object({ repo: z.string(), number: z.number().int().positive(), url: z.string(), commit: z.string(), comments: z.number().int().nonnegative(), existing: z.boolean() }),
+  /** Navarch commented on a pull request (ADR 0032). */
+  "github.comment.posted": z.object({ repo: z.string(), number: z.number().int().positive(), url: z.string(), existing: z.boolean() }),
   /** The Policy Engine asked a human before a side effect (spec §6.10.3); the task waits. */
   "approval.requested": z.object({
     approval_id: z.string(),

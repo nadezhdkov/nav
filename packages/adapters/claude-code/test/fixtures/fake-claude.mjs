@@ -142,6 +142,25 @@ switch (scenario) {
     }
     break;
   }
+  case "pulls": {
+    // Runs on pull requests (ADR 0032). The reviewer drafts one comment on a diff line and one
+    // outside it; the CI diagnosis says what `ci-kind` in the state dir says (code by default);
+    // the implementer fixes the check only when it is given the diagnosis.
+    const kind = existsSync(join(stateDir, "ci-kind")) ? readFileSync(join(stateDir, "ci-kind"), "utf8").trim() : "code";
+    const saw = [prompt.includes("<pull_request "), prompt.includes("+change"), prompt.includes("hello.txt is missing")].map(Number).join("");
+    if (prompt.includes("Navarch pull-request reviewer agent")) {
+      const review = { summary: `Reviewed (saw ${saw}). One nit.`, verdict: "approve", comments: [{ path: "pr.txt", line: 1, body: "Say why." }, { path: "README.md", line: 99, body: "Outside the diff." }] };
+      result(true, `Done.\n\n\`\`\`navarch-review\n${JSON.stringify(review)}\n\`\`\``);
+    } else if (prompt.includes("Navarch CI diagnosis agent")) {
+      result(true, `The greeting check fails (saw ${saw}): hello.txt is missing; add it.\n\n\`\`\`navarch-outputs\n${JSON.stringify({ kind })}\n\`\`\``);
+    } else if (/You are the Navarch implementer agent/.test(prompt)) {
+      if (prompt.includes('<input name="diagnosis">')) writeFileSync("hello.txt", "hello\n");
+      result(true, "Added hello.txt as the diagnosis says.");
+    } else {
+      result(true, "Verdict: approve.");
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });

@@ -56,8 +56,9 @@ export function buildGraph(
 
   const leaf = (node: FlowNode, parent: string | null, position: { x: number; y: number }): GraphNode => {
     // A team node (ADR 0022) stands for its lead's turns, members, checks and approval; a compete
-    // node (ADR 0031) for its competitors, their checks, the judge, the pick and the adoption.
-    const composite = node.type === "team" || node.type === "compete";
+    // node (ADR 0031) for its competitors, their checks, the judge, the pick and the adoption; a
+    // subflow (ADR 0032) for its child Flow's tasks.
+    const composite = node.type === "team" || node.type === "compete" || node.type === "subflow";
     const own = composite ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
     const latest = composite ? (own.find((t) => TEAM_ACTIVE.has(t.status)) ?? latestTask(own)) : latestTask(own);
     let state: NodeState = latest?.status ?? "not_started";
@@ -67,7 +68,7 @@ export function buildGraph(
       id: node.id,
       kind: node.type,
       label: node.name ?? node.id,
-      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : node.type === "compete" ? competeDetail(node, params) : "uses" in node ? node.uses : null,
+      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : node.type === "compete" ? competeDetail(node, params) : node.type === "subflow" ? node.flow : "uses" in node ? node.uses : null,
       state,
       task: latest,
       tasks: own,

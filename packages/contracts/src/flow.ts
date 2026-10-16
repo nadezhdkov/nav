@@ -5,8 +5,8 @@ import { z } from "zod";
  * instance is a TaskGraph (§6.2), made of tasks the Orchestrator creates as nodes become due.
  *
  * Phase 1 runs linear flows (an `edges` chain) with `trigger`, `agent`, `action`, `approval`,
- * `loop`, `github` and `team` (ADR 0022) nodes; `switch`, `parallel`, `join`, `judge`, `subflow` and `llm` arrive
- * with Phase 2 and are refused when a flow is loaded (ADR 0011).
+ * `loop`, `github`, `team` (ADR 0022), `compete` (ADR 0031) and `subflow` (ADR 0032) nodes; `switch`,
+ * `parallel`, `join`, `judge` and `llm` are refused when a flow is loaded (ADR 0011).
  */
 
 const NodeId = z.string().regex(/^[a-z][a-z0-9_]*$/, "node ids are lowercase letters, digits and _");
@@ -120,7 +120,24 @@ export const CompeteNode = z.strictObject({
   approve_pick: z.union([z.boolean(), Expr]).default(false),
 });
 
-export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode, CompeteNode]);
+/**
+ * Runs another Flow inside this run (ADR 0032). The child's tasks are its nodes prefixed with this
+ * node's id (`<id>.<child node>`); it sees only its own tasks, takes its params from `with`, and
+ * every agent task of it gets `inputs`. One level: no `team`, `compete` or `subflow` in the child.
+ */
+export const SubflowNode = z.strictObject({
+  ...base,
+  type: z.literal("subflow"),
+  /** The child Flow's name, in `flows/`. */
+  flow: z.string().regex(/^[a-z][a-z0-9-]*$/, "flow names are lowercase letters, digits and -"),
+  /** The child's params: plain values or expressions over this Flow. */
+  with: z.record(z.string(), z.union([z.number(), z.boolean(), Expr])).optional(),
+  /** Named inputs added to every agent task of the child. */
+  inputs: Inputs.optional(),
+});
+export type SubflowNode = z.infer<typeof SubflowNode>;
+
+export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode, CompeteNode, SubflowNode]);
 export type FlowNode = z.infer<typeof FlowNode>;
 
 export const FlowParam = z.strictObject({
@@ -142,5 +159,5 @@ export const FlowDefinition = z.strictObject({
 });
 export type FlowDefinition = z.infer<typeof FlowDefinition>;
 
-/** Node types the spec defines but Phase 1 does not run yet. */
-export const PHASE_2_NODE_TYPES = ["switch", "parallel", "fan-out", "join", "judge", "subflow", "llm"] as const;
+/** Node types the spec defines but the engine does not run yet. */
+export const PHASE_2_NODE_TYPES = ["switch", "parallel", "fan-out", "join", "judge", "llm"] as const;

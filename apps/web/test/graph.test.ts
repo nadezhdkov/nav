@@ -157,3 +157,26 @@ describe("compete node (ADR 0031)", () => {
     expect(node.tasks).toHaveLength(3);
   });
 });
+
+describe("subflow node (ADR 0032)", () => {
+  const ciFix: FlowDefinition = {
+    apiVersion: "navarch/v1",
+    kind: "Flow",
+    metadata: { name: "ci-fix" },
+    params: {},
+    nodes: [
+      { id: "diagnose", type: "agent", profile: "ci-fixer" },
+      { id: "fix", type: "subflow", flow: "task" },
+      { id: "comment", type: "github", uses: "pr.comment" },
+    ],
+    edges: ["diagnose -> fix -> comment"],
+  };
+
+  it("stands for its child's tasks and names the child Flow", () => {
+    const tasks = [task("diagnose", "succeeded"), task("fix.implement", "succeeded"), task("fix.verify", "running")];
+    const node = buildGraph(ciFix, tasks, []).nodes.find((n) => n.id === "fix")!;
+    expect(node).toMatchObject({ kind: "subflow", detail: "task", state: "running" });
+    expect(node.tasks.map((t) => t.node_id)).toEqual(["fix.implement", "fix.verify"]);
+    expect(buildGraph(ciFix, [task("diagnose", "succeeded")], ["fix"]).nodes.find((n) => n.id === "fix")!.state).toBe("skipped");
+  });
+});

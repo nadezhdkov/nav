@@ -74,6 +74,7 @@ export const zhCN: Messages = {
     routing: "路由",
     noTask: "尚未开始。",
     close: "关闭",
+    steps: "子流程步骤",
     kind: {
       trigger: "触发器",
       agent: "智能体",
@@ -83,6 +84,7 @@ export const zhCN: Messages = {
       loop: "循环",
       team: "团队",
       compete: "竞赛",
+      subflow: "子流程",
     },
   },
   fleet: {

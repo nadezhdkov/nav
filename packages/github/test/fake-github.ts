@@ -15,6 +15,25 @@ export type FakeIssue = {
   updated_at?: string;
 };
 
+/** A pull request `GET /repos/:repo/pulls/:n` reads (ADR 0032). */
+export type FakePull = {
+  title: string;
+  body: string | null;
+  author: string;
+  labels?: string[];
+  head_ref: string;
+  head_sha: string;
+  /** Defaults to the pull request's own repository. */
+  head_repo?: string;
+  base_ref: string;
+  base_sha: string;
+  draft?: boolean;
+  state?: "open" | "closed";
+};
+
+/** A check run of a commit; `log` is a GitHub Actions job's log. */
+export type FakeCheck = { id: number; name: string; conclusion: string | null; actions?: boolean; log?: string; output?: { title?: string; summary?: string; text?: string } };
+
 /** A repository as `GET /user/repos` lists it. */
 export type FakeUserRepo = { full_name: string; private: boolean; description?: string | null; default_branch?: string; pushed_at?: string; push?: boolean };
 
@@ -25,6 +44,12 @@ export type FakeGitHub = {
   userRepos: FakeUserRepo[];
   repos: Map<string, { default_branch: string; issues: Map<number, FakeIssue> }>;
   pulls: { repo: string; number: number; head: string; base: string; title: string; body: string; draft: boolean }[];
+  /** Pull requests to read, by `owner/name#N`. */
+  pullRequests: Map<string, FakePull>;
+  /** Check runs by head commit. */
+  checks: Map<string, FakeCheck[]>;
+  reviews: { repo: string; number: number; id: number; commit_id: string; body: string; event: string; comments: { path: string; line: number; side?: string; body: string }[] }[];
+  comments: { repo: string; number: number; id: number; body: string }[];
   requests: { method: string; path: string; authorization: string | undefined; query?: string; status?: number }[];
   /** When set, every request gets a 403 rate-limit answer resetting at this epoch second. */
   rateLimitedUntil?: number;
@@ -32,7 +57,7 @@ export type FakeGitHub = {
 };
 
 export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<FakeGitHub> {
-  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], requests: [] };
+  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], pullRequests: new Map(), checks: new Map(), reviews: [], comments: [], requests: [] };
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -112,6 +137,62 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
         const etag = `"${createHash("sha1").update(JSON.stringify(rows)).digest("hex")}"`;
         if (req.headers["if-none-match"] === etag) return send(304, undefined, { etag });
         return send(200, rows, { etag });
+      }
+      const pull = /^\/pulls\/(\d+)(\/reviews)?$/.exec(rest);
+      if (pull) {
+        const n = Number(pull[1]);
+        const found = fake.pullRequests.get(`${name}#${n}`);
+        if (!found) return send(404, { message: "Not Found" });
+        if (req.method === "GET" && !pull[2]) {
+          return send(200, {
+            number: n,
+            html_url: `${base}/pull/${n}`,
+            title: found.title,
+            body: found.body,
+            labels: (found.labels ?? []).map((l) => ({ name: l })),
+            user: { login: found.author },
+            state: found.state ?? "open",
+            draft: found.draft ?? false,
+            head: { ref: found.head_ref, sha: found.head_sha, repo: { full_name: found.head_repo ?? name } },
+            base: { ref: found.base_ref, sha: found.base_sha, repo: { full_name: name } },
+          });
+        }
+        if (req.method === "GET") return send(200, fake.reviews.filter((r) => r.repo === name && r.number === n).map((r) => ({ id: r.id, body: r.body, html_url: `${base}/pull/${n}#pullrequestreview-${r.id}` })));
+        if (req.method === "POST") {
+          const body = JSON.parse(raw) as { commit_id: string; body: string; event: string; comments?: { path: string; line: number; side?: string; body: string }[] };
+          const id = 500 + fake.reviews.length;
+          fake.reviews.push({ repo: name, number: n, id, commit_id: body.commit_id, body: body.body, event: body.event, comments: body.comments ?? [] });
+          return send(200, { id, html_url: `${base}/pull/${n}#pullrequestreview-${id}` });
+        }
+      }
+      const comments = /^\/issues\/(\d+)\/comments$/.exec(rest);
+      if (comments) {
+        const n = Number(comments[1]);
+        if (req.method === "GET") return send(200, fake.comments.filter((c) => c.repo === name && c.number === n).map((c) => ({ id: c.id, body: c.body, html_url: `${base}/pull/${n}#issuecomment-${c.id}` })));
+        const body = JSON.parse(raw) as { body: string };
+        const id = 900 + fake.comments.length;
+        fake.comments.push({ repo: name, number: n, id, body: body.body });
+        return send(201, { id, html_url: `${base}/pull/${n}#issuecomment-${id}` });
+      }
+      const checkRuns = /^\/commits\/([0-9a-f]+)\/check-runs$/.exec(rest);
+      if (req.method === "GET" && checkRuns) {
+        const runs = (fake.checks.get(checkRuns[1]!) ?? []).map((c) => ({
+          id: c.id,
+          name: c.name,
+          status: "completed",
+          conclusion: c.conclusion,
+          html_url: `${base}/runs/${c.id}`,
+          app: { slug: c.actions ? "github-actions" : "other-ci" },
+          output: { title: c.output?.title ?? null, summary: c.output?.summary ?? null, text: c.output?.text ?? null },
+        }));
+        return send(200, { total_count: runs.length, check_runs: runs });
+      }
+      const jobLogs = /^\/actions\/jobs\/(\d+)\/logs$/.exec(rest);
+      if (req.method === "GET" && jobLogs) {
+        const check = [...fake.checks.values()].flat().find((c) => c.id === Number(jobLogs[1]));
+        if (!check?.log) return send(410, { message: "Gone" });
+        logged.status = 200;
+        return void res.writeHead(200, { "content-type": "text/plain" }).end(check.log);
       }
       if (req.method === "GET" && rest === "/pulls") {
         const head = query.get("head")?.split(":")[1];

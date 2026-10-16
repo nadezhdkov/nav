@@ -477,6 +477,7 @@ export class EventStore {
       project: { autonomy_level: run.autonomy_level ?? 0, work_item: run.work_item !== null },
       tasks: this.taskRecordsOfRun(run.id).map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })),
       skipped: this.skippedNodes(run.id),
+      ...(flow.subflows ? { subflows: flow.subflows } : {}),
     });
   }
 

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeRepo } from "../../runner/test/helpers.ts";
-import { cloneRepo, GitHubClient, GitHubError, pushBranch, repoFromRemote } from "../src/index.ts";
+import { cloneRepo, fetchPullRequest, GitHubClient, GitHubError, pushBranch, repoFromRemote } from "../src/index.ts";
 import { fakeGitHub, type FakeGitHub } from "./fake-github.ts";
 
 const servers: FakeGitHub[] = [];
@@ -235,5 +235,63 @@ describe("cloneRepo (ADR 0026)", () => {
     const dest = mkdtempSync(join(tmpdir(), "navarch-clones-"));
     await expect(cloneRepo({ repo: "../etc", dest: join(dest, "x"), token: "t" })).rejects.toThrow(/invalid repository name/);
     await expect(cloneRepo({ repo: "acme/widgets", dest, token: "t" })).rejects.toThrow(/already exists/);
+  });
+});
+
+describe("pull requests (ADR 0032)", () => {
+  it("reads a pull request with its head and base, and the failing checks with their log tails", async () => {
+    const { gh, client } = await setup();
+    gh.pullRequests.set("acme/widgets#12", { title: "Add cache", body: "Speeds up", author: "dana", labels: ["perf"], head_ref: "cache", head_sha: "abc123", head_repo: "dana/widgets", base_ref: "main", base_sha: "def456", draft: true });
+    gh.checks.set("abc123", [
+      { id: 1, name: "test", conclusion: "failure", actions: true, log: `${"x".repeat(7000)}\nError: expected 2, got 3 token=github_pat_leakleakleakleak1234` },
+      { id: 2, name: "lint", conclusion: "success", actions: true, log: "ok" },
+      { id: 3, name: "external", conclusion: "timed_out", output: { title: "Timed out", summary: "after 60 min" } },
+      { id: 4, name: "expired", conclusion: "failure", actions: true, output: { summary: "logs expired" } },
+    ]);
+    const pr = await client.getPullRequest("acme/widgets", 12);
+    expect(pr).toMatchObject({ kind: "pull_request", number: 12, title: "Add cache", author: "dana", labels: ["perf"], state: "open", draft: true, head_ref: "cache", head_sha: "abc123", head_repo: "dana/widgets", base_ref: "main", base_sha: "def456" });
+    const checks = await client.failingChecks("acme/widgets", "abc123");
+    expect(checks.map((c) => [c.name, c.conclusion])).toEqual([["test", "failure"], ["external", "timed_out"], ["expired", "failure"]]);
+    expect(checks[0]!.log_tail.length).toBeLessThanOrEqual(6_000);
+    expect(checks[0]!.log_tail).toContain("expected 2, got 3");
+    expect(checks[0]!.log_tail).not.toContain("github_pat_leak");
+    expect(checks[1]!.log_tail).toBe("Timed out\n\nafter 60 min");
+    expect(checks[2]!.log_tail).toBe("logs expired");
+  });
+
+  it("posts COMMENT reviews on the right side and comments, and lists them back", async () => {
+    const { gh, client } = await setup();
+    gh.pullRequests.set("acme/widgets#12", { title: "t", body: null, author: "dana", head_ref: "h", head_sha: "abc", base_ref: "main", base_sha: "def" });
+    await client.createReview({ repo: "acme/widgets", number: 12, commit_id: "abc", body: "Review", comments: [{ path: "a.ts", line: 2, body: "nit" }] });
+    expect(gh.reviews).toEqual([expect.objectContaining({ event: "COMMENT", commit_id: "abc", comments: [{ path: "a.ts", line: 2, side: "RIGHT", body: "nit" }] })]);
+    expect(await client.listReviews("acme/widgets", 12)).toEqual([expect.objectContaining({ body: "Review" })]);
+    await client.createComment("acme/widgets", 12, "Flaky");
+    expect(await client.listComments("acme/widgets", 12)).toEqual([expect.objectContaining({ body: "Flaky" })]);
+  });
+});
+
+describe("fetchPullRequest (ADR 0032)", () => {
+  it("fetches the head and base into refs/navarch/pr without touching branches or running hooks", async () => {
+    const repo = makeRepo();
+    const { gitUrl, bare } = bareRemote(repo);
+    const base = git(repo, "rev-parse", "HEAD");
+    // The pull request's head lives only on "GitHub", under refs/pull/<N>/head.
+    const author = mkdtempSync(join(tmpdir(), "navarch-pr-"));
+    execFileSync("git", ["clone", "-q", bare, author]);
+    writeFileSync(join(author, "pr.txt"), "change\n");
+    git(author, "add", ".");
+    git(author, "commit", "-q", "-m", "pr");
+    git(author, "push", "-q", "origin", "HEAD:refs/pull/12/head");
+    const head = git(author, "rev-parse", "HEAD");
+    const branches = git(repo, "branch", "--list");
+    const hookRan = join(repo, "hook-ran");
+    writeFileSync(join(repo, ".git", "hooks", "reference-transaction"), `#!/bin/sh\ntouch '${hookRan}'\n`, { mode: 0o755 });
+
+    const fetched = await fetchPullRequest({ repoPath: repo, repo: "acme/widgets", number: 12, baseRef: "main", token: "github_pat_secret", gitUrl });
+    expect(fetched).toEqual({ head, base });
+    expect(git(repo, "rev-parse", "refs/navarch/pr/12/head")).toBe(head);
+    expect(git(repo, "branch", "--list")).toBe(branches);
+    expect(existsSync(hookRan)).toBe(false);
+    await expect(fetchPullRequest({ repoPath: repo, repo: "acme/widgets", number: 12, baseRef: "a..b", token: "t", gitUrl })).rejects.toThrow(/invalid base branch/);
   });
 });
