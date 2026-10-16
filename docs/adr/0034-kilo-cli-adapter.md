@@ -48,6 +48,7 @@ The operator wants more agents that cost nothing. The candidates checked on 2026
   - `cat ~/.ssh/known_hosts` was denied.
   - No file appeared.
 - Through `KiloAdapter`, the implementer fixed a one-line bug in a scratch repository and ran `ls`, for $0.
+- In a real Navarch run (`navarch run --adapter kilo --flow task` on vectr-sandbox, run `misty-navette`), the implementer wrote `CONTRIBUTING.md` in 47 s for $0 (`kilo/kilo-auto/free`, 22,180 tokens in), and the run's check passed.
 - `--session <id>` resumed: the model recalled the file it had read. `--session ses_doesnotexist123` exited 1 with `Error: Session not found` on stderr.
 - An unknown model gives two `error` events (`UnknownError`, the second one with "Model not found"); the adapter keeps the last one.
 
