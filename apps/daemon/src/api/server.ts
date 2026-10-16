@@ -248,7 +248,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/inbox/sync", async (req, reply) => {
     const parsed = SyncInboxRequest.safeParse(req.body ?? {});
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
-    const result: SyncInboxResult = { results: await daemon.inbox.sync(parsed.data.project_id, actorOf(req)) };
+    // A sync also reads what became of Navarch's open pull requests (ADR 0037).
+    const [results] = await Promise.all([daemon.inbox.sync(parsed.data.project_id, actorOf(req)), daemon.prs.check()]);
+    const result: SyncInboxResult = { results };
     return result;
   });
 
@@ -276,6 +278,14 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const days = q.days === undefined ? 30 : Number(q.days);
     if (!Number.isInteger(days) || days < 1 || days > 90) return badRequest(reply, "days must be a whole number from 1 to 90");
     return daemon.usage({ days, ...(q.profile ? { profile: q.profile } : {}) });
+  });
+
+  // The cost and quality panels (ADR 0037); devices may read them too.
+  app.get("/api/v1/metrics", async (req, reply) => {
+    const q = req.query as { days?: string };
+    const days = q.days === undefined ? 30 : Number(q.days);
+    if (!Number.isInteger(days) || days < 1 || days > 365) return badRequest(reply, "days must be a whole number from 1 to 365");
+    return daemon.metrics({ days });
   });
 
   app.get("/api/v1/budgets", async () => daemon.budgets.views());
@@ -612,6 +622,7 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/inbox/:id/restore",
   "GET /api/v1/quotas",
   "GET /api/v1/usage",
+  "GET /api/v1/metrics",
   "GET /api/v1/budgets",
   "POST /api/v1/stop",
   "GET /api/v1/devices/me",

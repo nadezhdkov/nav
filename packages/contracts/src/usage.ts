@@ -80,3 +80,90 @@ export const UsageView = z.object({
   quotas: z.array(QuotaView),
 });
 export type UsageView = z.infer<typeof UsageView>;
+
+/** Spend of one slice of the Cost Ledger: billed apart from plan-equivalent (ADR 0023). */
+const Spend = Totals;
+
+/** The cost panel of spec §6.15 (ADR 0037): the window's spend by day, project, profile and model. */
+export const CostPanel = z.object({
+  total: Spend,
+  /** Every local day of the window, oldest first, `YYYY-MM-DD`; days without use are zero. */
+  days: z.array(Spend.extend({ day: z.string() })),
+  /** Registered projects, then other repository paths, then use outside runs (`kind: "outside"`). */
+  projects: z.array(
+    Spend.extend({
+      kind: z.enum(["project", "repo", "outside"]),
+      project_id: z.string().nullable(),
+      label: z.string(),
+      runs: z.number().int().nonnegative(),
+    }),
+  ),
+  /** Per agent profile of the task; null for use outside runs (Inbox triage). */
+  profiles: z.array(Spend.extend({ profile: z.string().nullable(), tasks: z.number().int().nonnegative() })),
+  models: z.array(Spend.extend({ model: z.string(), calls: z.number().int().nonnegative() })),
+});
+export type CostPanel = z.infer<typeof CostPanel>;
+
+export const PullRequestState = z.enum(["open", "merged", "closed", "gone"]);
+export type PullRequestState = z.infer<typeof PullRequestState>;
+
+/** A pull request Navarch opened and what became of it (ADR 0037). */
+export const PullRequestOutcomeView = z.object({
+  run_id: z.string(),
+  run_name: z.string(),
+  repo: z.string(),
+  number: z.number().int().positive(),
+  url: z.string(),
+  state: PullRequestState,
+  opened_at: z.string(),
+  closed_at: z.string().nullable(),
+  /** Commits on the head after Navarch's last push; null while open or when GitHub could not compare. */
+  commits_after: z.number().int().nonnegative().nullable(),
+  cost: z.number().nonnegative(),
+  plan_cost: z.number().nonnegative(),
+});
+export type PullRequestOutcomeView = z.infer<typeof PullRequestOutcomeView>;
+
+const Rate = z.number().min(0).max(1).nullable();
+
+/** The quality panel of spec §6.15 (ADR 0037). */
+export const QualityPanel = z.object({
+  profiles: z.array(
+    z.object({
+      profile: z.string(),
+      tasks: z.number().int().nonnegative(),
+      succeeded: z.number().int().nonnegative(),
+      /** Over finished tasks, rate limits and cancellations left out. */
+      success_rate: Rate,
+      rate_limited: z.number().int().nonnegative(),
+    }),
+  ),
+  models: z.array(ModelMetricsView),
+  /** Pull requests opened in the window. */
+  pull_requests: z.object({
+    opened: z.number().int().nonnegative(),
+    open: z.number().int().nonnegative(),
+    merged: z.number().int().nonnegative(),
+    closed: z.number().int().nonnegative(),
+    gone: z.number().int().nonnegative(),
+    /** Merged over merged + closed; null before one closes. */
+    acceptance_rate: Rate,
+    /** Merged with no commit after Navarch's. */
+    accepted_as_is: z.number().int().nonnegative(),
+    /** Closed with more than two commits after Navarch's (§17). */
+    rework: z.number().int().nonnegative(),
+    rework_rate: Rate,
+    /** Billed + plan-equivalent cost of the merged PRs' runs per merged PR. */
+    cost_per_merged: z.number().nonnegative().nullable(),
+    recent: z.array(PullRequestOutcomeView),
+  }),
+});
+export type QualityPanel = z.infer<typeof QualityPanel>;
+
+export const MetricsView = z.object({
+  generated_at: z.string(),
+  window_days: z.number().int().positive(),
+  cost: CostPanel,
+  quality: QualityPanel,
+});
+export type MetricsView = z.infer<typeof MetricsView>;

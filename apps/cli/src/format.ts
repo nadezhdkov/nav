@@ -1,4 +1,4 @@
-import type { ApprovalView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { ApprovalView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -93,6 +93,12 @@ export function formatEvent(e: NavarchEvent): string {
       break;
     case "github.pr.opened":
       detail = `${p.draft ? "draft " : ""}${p.url}`;
+      break;
+    case "github.pr.closed":
+      detail = `${p.repo}#${p.number} ${p.merged ? "merged" : "closed without merging"}${p.commits_after === null ? "" : `, ${p.commits_after} commit(s) after Navarch's`}`;
+      break;
+    case "github.pr.lost":
+      detail = `${p.repo}#${p.number} no longer followed: ${p.reason}`;
       break;
     case "flow.node.skipped":
       detail = `${p.node_id} skipped: ${p.reason}`;
@@ -301,6 +307,33 @@ export function formatUsage(u: UsageView): string {
     for (const q of quotas) {
       lines.push(`  ${q.adapter}${q.model_prefix ? `/${q.model_prefix}` : ""} ${q.window}: ${q.exhausted ? "exhausted" : pct(q.utilization)}${q.resets_at ? `, resets ${q.resets_at.slice(0, 16).replace("T", " ")}` : ""}`);
     }
+  }
+  return lines.join("\n");
+}
+
+/** `navarch metrics`: the cost and quality panels (ADR 0037). */
+export function formatMetrics(m: MetricsView): string {
+  const tokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
+  const pct = (n: number | null) => (n === null ? "-" : `${Math.round(n * 100)} %`);
+  const spend = (s: { cost: number; plan_cost: number; tokens: number }) => [usd(s.cost), usd(s.plan_cost), tokens(s.tokens)];
+  const c = m.cost;
+  const pr = m.quality.pull_requests;
+  const lines = [`cost, last ${m.window_days} days: ${usd(c.total.cost)} billed · ${usd(c.total.plan_cost)} plan-equivalent · ${tokens(c.total.tokens)} tokens`, ""];
+  const used = c.days.filter((d) => d.cost || d.plan_cost || d.tokens);
+  if (used.length) lines.push("by day:", table(["DAY", "BILLED", "PLAN-EQ", "TOKENS"], used.map((d) => [d.day, ...spend(d)])), "");
+  if (c.projects.length) lines.push("by project:", table(["PROJECT", "RUNS", "BILLED", "PLAN-EQ", "TOKENS"], c.projects.map((p) => [p.label, String(p.runs), ...spend(p)])), "");
+  if (c.profiles.length) lines.push("by profile:", table(["PROFILE", "TASKS", "BILLED", "PLAN-EQ", "TOKENS"], c.profiles.map((p) => [p.profile ?? "(outside runs)", String(p.tasks), ...spend(p)])), "");
+  if (c.models.length) lines.push("by model:", table(["MODEL", "CALLS", "BILLED", "PLAN-EQ", "TOKENS"], c.models.map((x) => [x.model, String(x.calls), ...spend(x)])), "");
+  lines.push(
+    `pull requests opened: ${pr.opened} · open ${pr.open} · merged ${pr.merged} · closed ${pr.closed}${pr.gone ? ` · lost ${pr.gone}` : ""}`,
+    `  accepted ${pct(pr.acceptance_rate)} · as is ${pr.accepted_as_is} · rework (> 2 commits after Navarch's) ${pr.rework}, ${pct(pr.rework_rate)} · cost per merged PR ${pr.cost_per_merged === null ? "-" : usd(pr.cost_per_merged)}`,
+  );
+  const profiles = m.quality.profiles;
+  if (profiles.length) {
+    lines.push("", "success by profile:", table(["PROFILE", "TASKS", "OK", "LIMITED"], profiles.map((p) => [p.profile, String(p.tasks), pct(p.success_rate), String(p.rate_limited)])));
+  }
+  if (m.quality.models.length) {
+    lines.push("", "success by model:", table(["MODEL", "TASKS", "OK", "ERR 24H"], m.quality.models.map((x) => [x.id, String(x.tasks), pct(x.success_rate), pct(x.error_rate_24h)])));
   }
   return lines.join("\n");
 }

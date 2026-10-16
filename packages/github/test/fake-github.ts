@@ -29,6 +29,8 @@ export type FakePull = {
   base_sha: string;
   draft?: boolean;
   state?: "open" | "closed";
+  merged?: boolean;
+  closed_at?: string;
 };
 
 /** A check run of a commit; `log` is a GitHub Actions job's log. */
@@ -46,6 +48,8 @@ export type FakeGitHub = {
   pulls: { repo: string; number: number; head: string; base: string; title: string; body: string; draft: boolean }[];
   /** Pull requests to read, by `owner/name#N`. */
   pullRequests: Map<string, FakePull>;
+  /** `ahead_by` of `GET /repos/:repo/compare/<base>...<head>`, by `owner/name:<base>...<head>`. */
+  compares: Map<string, number>;
   /** Check runs by head commit. */
   checks: Map<string, FakeCheck[]>;
   reviews: { repo: string; number: number; id: number; commit_id: string; body: string; event: string; comments: { path: string; line: number; side?: string; body: string }[] }[];
@@ -57,7 +61,7 @@ export type FakeGitHub = {
 };
 
 export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<FakeGitHub> {
-  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], pullRequests: new Map(), checks: new Map(), reviews: [], comments: [], requests: [] };
+  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], pullRequests: new Map(), compares: new Map(), checks: new Map(), reviews: [], comments: [], requests: [] };
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -153,6 +157,9 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
             user: { login: found.author },
             state: found.state ?? "open",
             draft: found.draft ?? false,
+            merged: found.merged ?? false,
+            merged_at: found.merged ? (found.closed_at ?? "2026-01-02T00:00:00Z") : null,
+            closed_at: found.state === "closed" ? (found.closed_at ?? "2026-01-02T00:00:00Z") : null,
             head: { ref: found.head_ref, sha: found.head_sha, repo: { full_name: found.head_repo ?? name } },
             base: { ref: found.base_ref, sha: found.base_sha, repo: { full_name: name } },
           });
@@ -173,6 +180,11 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
         const id = 900 + fake.comments.length;
         fake.comments.push({ repo: name, number: n, id, body: body.body });
         return send(201, { id, html_url: `${base}/pull/${n}#issuecomment-${id}` });
+      }
+      const compare = /^\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)$/.exec(rest);
+      if (req.method === "GET" && compare) {
+        const ahead = fake.compares.get(`${name}:${compare[1]}...${compare[2]}`);
+        return ahead === undefined ? send(404, { message: "Not Found" }) : send(200, { status: ahead ? "ahead" : "identical", ahead_by: ahead, behind_by: 0 });
       }
       const checkRuns = /^\/commits\/([0-9a-f]+)\/check-runs$/.exec(rest);
       if (req.method === "GET" && checkRuns) {

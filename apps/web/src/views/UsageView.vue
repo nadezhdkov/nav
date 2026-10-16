@@ -4,20 +4,47 @@ import { ArrowDown, ArrowUp, CircleAlert, CircleCheck, Coins, Gauge, Pencil, Tri
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { api, client } from "../api/client.ts";
+import CostPanel from "../components/CostPanel.vue";
+import QualityPanel from "../components/QualityPanel.vue";
 import QuotaBars from "../components/QuotaBars.vue";
+import { loadTab, METRIC_WINDOWS, saveTab, USAGE_TABS, type UsageTab } from "../lib/metrics.ts";
 import { money } from "../lib/status.ts";
 import { budgetPercent, budgetTone, compactTokens, sortModels, visibleBudgets, type SortKey } from "../lib/usage.ts";
-import { useUsageStore } from "../stores/runs.ts";
+import { useMetricsStore, useUsageStore } from "../stores/runs.ts";
 
 /**
  * Usage (ADR 0023): budgets on billed use, spend today and this month, observed metrics per
  * agent and model, and quota windows. Budgets are changed only from the PC, never from a phone.
+ * The Cost and Quality tabs are the panels of spec §6.15 (ADR 0037).
  */
 const { t } = useI18n();
 const usage = useUsageStore();
+const metrics = useMetricsStore();
 const canEdit = computed(() => client() !== "mobile");
 
-onMounted(() => void usage.load());
+const tab = ref<UsageTab>(loadTab());
+function selectTab(next: UsageTab) {
+  tab.value = next;
+  saveTab(next);
+  if (next !== "overview") void metrics.open();
+}
+/** Arrow keys move between tabs, as in a WAI-ARIA tablist. */
+function tabKey(e: KeyboardEvent) {
+  const step = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!step) return;
+  const next = USAGE_TABS[(USAGE_TABS.indexOf(tab.value) + step + USAGE_TABS.length) % USAGE_TABS.length]!;
+  selectTab(next);
+  document.getElementById(`usage-tab-${next}`)?.focus();
+}
+async function setMetricsWindow(days: number) {
+  metrics.days = days;
+  await metrics.open();
+}
+
+onMounted(() => {
+  void usage.load();
+  if (tab.value !== "overview") void metrics.open();
+});
 
 const budgets = computed(() => visibleBudgets(usage.view?.budgets ?? []));
 const profiles = ["triager", "planner", "implementer", "reviewer", "lead", "researcher"];
@@ -99,162 +126,204 @@ async function save() {
       <h1 class="text-xl font-semibold">{{ t("usage.title") }}</h1>
       <p class="mt-1 max-w-3xl text-sm text-muted">{{ t("usage.subtitle") }}</p>
     </header>
-    <p v-if="usage.error" class="tone-danger text-sm" style="color: var(--tone)" role="alert">{{ usage.error }}</p>
-    <p v-if="notice" class="tone-success flex items-center gap-2 text-sm" style="color: var(--tone)" role="status">
-      <CircleCheck :size="16" aria-hidden="true" />{{ notice }}
-    </p>
-
-    <div v-if="usage.view" class="grid gap-3 sm:grid-cols-2">
-      <div v-for="period in (['today', 'month'] as const)" :key="period" class="rounded-lg border border-line bg-surface p-4">
-        <h2 class="flex items-center gap-2 text-sm font-medium"><Coins :size="16" class="text-accent" aria-hidden="true" />{{ t(`usage.${period}`) }}</h2>
-        <p class="mt-1 font-mono text-2xl font-semibold">{{ money(usage.view[period].cost) }} <span class="text-sm font-normal text-muted">{{ t("usage.billed") }}</span></p>
-        <p class="text-xs text-muted">
-          {{ t("usage.planEquivalentAmount", { amount: money(usage.view[period].plan_cost) }) }} ·
-          {{ t("usage.tokens", { n: compactTokens(usage.view[period].tokens) }) }}
-        </p>
+    <div class="flex flex-wrap items-center gap-3 border-b border-line">
+      <div role="tablist" :aria-label="t('metrics.tabs')" class="flex" @keydown="tabKey">
+        <button
+          v-for="name in USAGE_TABS"
+          :id="`usage-tab-${name}`"
+          :key="name"
+          type="button"
+          role="tab"
+          :aria-selected="tab === name"
+          :aria-controls="`usage-panel-${name}`"
+          :tabindex="tab === name ? 0 : -1"
+          class="-mb-px min-h-10 border-b-2 px-4 text-sm"
+          :class="tab === name ? 'border-accent font-medium text-fg' : 'border-transparent text-muted hover:text-fg'"
+          @click="selectTab(name)"
+        >
+          {{ t(`metrics.tab.${name}`) }}
+        </button>
+      </div>
+      <div v-if="tab !== 'overview'" role="group" :aria-label="t('usage.window')" class="mb-1 ml-auto flex overflow-hidden rounded-md border border-line text-xs">
+        <button
+          v-for="d in METRIC_WINDOWS"
+          :key="d"
+          type="button"
+          class="min-h-8 px-3"
+          :class="metrics.days === d ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg'"
+          :aria-pressed="metrics.days === d"
+          @click="setMetricsWindow(d)"
+        >
+          {{ t("usage.days", { n: d }) }}
+        </button>
       </div>
     </div>
 
-    <div class="rounded-lg border border-line bg-surface p-4">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Wallet :size="16" class="text-accent" aria-hidden="true" />{{ t("usage.budgets") }}</h2>
-      <p v-if="!canEdit" class="mb-3 text-xs text-muted">{{ t("usage.deviceNote") }}</p>
-      <ul class="space-y-4">
-        <li v-for="b in budgets" :key="`${b.scope}-${b.target}`" :class="`tone-${budgetTone[b.state]}`">
-          <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
-            <span class="font-medium">{{ scopeLabel(b) }}</span>
-            <span class="flex items-center gap-1 text-xs" :style="b.state === 'ok' ? '' : 'color: var(--tone)'">
-              <component :is="stateIcon[b.state]" :size="13" aria-hidden="true" />{{ t(`usage.state.${b.limit === null ? 'none' : b.state}`) }}
-            </span>
-            <span class="ml-auto font-mono text-xs">
-              {{ b.limit === null ? `${money(b.used)} · ${t("usage.noLimit")}` : t("usage.usedOf", { used: money(b.used), limit: money(b.limit), pct: budgetPercent(b) }) }}
-            </span>
-            <button
-              v-if="canEdit"
-              type="button"
-              class="inline-flex min-h-8 items-center gap-1 rounded-md border border-line px-2 text-xs text-muted hover:bg-surface-2 hover:text-fg"
-              :aria-label="t('usage.editFor', { scope: scopeLabel(b) })"
-              @click="edit(b)"
-            >
-              <Pencil :size="12" aria-hidden="true" />{{ t("usage.edit") }}
-            </button>
-          </div>
-          <div
-            v-if="budgetPercent(b) !== null"
-            class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
-            role="meter"
-            :aria-label="scopeLabel(b)"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            :aria-valuenow="budgetPercent(b) ?? 0"
-          >
-            <div class="h-full rounded-full" :style="{ width: `${budgetPercent(b)}%`, background: 'var(--tone)' }" />
-          </div>
-          <p class="mt-1 text-[11px] text-muted">
-            {{ t(`usage.source.${b.source}`) }}<template v-if="b.plan_equivalent > 0"> · {{ t("usage.planEquivalentAmount", { amount: money(b.plan_equivalent) }) }}</template>
-          </p>
-
-          <form
-            v-if="editing && editing.budget === b"
-            class="mt-3 space-y-3 rounded-md border border-line bg-bg p-3 text-sm"
-            :aria-label="t('usage.editTitle', { scope: scopeLabel(b) })"
-            @submit.prevent="save"
-          >
-            <p class="font-medium">{{ t("usage.editTitle", { scope: scopeLabel(b) }) }}</p>
-            <p class="text-xs text-muted">{{ t("usage.current", { limit: b.limit === null ? t("usage.noLimit") : money(b.limit) }) }}</p>
-            <div class="flex flex-wrap items-center gap-3">
-              <label class="flex items-center gap-2">
-                <span>{{ t("usage.newLimit") }}</span>
-                <input
-                  v-model="editing.amount"
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  inputmode="decimal"
-                  :disabled="editing.none"
-                  class="min-h-10 w-28 rounded-md border border-line bg-surface px-2 font-mono"
-                />
-              </label>
-              <label v-if="b.scope !== 'run'" class="flex items-center gap-2">
-                <input v-model="editing.none" type="checkbox" class="size-4" />{{ t("usage.removeLimit") }}
-              </label>
-            </div>
-            <p class="text-xs text-muted">{{ t("usage.editEffect") }}</p>
-            <p v-if="editError" class="tone-danger text-xs" style="color: var(--tone)" role="alert">{{ editError }}</p>
-            <div class="flex gap-2">
-              <button type="submit" :disabled="saving" class="min-h-10 rounded-md bg-accent px-4 font-semibold text-bg disabled:opacity-60">{{ t("usage.save") }}</button>
-              <button type="button" class="min-h-10 rounded-md border border-line px-4" @click="editing = null">{{ t("usage.cancel") }}</button>
-            </div>
-          </form>
-        </li>
-      </ul>
+    <div v-if="tab !== 'overview'" :id="`usage-panel-${tab}`" role="tabpanel" :aria-labelledby="`usage-tab-${tab}`">
+      <p v-if="metrics.error" class="tone-danger text-sm" style="color: var(--tone)" role="alert">{{ metrics.error }}</p>
+      <p v-else-if="!metrics.view" class="text-sm text-muted">{{ t("metrics.loading") }}</p>
+      <CostPanel v-else-if="tab === 'cost'" :panel="metrics.view.cost" />
+      <QualityPanel v-else :panel="metrics.view.quality" />
     </div>
 
-    <div class="rounded-lg border border-line bg-surface">
-      <div class="flex flex-wrap items-center gap-3 px-4 pt-4 pb-3">
-        <h2 class="flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("usage.models") }}</h2>
-        <div class="ml-auto flex flex-wrap items-center gap-2 text-xs">
-          <div role="group" :aria-label="t('usage.window')" class="flex overflow-hidden rounded-md border border-line">
-            <button
-              v-for="d in [7, 30]"
-              :key="d"
-              type="button"
-              class="min-h-8 px-3"
-              :class="usage.days === d ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg'"
-              :aria-pressed="usage.days === d"
-              @click="setWindow(d)"
-            >
-              {{ t("usage.days", { n: d }) }}
-            </button>
-          </div>
-          <label class="flex items-center gap-1.5 text-muted">
-            {{ t("usage.profile") }}
-            <select class="min-h-8 rounded-md border border-line bg-surface px-2 text-fg" :value="usage.profile ?? ''" @change="setProfile(($event.target as HTMLSelectElement).value)">
-              <option value="">{{ t("usage.allProfiles") }}</option>
-              <option v-for="p in profiles" :key="p" :value="p">{{ p }}</option>
-            </select>
-          </label>
+    <div v-else id="usage-panel-overview" role="tabpanel" aria-labelledby="usage-tab-overview" class="space-y-5">
+      <p v-if="usage.error" class="tone-danger text-sm" style="color: var(--tone)" role="alert">{{ usage.error }}</p>
+      <p v-if="notice" class="tone-success flex items-center gap-2 text-sm" style="color: var(--tone)" role="status">
+        <CircleCheck :size="16" aria-hidden="true" />{{ notice }}
+      </p>
+
+      <div v-if="usage.view" class="grid gap-3 sm:grid-cols-2">
+        <div v-for="period in (['today', 'month'] as const)" :key="period" class="rounded-lg border border-line bg-surface p-4">
+          <h2 class="flex items-center gap-2 text-sm font-medium"><Coins :size="16" class="text-accent" aria-hidden="true" />{{ t(`usage.${period}`) }}</h2>
+          <p class="mt-1 font-mono text-2xl font-semibold">{{ money(usage.view[period].cost) }} <span class="text-sm font-normal text-muted">{{ t("usage.billed") }}</span></p>
+          <p class="text-xs text-muted">
+            {{ t("usage.planEquivalentAmount", { amount: money(usage.view[period].plan_cost) }) }} ·
+            {{ t("usage.tokens", { n: compactTokens(usage.view[period].tokens) }) }}
+          </p>
         </div>
       </div>
-      <p v-if="usage.view && !models.length" class="px-4 pb-4 text-sm text-muted">{{ t("usage.noModels") }}</p>
-      <div v-else class="overflow-x-auto">
-        <table class="w-full border-collapse text-sm">
-          <caption class="sr-only">{{ t("usage.models") }}</caption>
-          <thead class="text-xs tracking-wide whitespace-nowrap text-muted uppercase">
-            <tr class="border-y border-line">
-              <th v-for="c in columns" :key="c.key" scope="col" :aria-sort="ariaSort(c.key)" class="px-3 py-2 font-medium first:pl-4" :class="c.numeric ? 'text-right' : 'text-left'">
-                <button type="button" class="inline-flex items-center gap-1 uppercase hover:text-fg" @click="sortBy(c.key)">
-                  {{ t(`usage.col.${c.label}`) }}
-                  <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" v-if="sortKey === c.key" :size="12" aria-hidden="true" />
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="m in models" :key="m.id" class="border-b border-line font-mono text-xs last:border-0">
-              <th scope="row" class="py-2 pr-3 pl-4 text-left font-sans text-sm font-medium">
-                {{ m.id }}
-                <span class="ml-1 rounded border border-line px-1 font-sans text-[10px] font-normal text-muted uppercase">{{ t(`usage.billing.${m.billing}`) }}</span>
-              </th>
-              <td class="px-3 py-2 text-right">{{ m.succeeded }}/{{ m.tasks }}</td>
-              <td class="px-3 py-2 text-right">{{ pct(m.success_rate) }}</td>
-              <td class="px-3 py-2 text-right" :title="m.error_rate_24h === null ? t('usage.noHistory') : undefined">{{ pct(m.error_rate_24h) }}</td>
-              <td class="px-3 py-2 text-right" :title="t('usage.rateLimitedHint')">{{ m.rate_limited }}</td>
-              <td class="px-3 py-2 text-right whitespace-nowrap">{{ compactTokens(m.tokens_in) }} / {{ compactTokens(m.tokens_out) }}</td>
-              <td class="px-3 py-2 text-right">{{ m.median_tokens_per_success === null ? "—" : compactTokens(m.median_tokens_per_success) }}</td>
-              <td class="px-3 py-2 text-right">{{ m.median_cost_per_success === null ? "—" : money(m.median_cost_per_success) }}</td>
-              <td class="px-3 py-2 text-right">{{ money(m.cost) }}</td>
-              <td class="px-3 py-2 text-right text-muted">{{ money(m.plan_cost) }}</td>
-              <td class="px-3 py-2 pr-4 text-right">{{ seconds(m.p50_duration_ms) }}</td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="px-4 py-3 text-[11px] text-muted">{{ t("usage.modelsHint") }}</p>
-      </div>
-    </div>
 
-    <div class="rounded-lg border border-line bg-surface p-4">
-      <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("quota.title") }}</h2>
-      <QuotaBars :quotas="usage.view?.quotas ?? []" />
+      <div class="rounded-lg border border-line bg-surface p-4">
+        <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Wallet :size="16" class="text-accent" aria-hidden="true" />{{ t("usage.budgets") }}</h2>
+        <p v-if="!canEdit" class="mb-3 text-xs text-muted">{{ t("usage.deviceNote") }}</p>
+        <ul class="space-y-4">
+          <li v-for="b in budgets" :key="`${b.scope}-${b.target}`" :class="`tone-${budgetTone[b.state]}`">
+            <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+              <span class="font-medium">{{ scopeLabel(b) }}</span>
+              <span class="flex items-center gap-1 text-xs" :style="b.state === 'ok' ? '' : 'color: var(--tone)'">
+                <component :is="stateIcon[b.state]" :size="13" aria-hidden="true" />{{ t(`usage.state.${b.limit === null ? 'none' : b.state}`) }}
+              </span>
+              <span class="ml-auto font-mono text-xs">
+                {{ b.limit === null ? `${money(b.used)} · ${t("usage.noLimit")}` : t("usage.usedOf", { used: money(b.used), limit: money(b.limit), pct: budgetPercent(b) }) }}
+              </span>
+              <button
+                v-if="canEdit"
+                type="button"
+                class="inline-flex min-h-8 items-center gap-1 rounded-md border border-line px-2 text-xs text-muted hover:bg-surface-2 hover:text-fg"
+                :aria-label="t('usage.editFor', { scope: scopeLabel(b) })"
+                @click="edit(b)"
+              >
+                <Pencil :size="12" aria-hidden="true" />{{ t("usage.edit") }}
+              </button>
+            </div>
+            <div
+              v-if="budgetPercent(b) !== null"
+              class="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-2"
+              role="meter"
+              :aria-label="scopeLabel(b)"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              :aria-valuenow="budgetPercent(b) ?? 0"
+            >
+              <div class="h-full rounded-full" :style="{ width: `${budgetPercent(b)}%`, background: 'var(--tone)' }" />
+            </div>
+            <p class="mt-1 text-[11px] text-muted">
+              {{ t(`usage.source.${b.source}`) }}<template v-if="b.plan_equivalent > 0"> · {{ t("usage.planEquivalentAmount", { amount: money(b.plan_equivalent) }) }}</template>
+            </p>
+
+            <form
+              v-if="editing && editing.budget === b"
+              class="mt-3 space-y-3 rounded-md border border-line bg-bg p-3 text-sm"
+              :aria-label="t('usage.editTitle', { scope: scopeLabel(b) })"
+              @submit.prevent="save"
+            >
+              <p class="font-medium">{{ t("usage.editTitle", { scope: scopeLabel(b) }) }}</p>
+              <p class="text-xs text-muted">{{ t("usage.current", { limit: b.limit === null ? t("usage.noLimit") : money(b.limit) }) }}</p>
+              <div class="flex flex-wrap items-center gap-3">
+                <label class="flex items-center gap-2">
+                  <span>{{ t("usage.newLimit") }}</span>
+                  <input
+                    v-model="editing.amount"
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    inputmode="decimal"
+                    :disabled="editing.none"
+                    class="min-h-10 w-28 rounded-md border border-line bg-surface px-2 font-mono"
+                  />
+                </label>
+                <label v-if="b.scope !== 'run'" class="flex items-center gap-2">
+                  <input v-model="editing.none" type="checkbox" class="size-4" />{{ t("usage.removeLimit") }}
+                </label>
+              </div>
+              <p class="text-xs text-muted">{{ t("usage.editEffect") }}</p>
+              <p v-if="editError" class="tone-danger text-xs" style="color: var(--tone)" role="alert">{{ editError }}</p>
+              <div class="flex gap-2">
+                <button type="submit" :disabled="saving" class="min-h-10 rounded-md bg-accent px-4 font-semibold text-bg disabled:opacity-60">{{ t("usage.save") }}</button>
+                <button type="button" class="min-h-10 rounded-md border border-line px-4" @click="editing = null">{{ t("usage.cancel") }}</button>
+              </div>
+            </form>
+          </li>
+        </ul>
+      </div>
+
+      <div class="rounded-lg border border-line bg-surface">
+        <div class="flex flex-wrap items-center gap-3 px-4 pt-4 pb-3">
+          <h2 class="flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("usage.models") }}</h2>
+          <div class="ml-auto flex flex-wrap items-center gap-2 text-xs">
+            <div role="group" :aria-label="t('usage.window')" class="flex overflow-hidden rounded-md border border-line">
+              <button
+                v-for="d in [7, 30]"
+                :key="d"
+                type="button"
+                class="min-h-8 px-3"
+                :class="usage.days === d ? 'bg-surface-2 text-fg' : 'text-muted hover:text-fg'"
+                :aria-pressed="usage.days === d"
+                @click="setWindow(d)"
+              >
+                {{ t("usage.days", { n: d }) }}
+              </button>
+            </div>
+            <label class="flex items-center gap-1.5 text-muted">
+              {{ t("usage.profile") }}
+              <select class="min-h-8 rounded-md border border-line bg-surface px-2 text-fg" :value="usage.profile ?? ''" @change="setProfile(($event.target as HTMLSelectElement).value)">
+                <option value="">{{ t("usage.allProfiles") }}</option>
+                <option v-for="p in profiles" :key="p" :value="p">{{ p }}</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p v-if="usage.view && !models.length" class="px-4 pb-4 text-sm text-muted">{{ t("usage.noModels") }}</p>
+        <div v-else class="overflow-x-auto">
+          <table class="w-full border-collapse text-sm">
+            <caption class="sr-only">{{ t("usage.models") }}</caption>
+            <thead class="text-xs tracking-wide whitespace-nowrap text-muted uppercase">
+              <tr class="border-y border-line">
+                <th v-for="c in columns" :key="c.key" scope="col" :aria-sort="ariaSort(c.key)" class="px-3 py-2 font-medium first:pl-4" :class="c.numeric ? 'text-right' : 'text-left'">
+                  <button type="button" class="inline-flex items-center gap-1 uppercase hover:text-fg" @click="sortBy(c.key)">
+                    {{ t(`usage.col.${c.label}`) }}
+                    <component :is="sortDir === 'asc' ? ArrowUp : ArrowDown" v-if="sortKey === c.key" :size="12" aria-hidden="true" />
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="m in models" :key="m.id" class="border-b border-line font-mono text-xs last:border-0">
+                <th scope="row" class="py-2 pr-3 pl-4 text-left font-sans text-sm font-medium">
+                  {{ m.id }}
+                  <span class="ml-1 rounded border border-line px-1 font-sans text-[10px] font-normal text-muted uppercase">{{ t(`usage.billing.${m.billing}`) }}</span>
+                </th>
+                <td class="px-3 py-2 text-right">{{ m.succeeded }}/{{ m.tasks }}</td>
+                <td class="px-3 py-2 text-right">{{ pct(m.success_rate) }}</td>
+                <td class="px-3 py-2 text-right" :title="m.error_rate_24h === null ? t('usage.noHistory') : undefined">{{ pct(m.error_rate_24h) }}</td>
+                <td class="px-3 py-2 text-right" :title="t('usage.rateLimitedHint')">{{ m.rate_limited }}</td>
+                <td class="px-3 py-2 text-right whitespace-nowrap">{{ compactTokens(m.tokens_in) }} / {{ compactTokens(m.tokens_out) }}</td>
+                <td class="px-3 py-2 text-right">{{ m.median_tokens_per_success === null ? "—" : compactTokens(m.median_tokens_per_success) }}</td>
+                <td class="px-3 py-2 text-right">{{ m.median_cost_per_success === null ? "—" : money(m.median_cost_per_success) }}</td>
+                <td class="px-3 py-2 text-right">{{ money(m.cost) }}</td>
+                <td class="px-3 py-2 text-right text-muted">{{ money(m.plan_cost) }}</td>
+                <td class="px-3 py-2 pr-4 text-right">{{ seconds(m.p50_duration_ms) }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="px-4 py-3 text-[11px] text-muted">{{ t("usage.modelsHint") }}</p>
+        </div>
+      </div>
+
+      <div class="rounded-lg border border-line bg-surface p-4">
+        <h2 class="mb-3 flex items-center gap-2 text-sm font-medium"><Gauge :size="16" class="text-accent" aria-hidden="true" />{{ t("quota.title") }}</h2>
+        <QuotaBars :quotas="usage.view?.quotas ?? []" />
+      </div>
     </div>
   </section>
 </template>

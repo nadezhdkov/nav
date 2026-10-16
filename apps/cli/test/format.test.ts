@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "../src/format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -169,6 +169,33 @@ describe("budgets and usage (ADR 0023)", () => {
     expect(text).toContain("$0.2500 (no limit)");
     expect(text).toMatch(/run run_1\s+\$2\.10 of \$2\.00 · 105 %\s+EXCEEDED/);
     expect(text).toContain("navarch budget set --monthly");
+  });
+
+  it("shows the cost and quality panels", () => {
+    const text = formatMetrics({
+      generated_at: "2026-10-16T12:00:00Z",
+      window_days: 7,
+      cost: {
+        total: { cost: 0.4, plan_cost: 3, tokens: 50_000 },
+        days: [
+          { day: "2026-10-15", cost: 0, plan_cost: 0, tokens: 0 },
+          { day: "2026-10-16", cost: 0.4, plan_cost: 3, tokens: 50_000 },
+        ],
+        projects: [{ kind: "project", project_id: "prj_1", label: "acme", runs: 2, cost: 0.4, plan_cost: 3, tokens: 50_000 }],
+        profiles: [{ profile: "implementer", tasks: 2, cost: 0.4, plan_cost: 3, tokens: 50_000 }],
+        models: [{ model: "sonnet", calls: 9, cost: 0.4, plan_cost: 3, tokens: 50_000 }],
+      },
+      quality: {
+        profiles: [{ profile: "implementer", tasks: 4, succeeded: 3, success_rate: 0.75, rate_limited: 1 }],
+        models: [],
+        pull_requests: { opened: 4, open: 1, merged: 2, closed: 1, gone: 0, acceptance_rate: 0.667, accepted_as_is: 1, rework: 1, rework_rate: 0.333, cost_per_merged: 1.7, recent: [] },
+      },
+    });
+    expect(text).toContain("cost, last 7 days: $0.4000 billed");
+    expect(text).not.toContain("2026-10-15");
+    expect(text).toMatch(/acme\s+2\s+\$0\.4000/);
+    expect(text).toContain("accepted 67 % · as is 1 · rework (> 2 commits after Navarch's) 1, 33 % · cost per merged PR $1.70");
+    expect(text).toMatch(/implementer\s+4\s+75 %\s+1/);
   });
 
   it("shows spend, tokens and per-model metrics", () => {

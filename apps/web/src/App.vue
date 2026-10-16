@@ -10,7 +10,7 @@ import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore } from "./stores/runs.ts";
+import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
@@ -19,7 +19,7 @@ const fleet = useFleetStore();
 const inbox = useInboxStore();
 const projects = useProjectsStore();
 const usage = useUsageStore();
-const stores = [runs, approvals, fleet, inbox, projects, usage];
+const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore()];
 
 const offs: (() => void)[] = [];
 /** Loads everything again, for the "Try again" of the unreachable notice. */

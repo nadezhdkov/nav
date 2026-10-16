@@ -214,7 +214,7 @@ function title(prompt: string): string {
   return line.length > 60 ? `${line.slice(0, 59)}…` : line;
 }
 
-function localDate(d: Date): string {
+export function localDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }

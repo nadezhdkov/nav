@@ -61,12 +61,15 @@ export class EventStore {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
     this.db.exec(eventsTable);
+    // A projection table added later starts empty: fill it from the log.
+    const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
+    const missingTables = tableExists("runs") && !tableExists("pull_requests");
     this.db.exec(projectionTables);
     this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice") || !has("runs", "isolation") || !has("tasks", "parallel")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice") || !has("runs", "isolation") || !has("tasks", "parallel") || missingTables) {
       this.rebuildProjections();
     }
     // After the rebuild: an older runs table has no name column to index until then.
@@ -646,6 +649,53 @@ export class EventStore {
     }));
   }
 
+  /** The Cost Ledger since `from` with each row's run repository and task profile: the cost panel's source (ADR 0037). */
+  ledgerSince(from: string): LedgerRow[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT u.ts, u.run_id, r.repo_path, t.profile, u.task_id, u.model, u.billing, u.tokens_in + u.tokens_out AS tokens, u.cost
+           FROM usage u LEFT JOIN runs r ON r.id = u.run_id LEFT JOIN tasks t ON t.id = u.task_id
+           WHERE u.ts >= ? ORDER BY u.seq`,
+        )
+        .all(from) as Row[]
+    ).map((r) => ({
+      ts: String(r.ts),
+      run_id: (r.run_id as string | null) ?? null,
+      repo_path: (r.repo_path as string | null) ?? null,
+      task_id: (r.task_id as string | null) ?? null,
+      profile: (r.profile as string | null) ?? null,
+      model: String(r.model),
+      billing: String(r.billing) === "plan" ? "plan" : "metered",
+      tokens: Number(r.tokens),
+      cost: Number(r.cost),
+    }));
+  }
+
+  /** Pull requests Navarch opened since `from`, newest first, with their run's name and costs (ADR 0037). */
+  pullRequestsSince(from: string): PullRequestRecord[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT p.*, r.name AS run_name, COALESCE(r.cost_total, 0) AS cost, COALESCE(r.plan_cost, 0) AS plan_cost
+           FROM pull_requests p LEFT JOIN runs r ON r.id = p.run_id WHERE p.opened_at >= ? ORDER BY p.opened_at DESC, p.number DESC`,
+        )
+        .all(from) as Row[]
+    ).map(pullRequestRecord);
+  }
+
+  /** Pull requests Navarch opened that are still open, oldest first: what the PR watcher follows. */
+  openPullRequests(): PullRequestRecord[] {
+    return (
+      this.db
+        .prepare(
+          `SELECT p.*, r.name AS run_name, COALESCE(r.cost_total, 0) AS cost, COALESCE(r.plan_cost, 0) AS plan_cost
+           FROM pull_requests p LEFT JOIN runs r ON r.id = p.run_id WHERE p.state = 'open' ORDER BY p.opened_at`,
+        )
+        .all() as Row[]
+    ).map(pullRequestRecord);
+  }
+
   /** The latest observation of every quota window, by adapter (Home, ADR 0021). */
   quotas(now = Date.now()): QuotaView[] {
     const latest = new Map<string, QuotaView>();
@@ -675,6 +725,53 @@ export class EventStore {
 
 
 export type UsageTotals = { cost: number; plan_cost: number; tokens: number };
+
+/** One row of the Cost Ledger with where it was spent. */
+export type LedgerRow = {
+  ts: string;
+  run_id: string | null;
+  repo_path: string | null;
+  task_id: string | null;
+  profile: string | null;
+  model: string;
+  billing: "metered" | "plan";
+  tokens: number;
+  cost: number;
+};
+
+export type PullRequestRecord = {
+  repo: string;
+  number: number;
+  run_id: string;
+  run_name: string;
+  url: string;
+  branch: string;
+  commit_sha: string | null;
+  opened_at: string;
+  state: "open" | "merged" | "closed" | "gone";
+  closed_at: string | null;
+  commits_after: number | null;
+  cost: number;
+  plan_cost: number;
+};
+
+function pullRequestRecord(r: Row): PullRequestRecord {
+  return {
+    repo: String(r.repo),
+    number: Number(r.number),
+    run_id: String(r.run_id),
+    run_name: String(r.run_name ?? r.run_id),
+    url: String(r.url),
+    branch: String(r.branch),
+    commit_sha: (r.commit_sha as string | null) ?? null,
+    opened_at: String(r.opened_at),
+    state: String(r.state) as PullRequestRecord["state"],
+    closed_at: (r.closed_at as string | null) ?? null,
+    commits_after: r.commits_after === null || r.commits_after === undefined ? null : Number(r.commits_after),
+    cost: Number(r.cost),
+    plan_cost: Number(r.plan_cost),
+  };
+}
 
 export type AttemptRecord = {
   ts: string;

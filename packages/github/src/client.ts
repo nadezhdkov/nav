@@ -225,6 +225,28 @@ export class GitHubClient {
     return { id: created.id, url: created.html_url };
   }
 
+  /** Whether a pull request is still open, and how it ended (ADR 0037). */
+  async pullRequestState(repo: string, number: number): Promise<{ state: "open" | "closed"; merged: boolean; closed_at: string | null; head_sha: string }> {
+    const pr = await this.request<{ state: string; merged?: boolean; merged_at?: string | null; closed_at?: string | null; head: { sha: string } }>(
+      "GET",
+      `/repos/${repo}/pulls/${number}`,
+      undefined,
+      `${repo}#${number}`,
+    );
+    return {
+      state: pr.state === "open" ? "open" : "closed",
+      merged: Boolean(pr.merged ?? pr.merged_at),
+      closed_at: pr.closed_at ?? null,
+      head_sha: pr.head.sha,
+    };
+  }
+
+  /** How many commits `head` has that `base` has not (`ahead_by` of the compare API). */
+  async commitsAhead(repo: string, base: string, head: string): Promise<number> {
+    const cmp = await this.request<{ ahead_by: number }>("GET", `/repos/${repo}/compare/${base}...${head}`, undefined, repo);
+    return cmp.ahead_by;
+  }
+
   /** The PR whose head is `branch` in the same repository, open or closed (makes opening a PR idempotent). */
   async findPullRequest(repo: string, branch: string): Promise<{ number: number; url: string } | undefined> {
     const owner = repo.split("/")[0]!;

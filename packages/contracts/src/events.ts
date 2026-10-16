@@ -294,6 +294,20 @@ export const EventPayloads = {
     branch: z.string(),
     draft: z.boolean(),
   }),
+  /**
+   * A pull request Navarch opened was closed (ADR 0037). `commits_after` counts the commits on its
+   * head after Navarch's last push to the branch; null when GitHub could not compare them.
+   */
+  "github.pr.closed": z.object({
+    repo: z.string(),
+    number: z.number().int().positive(),
+    merged: z.boolean(),
+    closed_at: z.string(),
+    head_sha: z.string(),
+    commits_after: z.number().int().nonnegative().nullable(),
+  }),
+  /** A pull request Navarch opened can no longer be read (404 three polls in a row); it is no longer followed (ADR 0037). */
+  "github.pr.lost": z.object({ repo: z.string(), number: z.number().int().positive(), reason: z.string() }),
   /** Navarch posted a COMMENT review on a pull request (ADR 0032); `existing` when a retry found its earlier one. */
   "github.review.posted": z.object({ repo: z.string(), number: z.number().int().positive(), url: z.string(), commit: z.string(), comments: z.number().int().nonnegative(), existing: z.boolean() }),
   /** Navarch commented on a pull request (ADR 0032). */

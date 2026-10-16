@@ -64,6 +64,21 @@ export class GitHubIntegration {
     return { ...item, pull_request: { head_ref, head_sha: fetched.head, head_repo, base_ref, base_sha: fetched.base, draft, failing_checks } };
   }
 
+  /**
+   * What became of a pull request Navarch opened (ADR 0037): undefined while it is open, else how it
+   * closed and how many commits its head has after `commit`, Navarch's last push. A compare GitHub
+   * cannot make gives null. Reads only.
+   */
+  async pullRequestOutcome(repo: string, number: number, commit: string | null): Promise<{ merged: boolean; closed_at: string; head_sha: string; commits_after: number | null } | undefined> {
+    const pr = await this.client.pullRequestState(repo, number);
+    if (pr.state === "open") return undefined;
+    let commits_after: number | null = null;
+    if (commit) {
+      commits_after = commit === pr.head_sha ? 0 : await this.client.commitsAhead(repo, commit, pr.head_sha).catch(() => null);
+    }
+    return { merged: pr.merged, closed_at: pr.closed_at ?? new Date().toISOString(), head_sha: pr.head_sha, commits_after };
+  }
+
   /** Posts a COMMENT review, or returns the one this run already posted (its body holds `marker`). */
   async postReview(review: { repo: string; number: number; commit_id: string; body: string; comments: { path: string; line: number; body: string }[]; marker: string }): Promise<{ url: string; existing: boolean }> {
     const found = (await this.client.listReviews(review.repo, review.number)).find((r) => r.body.includes(review.marker));
