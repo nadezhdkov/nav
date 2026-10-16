@@ -495,9 +495,14 @@ export class EventStore {
     });
   }
 
-  /** Studio Flows (ADR 0033) with their current draft, by name. */
+  /**
+   * Studio Flows (ADR 0033) with their current draft, by name. A row with neither a draft nor a
+   * version is a discarded, never-published Flow that an older daemon kept; it does not exist.
+   */
   studioFlows(name?: string): StudioFlowRecord[] {
-    const rows = this.db.prepare("SELECT * FROM studio_flows WHERE ? IS NULL OR name = ? ORDER BY name").all(name ?? null, name ?? null) as Row[];
+    const rows = this.db
+      .prepare("SELECT * FROM studio_flows WHERE (? IS NULL OR name = ?) AND (draft_revision IS NOT NULL OR published_version IS NOT NULL) ORDER BY name")
+      .all(name ?? null, name ?? null) as Row[];
     return rows.map((r) => ({
       name: String(r.name),
       draft_yaml: r.draft_yaml === null ? null : String(r.draft_yaml),

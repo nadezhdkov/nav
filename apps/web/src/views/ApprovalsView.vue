@@ -74,7 +74,7 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
         <Hand :size="16" style="color: var(--tone)" aria-hidden="true" />
         <h3 :id="`apr-${a.id}`" class="font-semibold">{{ a.action }}</h3>
         <span class="font-mono text-xs text-muted">{{ a.id }}</span>
-        <RouterLink :to="`/runs/${a.run_id}`" class="ml-auto text-sm text-accent hover:underline">{{ t("approvals.run") }} {{ a.run_id }}</RouterLink>
+        <RouterLink :to="`/runs/${a.run_id}`" class="ml-auto text-sm text-accent hover:underline">{{ t("approvals.run") }} {{ runOf(a)?.name ?? a.run_id }}</RouterLink>
       </header>
       <dl class="space-y-2 text-sm">
         <div>
@@ -123,7 +123,7 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
       <ul class="divide-y divide-line rounded-lg border border-line bg-surface text-sm">
         <li v-for="a in decided" :key="a.id" class="flex flex-wrap items-center gap-3 px-4 py-2.5">
           <span class="font-medium">{{ a.action }}</span>
-          <RouterLink :to="`/runs/${a.run_id}`" class="font-mono text-xs text-muted hover:text-accent">{{ a.run_id }}</RouterLink>
+          <RouterLink :to="`/runs/${a.run_id}`" class="font-mono text-xs text-muted hover:text-accent">{{ runOf(a)?.name ?? a.run_id }}</RouterLink>
           <span v-if="a.choice" class="font-mono text-xs">{{ t("approvals.picked", { choice: a.choice }) }}</span>
           <span class="ml-auto text-xs text-muted">{{ t("approvals.by", { status: t(`status.${a.status}`), when: ago(a.decided_at ?? a.created_at) }) }}</span>
         </li>

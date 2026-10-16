@@ -19,6 +19,13 @@ describe("routing config", () => {
     expect(config.adapters.native.providers.openrouter?.api_key).toBe("secret://openrouter/api_key");
   });
 
+  it("lists Kilo's free models in the catalog but in no tier by default (ADR 0034)", () => {
+    const config = Config.parse({});
+    expect(config.routing.models.kilo).toEqual({ adapter: "kilo", model: "kilo/kilo-auto/free", provider: "kilo", status: "active" });
+    expect(Object.values(config.routing.tiers).flat()).not.toContain("kilo");
+    expect(config.adapters.kilo).toEqual({ enabled: true, model: "kilo/kilo-auto/free" });
+  });
+
   it("refuses a provider key written into the config", () => {
     expect(() => Config.parse({ adapters: { native: { providers: { x: { base_url: "https://x.example/v1", api_key: "sk-live-123" } } } } })).toThrow();
   });

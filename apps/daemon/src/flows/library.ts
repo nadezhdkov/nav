@@ -14,7 +14,7 @@ import {
   type SaveFlowDraftRequest,
   type SimulationResult,
 } from "@navarch/contracts";
-import { checkFlow, KNOWN_USES, NOT_IN_SUBFLOW, parseFlow, simulateFlow, subflowsOf, type FlowCheck } from "@navarch/flow-engine";
+import { checkFlow, flowNeeds, KNOWN_USES, NOT_IN_SUBFLOW, parseFlow, simulateFlow, subflowsOf, type FlowCheck, type FlowNeeds } from "@navarch/flow-engine";
 import { parseDocument } from "yaml";
 import type { EventStore, StudioFlowRecord } from "../events/store.ts";
 import { FLOWS_DIR, type FlowLookup, type ResolvedFlow } from "../orchestrator/orchestrator.ts";
@@ -222,7 +222,17 @@ export class FlowLibrary implements FlowLookup {
 
   private builtinSummary(b: Builtin): FlowSummary {
     const f = b.definition;
-    return { name: f.metadata.name, description: f.metadata.description ?? null, source: "builtin", published_version: null, draft: null, node_count: f.nodes.length, shadowed: false, updated_at: null };
+    return {
+      name: f.metadata.name,
+      description: f.metadata.description ?? null,
+      source: "builtin",
+      published_version: null,
+      draft: null,
+      node_count: f.nodes.length,
+      needs: this.needs(f),
+      shadowed: false,
+      updated_at: null,
+    };
   }
 
   private studioSummary(row: StudioFlowRecord): FlowSummary {
@@ -235,9 +245,21 @@ export class FlowLibrary implements FlowLookup {
       published_version: row.published_version,
       draft: row.draft_revision && row.draft_saved_at ? { revision: row.draft_revision, saved_at: row.draft_saved_at } : null,
       node_count: flow ? flow.nodes.length : null,
+      needs: flow ? this.needs(flow) : null,
       shadowed: this.builtins.has(row.name),
       updated_at: row.updated_at,
     };
+  }
+
+  /** Subflows count when they resolve; one that no longer does leaves the run to report it. */
+  private needs(flow: FlowDefinition): FlowNeeds {
+    let subflows: Record<string, FlowDefinition> = {};
+    try {
+      subflows = subflowsOf(flow, this.all());
+    } catch {
+      // The run refuses it with the reason when started.
+    }
+    return flowNeeds(flow, subflows);
   }
 
   private expectRevision(row: StudioFlowRecord | undefined, revision: number | null): void {

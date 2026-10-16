@@ -80,8 +80,10 @@ export function opencodePermission(grant: ToolGrant): Record<string, Rule | Reco
 const FOREIGN_SESSION = /free tier can only be used from within opencode/i;
 
 export class OpencodeAdapter implements AgentAdapter {
-  readonly id = "opencode";
-  private readonly options: Required<OpencodeOptions>;
+  readonly id: string = "opencode";
+  /** The CLI's name in messages, temporary directories and usage without a model; Kilo (a fork) overrides it. */
+  protected readonly cli: string = "opencode";
+  protected readonly options: Required<OpencodeOptions>;
   private readonly processes: CliProcesses;
 
   constructor(options: OpencodeOptions = {}) {
@@ -153,7 +155,7 @@ export class OpencodeAdapter implements AgentAdapter {
     let overBudget = "";
     let session = resume;
     const usage = { tokensIn: 0, tokensOut: 0, cached: 0, cost: 0, steps: 0 };
-    const configDir = mkdtempSync(join(tmpdir(), "navarch-opencode-"));
+    const configDir = mkdtempSync(join(tmpdir(), `navarch-${this.cli}-`));
 
     try {
       const exit = await this.processes.run({
@@ -208,11 +210,11 @@ export class OpencodeAdapter implements AgentAdapter {
       if (exit.stderr.trim()) io.emit({ kind: "log", line: `[stderr] ${exit.stderr.trim()}` });
 
       const records: UsageRecord[] = usage.steps
-        ? [{ model: ctx.model || "opencode", tokens_in: usage.tokensIn, tokens_out: usage.tokensOut, cached_tokens: usage.cached, cost: usage.cost }]
+        ? [{ model: ctx.model || this.cli, tokens_in: usage.tokensIn, tokens_out: usage.tokensOut, cached_tokens: usage.cached, cost: usage.cost }]
         : [];
       if (overBudget) return { status: "failed", summary: lastText, artifacts: [], claims: [], usage: records, error: { kind: "budget_exceeded", message: overBudget } };
       const final = session || failure ? { ok: !failure, summary: lastText, usage: records, ...(failure ? { error: failure } : {}) } : undefined;
-      return cliOutcome("opencode", exit, final, lastText);
+      return cliOutcome(this.cli, exit, final, lastText);
     } finally {
       rmSync(configDir, { recursive: true, force: true });
     }

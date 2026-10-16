@@ -15,7 +15,9 @@ export function formatRunDetail(run: RunDetail): string {
     `status   ${run.status}`,
     `repo     ${run.repo_path} @ ${run.base_commit.slice(0, 10)}`,
     `cost     ${usd(run.cost_total)} of ${usd(run.budget)}${run.plan_cost > 0 ? ` (plus ${usd(run.plan_cost)} plan-equivalent, not billed)` : ""}`,
-    ...(run.flow ? [`flow     ${run.flow}${run.autonomy_level !== null ? ` (autonomy level ${run.autonomy_level})` : ""}`] : []),
+    ...(run.flow
+      ? [`flow     ${run.flow}${run.flow_definition?.version ? ` v${run.flow_definition.version} (Flow Studio)` : ""}${run.autonomy_level !== null ? ` (autonomy level ${run.autonomy_level})` : ""}`]
+      : []),
     ...(run.work_item ? [`issue    ${run.work_item.repo}#${run.work_item.number}  ${run.work_item.url}`] : []),
     ...(run.pr_url ? [`pr       ${run.pr_url}`] : []),
     `prompt   ${truncate(oneLine(run.prompt), 200)}`,

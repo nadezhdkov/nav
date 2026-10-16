@@ -243,11 +243,19 @@ async function start() {
         </div>
         <template v-if="studioFlows.length">
           <p class="pt-2 text-xs font-semibold tracking-wide text-muted uppercase">{{ t("newRun.yourFlows") }}</p>
-          <label v-for="f in studioFlows" :key="f.name" class="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border px-3 py-2" :class="mode === f.name ? 'border-accent' : 'border-line'">
-            <input v-model="mode" type="radio" name="mode" :value="f.name" class="mt-1 size-4 shrink-0" />
+          <label
+            v-for="f in studioFlows"
+            :key="f.name"
+            class="flex min-h-11 items-start gap-3 rounded-lg border px-3 py-2"
+            :class="[mode === f.name ? 'border-accent' : 'border-line', f.needs && f.needs !== 'prompt' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer']"
+          >
+            <input v-model="mode" type="radio" name="mode" :value="f.name" :disabled="!!f.needs && f.needs !== 'prompt'" class="mt-1 size-4 shrink-0" />
             <span>
               <span class="block text-sm font-medium"><span class="font-mono">{{ f.name }}</span> <span class="text-xs text-muted">v{{ f.published_version }}</span></span>
               <span class="block text-xs text-muted">{{ f.description || t("flows.noDescription") }}</span>
+              <!-- A prompt run cannot start a Flow that opens a PR unconditionally or works on one (go/no-go finding). -->
+              <span v-if="f.needs === 'issue'" class="block text-xs text-muted">{{ t("newRun.needsIssue") }}</span>
+              <span v-else-if="f.needs === 'pull_request'" class="block text-xs text-muted">{{ t("newRun.needsPr") }}</span>
             </span>
           </label>
           <div v-if="studio && (Object.keys(studioParams).length || needsBudget)" class="flex flex-wrap gap-3 rounded-lg border border-line px-3 py-2">

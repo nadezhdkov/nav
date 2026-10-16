@@ -20,7 +20,7 @@ import {
   type SendRunMessage,
   type TaskStatus,
 } from "@navarch/contracts";
-import { next, parseFlow, renderInputs, renderValue, resolveParams, subflowsOf, type TaskState } from "@navarch/flow-engine";
+import { flowNeeds, next, parseFlow, renderInputs, renderValue, resolveParams, subflowsOf, type TaskState } from "@navarch/flow-engine";
 import { pullRequestDiff, resolveHead, resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
@@ -65,7 +65,6 @@ export function builtinLookup(flows: ReadonlyMap<string, FlowDefinition>): FlowL
 }
 
 /** GitHub operations that work on a pull request rather than on an issue (ADR 0032). */
-const PR_USES = ["pr.review", "pr.comment"];
 
 export class OrchestratorError extends Error {
   readonly code: string;
@@ -172,7 +171,8 @@ export class Orchestrator {
       throw new OrchestratorError("invalid_request", (err as Error).message);
     }
     const allNodes = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
-    const onPr = allNodes.some((n) => n.type === "github" && PR_USES.includes(n.uses));
+    const needs = flowNeeds(flow, subflows);
+    const onPr = needs === "pull_request";
     if (onPr && !pr) throw new OrchestratorError("invalid_request", `flow "${flowName}" works on a pull request (--pr owner/repo#N)`);
     if (pr && !onPr) throw new OrchestratorError("invalid_request", `flow "${flowName}" does not work on pull requests; use review-pr or ci-fix`);
     // ci-fix pushes a branch into the pull request's repository and runs its code in verification.
@@ -189,8 +189,7 @@ export class Orchestrator {
       throw new OrchestratorError("budget_required", `flow "${flowName}" runs several agents on the same task; give it a run budget (--budget <usd>)`);
     }
     // A PR node that runs only `when` something holds (e.g. `project.work_item`) does not need an issue.
-    const usesGitHub = flow.nodes.some((n) => n.type === "github" && !n.when);
-    if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
+    if (needs === "issue" && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
     // A run that will push finds out now, not after all the agent work (go/no-go finding F5).
     if (workItem && this.github && allNodes.some((n) => n.type === "github" && n.uses === "pr.create")) {
       try {

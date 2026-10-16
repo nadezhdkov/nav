@@ -13,6 +13,7 @@ const api = vi.hoisted(() => ({
   syncInbox: vi.fn(),
   dismissItem: vi.fn(),
   restoreItem: vi.fn(),
+  flows: vi.fn(),
 }));
 vi.mock("../src/api/client.ts", async (orig) => ({ ...(await orig<object>()), api }));
 
@@ -54,6 +55,12 @@ beforeEach(async () => {
   api.inbox.mockResolvedValue(view);
   api.projects.mockResolvedValue([{ id: "prj_a", name: "w", repo: "acme/w", path: "/src/w", added_at: "x", active_runs: 1, inbox: { new: 1, triaged: 1 }, synced_at: null }]);
   api.quotas.mockResolvedValue([]);
+  api.flows.mockResolvedValue([
+    { name: "fix-issue", description: null, source: "builtin", published_version: null, draft: null, node_count: 7, needs: "issue", shadowed: false, updated_at: null },
+    { name: "plan-and-pr", description: "Plan, approve, implement, PR.", source: "studio", published_version: 3, draft: null, node_count: 5, needs: "issue", shadowed: false, updated_at: "t" },
+    { name: "my-review", description: null, source: "studio", published_version: 1, draft: null, node_count: 2, needs: "pull_request", shadowed: false, updated_at: "t" },
+    { name: "scratch", description: null, source: "studio", published_version: null, draft: { revision: 1, saved_at: "t" }, node_count: null, needs: null, shadowed: false, updated_at: "t" },
+  ]);
   await useInboxStore().load();
   await useProjectsStore().load();
 });
@@ -87,6 +94,24 @@ describe("Inbox view", () => {
     await flushPromises();
     expect(api.startInbox).toHaveBeenCalledWith({ item_ids: ["wi_github_acme~w_1", "wi_github_acme~w_2"] });
     expect(dialog.text()).toContain("wi_github_acme~w_2: denied");
+  });
+
+  it("starts the items with a published Studio Flow that takes an issue (go/no-go finding)", async () => {
+    api.startInbox.mockResolvedValue({ runs: [{ item_id: "wi_github_acme~w_1", run_id: "run_9" }], errors: [] });
+    const page = mount(InboxPage, { global });
+    await flushPromises();
+    await page.findAll("tbody input[type=checkbox]")[0]!.setValue(true);
+    await page.find("button.bg-accent").trigger("click");
+    await flushPromises();
+    const dialog = page.find("dialog");
+    const choices = dialog.findAll("input[name=inbox-flow]").map((i) => (i.element as HTMLInputElement).value);
+    // Flows that work on a pull request, or are only drafts, are not offered.
+    expect(choices).toEqual(["fix-issue", "team", "plan-and-pr"]);
+    await dialog.find("input[value=plan-and-pr]").setValue(true);
+    expect(dialog.text()).toContain("Starts 1 run(s) of plan-and-pr");
+    await dialog.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.startInbox).toHaveBeenCalledWith({ item_ids: ["wi_github_acme~w_1"], flow: "plan-and-pr" });
   });
 
   it("shows the issue body as plain text in the panel and dismisses it", async () => {

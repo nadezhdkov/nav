@@ -241,7 +241,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         issue: str("owner/repo#N, to implement a GitHub issue."),
         pull_request: str("owner/repo#N of a pull request, to review it (flow review-pr, the default) or fix its failing CI (flow ci-fix)."),
         repo_path: str("Local clone to work in; defaults to the operator's current directory."),
-        adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, grok, native)."),
+        adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, kilo, grok, native)."),
         model: str("Pin the model, e.g. openrouter/<id> with the native adapter."),
         flow: str("Flow name: fix-issue (default for issues), task (default for prompts), review-pr (default for pull requests), ci-fix (fix a pull request's failing checks), team (a lead agent that delegates parts to other agents) or compete (several agents implement the same task and a judge picks the best; needs a budget), or the name of a Flow the user published in Flow Studio."),
         budget: { type: "number", description: "Run budget in USD for billed use. Required for compete; otherwise only when the operator named one." },

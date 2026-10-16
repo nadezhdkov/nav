@@ -91,9 +91,11 @@ describe("Flow Studio API (ADR 0033)", () => {
     expect(published.body).toMatchObject({ published_version: 1, draft: null, draft_yaml: null, published_yaml: myTask(), versions: [{ version: 1, actor: "user via api" }] });
 
     const list = (await api<FlowSummary[]>("GET", "/api/v1/flows")).body;
-    expect(list.find((f) => f.name === "fix-issue")).toMatchObject({ source: "builtin" });
-    expect(list.find((f) => f.name === "my-task")).toMatchObject({ source: "studio", published_version: 1, node_count: 1, description: "Implement and verify." });
-    expect(list.find((f) => f.name === "scratch")).toMatchObject({ published_version: null, draft: { revision: 1 } });
+    expect(list.find((f) => f.name === "fix-issue")).toMatchObject({ source: "builtin", needs: "issue" });
+    expect(list.find((f) => f.name === "review-pr")).toMatchObject({ needs: "pull_request" });
+    expect(list.find((f) => f.name === "task")).toMatchObject({ needs: "prompt" });
+    expect(list.find((f) => f.name === "my-task")).toMatchObject({ source: "studio", published_version: 1, node_count: 1, description: "Implement and verify.", needs: "prompt" });
+    expect(list.find((f) => f.name === "scratch")).toMatchObject({ published_version: null, draft: { revision: 1 }, needs: null });
     expect((await api<{ yaml: string }>("GET", "/api/v1/flows/my-task/versions/1")).body.yaml).toBe(myTask());
     expect((await api("GET", "/api/v1/flows/my-task/versions/2")).status).toBe(404);
 
@@ -102,6 +104,26 @@ describe("Flow Studio API (ADR 0033)", () => {
     expect(draft.body).toMatchObject({ based_on: 1, draft: { revision: 1 } });
     const discarded = await api<{ flow: FlowDetail }>("DELETE", "/api/v1/flows/my-task/draft", { revision: 1 });
     expect(discarded.body.flow).toMatchObject({ published_version: 1, draft: null });
+
+    // A Flow that was never published is gone with its draft, and its name is free again.
+    expect((await api<{ flow: FlowDetail | null }>("DELETE", "/api/v1/flows/scratch/draft", { revision: 1 })).body.flow).toBeNull();
+    expect((await api<FlowSummary[]>("GET", "/api/v1/flows")).body.map((f) => f.name)).not.toContain("scratch");
+    expect((await api("GET", "/api/v1/flows/scratch")).status).toBe(404);
+    expect((await api("PUT", "/api/v1/flows/scratch/draft", { yaml: "nodes: [", revision: null })).status).toBe(200);
+  });
+
+  it("says what a Studio Flow needs: a PR node without a condition needs an issue (go/no-go finding)", async () => {
+    const { api } = await start();
+    const withPr = (when: string) =>
+      myTask().replace("edges:\n  - work\n", `  - id: open_pr\n    type: github\n    uses: pr.create\n${when}edges:\n  - work -> open_pr\n`);
+    const save = async (yaml: string) => {
+      const current = (await api<FlowDetail>("GET", "/api/v1/flows/my-task")).body;
+      const revision = current?.draft?.revision ?? null;
+      await api("PUT", "/api/v1/flows/my-task/draft", { yaml, revision });
+      return (await api<FlowDetail>("POST", "/api/v1/flows/my-task/publish", { revision: (revision ?? 0) + 1 })).body;
+    };
+    expect(await save(withPr(""))).toMatchObject({ needs: "issue" });
+    expect(await save(withPr("    when: ${{ project.work_item }}\n"))).toMatchObject({ needs: "prompt" });
   });
 
   it("validates and simulates documents", async () => {

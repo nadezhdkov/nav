@@ -30,7 +30,7 @@
   </picture>
 </p>
 
-A *navarch* commanded a fleet. Navarch is a **local-first coordination layer** for coding agents: Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, OpenCode, Grok CLI, or local and remote models through its own agent loop. It does not replace them; it gives them a plan, an isolated worktree, a budget, rules and a human in the loop, and records everything as events you can follow from the CLI, the Web UI or a conversation. Formerly VECTR (ADR 0008).
+A *navarch* commanded a fleet. Navarch is a **local-first coordination layer** for coding agents: Claude Code, Gemini CLI, Codex, GitHub Copilot CLI, OpenCode, Kilo CLI, Grok CLI, or local and remote models through its own agent loop. It does not replace them; it gives them a plan, an isolated worktree, a budget, rules and a human in the loop, and records everything as events you can follow from the CLI, the Web UI or a conversation. Formerly VECTR (ADR 0008).
 
 > [!NOTE]
 > **Status: Phase 1 in progress.** Issue → plan → approval → implementation → verification → review → draft PR works end to end. The Web UI covers runs, the live graph, the fleet of agents as a tree, team runs with a lead agent, the Inbox and approvals, and installs on your phone as an app. Full spec (Portuguese): [`docs/navarch-especificacao.md`](docs/navarch-especificacao.md).
@@ -65,6 +65,7 @@ Each run works on its own branch, `navarch/<run-id>/…`, in a worktree under `~
   - the `codex` CLI after `codex login`;
   - the GitHub Copilot CLI (`copilot`), logged in with an account that has a Copilot plan;
   - the OpenCode CLI (`opencode`) after `opencode auth login`, for OpenCode Zen's free models;
+  - the Kilo CLI (`kilo`), for the free models of Kilo's gateway, with no account;
   - the Grok CLI (`grok`) after `grok login` (a grok.com account, including the free tier);
   - Ollama with a model that supports tool calls.
 - For issue runs: a fine-grained GitHub token, `navarch secret set github/token` (kept in the OS keychain).
@@ -139,6 +140,7 @@ Without `--adapter` or `--model`, the **Model Router** picks an agent per task: 
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) |
 | `copilot` | `copilot -p` | `copilot login` (one premium request per prompt) |
 | `opencode` | `opencode run` | `opencode auth login`; Zen's free models need no key |
+| `kilo` | `kilo run` | none for the free models (`kilo/kilo-auto/free`, `…:free`) |
 | `grok` | `grok --prompt-file` | `grok login` (grok.com account) |
 | `native` | Navarch's own tool loop | `ollama/<model>`, `openrouter/<model>`, `opencode-zen/<model>` |
 

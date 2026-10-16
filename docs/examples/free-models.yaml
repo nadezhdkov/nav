@@ -12,9 +12,15 @@
 #     opencode:
 #       command: /home/<you>/.opencode/bin/opencode
 #
+# Kilo's gateway serves free models to the Kilo CLI with no account (ADR 0034). The built-in
+# `kilo` entry (`kilo/kilo-auto/free`) lets the gateway pick a free model per request; the
+# entries below pin one (`kilo models kilo | grep free` lists them). The installer puts the CLI
+# in ~/.kilo/bin, which Navarch finds on its own.
+#
 # Free offers change often and are not guaranteed; check before relying on them:
 #   OpenRouter: ids ending in `:free`, 20 requests/min and 50/day (1,000/day after buying 10 credits once).
 #   OpenCode Zen: ids ending in `-free` (plus big-pickle), limits not published, often time-limited.
+#   Kilo: `kilo-auto/free` and ids ending in `:free`, limits set by each upstream provider.
 # Data terms differ per model: several free models log prompts or use them for training.
 # Keep them out of the tiers for private or confidential repositories.
 
@@ -44,6 +50,10 @@ routing:
       adapter: opencode
       model: opencode/mimo-v2.6-flash-free
       provider: xiaomi
+    kilo-nemotron-super-free:
+      adapter: kilo
+      model: kilo/nvidia/nemotron-3-super-120b-a12b:free
+      provider: nvidia
   tiers:
     # Free first; the router falls back on rate limits and missing keys, and a failed
     # verification moves the implementer up to `standard`. Order from the 2026-10-14
@@ -51,6 +61,6 @@ routing:
     # north-mini-code passed the one task it finished; laguna-s was rate-limited upstream
     # all evening. Expect free models to be 5-10x slower than Copilot or Claude Code and
     # to run out after a handful of tasks per day.
-    fast: [zen-big-pickle, north-mini-code-free, copilot, claude-code]
+    fast: [zen-big-pickle, kilo, north-mini-code-free, copilot, claude-code]
     standard: [claude-code, copilot]
     expert: [claude-code, copilot]

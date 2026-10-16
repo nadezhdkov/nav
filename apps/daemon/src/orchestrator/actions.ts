@@ -298,6 +298,9 @@ function openPrNode(deps: Deps): ActionExecutor {
               cost: run.cost_total,
               models: modelsUsed(deps.store, run.id),
               runId: run.id,
+              ...(run.flow_definition
+                ? { flow: { name: run.flow_definition.definition.metadata.name, ...(run.flow_definition.version ? { version: run.flow_definition.version } : {}) } }
+                : {}),
             }),
           ),
         });

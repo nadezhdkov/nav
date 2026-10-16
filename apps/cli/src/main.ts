@@ -93,7 +93,7 @@ Usage:
                                          print a Flow's YAML: the latest published version by default
   navarch flow validate <file>             check a Flow YAML file against this daemon (profiles, adapters, Flows)
 
-Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, grok, native.
+Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, kilo, grok, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
   either option pins the whole run. native needs --model <provider>/<model>, e.g. ollama/qwen2.5:7b or openrouter/<model>:free.
 

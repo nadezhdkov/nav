@@ -17,6 +17,7 @@ import { Vault } from "../src/vault/vault.ts";
 
 const fakeCopilotPath = fileURLToPath(new URL("../../../packages/adapters/copilot/test/fixtures/fake-copilot.mjs", import.meta.url));
 const fakeGrokPath = fileURLToPath(new URL("../../../packages/adapters/grok/test/fixtures/fake-grok.mjs", import.meta.url));
+const fakeKiloPath = fileURLToPath(new URL("../../../packages/adapters/kilo/test/fixtures/fake-kilo.mjs", import.meta.url));
 
 const daemons: Daemon[] = [];
 const servers: FakeGitHub[] = [];
@@ -52,7 +53,7 @@ const VERIFY_OK = `verify:
  * Starts a daemon with the fake Claude. With `copilot` (a fake Copilot scenario) the Model Router
  * is on and may pick either; without it routing is off and every agent is Claude.
  */
-async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string; grok?: string; containerRuntime?: string }) {
+async function start(opts: { gitUrl: string; autonomy?: number; home?: string; gh?: FakeGitHub; scenario?: FakeScenario; copilot?: string; grok?: string; kilo?: string; containerRuntime?: string }) {
   const gh = opts.gh ?? (await fakeGitHub());
   if (!opts.gh) {
     servers.push(gh);
@@ -69,9 +70,12 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
   const grok = opts.grok ? fakeCli(fakeGrokPath, opts.grok) : undefined;
   const grokHome = mkdtempSync(join(tmpdir(), "navarch-grok-login-"));
   if (grok) writeFileSync(join(grokHome, "auth.json"), "{}");
+  // Without a fake, Kilo points at a CLI that is not installed, so it can never be reached.
+  const kilo = opts.kilo ? fakeCli(fakeKiloPath, opts.kilo) : undefined;
   const config = Config.parse({
     daemon: { port: 0 },
-    routing: { enabled: Boolean(copilot || grok) },
+    // Kilo is in no tier by default (ADR 0034); a test that gives it a fake puts it after Grok.
+    routing: { enabled: Boolean(copilot || grok || kilo), ...(kilo ? { tiers: { fast: ["grok", "kilo", "copilot", "claude-code"] } } : {}) },
     autonomy_level: opts.autonomy ?? 2,
     github: { api_url: gh.apiUrl, git_url: opts.gitUrl },
     ...(opts.containerRuntime ? { container: { runtime: opts.containerRuntime, image: "navarch-test:1" } } : {}),
@@ -84,6 +88,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
       "claude-code": fake.options,
       ...(copilot ? { copilot: copilot.options } : {}),
       ...(grok ? { grok: { ...grok.options, userGrokHome: grokHome } } : {}),
+      kilo: kilo ? kilo.options : { command: join(tmpdir(), "navarch-no-kilo", "kilo") },
     },
     vault: new Vault({ env: { NAVARCH_SECRET_GITHUB_TOKEN: gh.token } }),
   });
@@ -120,7 +125,7 @@ async function start(opts: { gitUrl: string; autonomy?: number; home?: string; g
     }
     return (await api<ApprovalView>("POST", `/api/v1/approvals/${list[0]!.id}`, { decision, ...(reason ? { reason } : {}) })).body;
   };
-  return { daemon, api, fake, copilot, grok, gh, waitRun, pending, decide };
+  return { daemon, api, fake, copilot, grok, kilo, gh, waitRun, pending, decide };
 }
 
 const ISSUE_FLOW = ["triage", "plan", "approve_plan", "implement", "verify", "review", "open_pr"];
@@ -185,6 +190,7 @@ describe("issue → verified draft PR", () => {
     expect(body).toContain("`test -f hello.txt`");
     expect(body).toContain("hello.txt");
     expect(body).toMatch(/Cost/);
+    expect(body).toContain("- Flow: fix-issue\n");
     expect(body).toContain("## Plan");
     expect(body).toContain("## Review");
 
@@ -548,6 +554,22 @@ describe("Model Router (ADR 0013)", () => {
     expect(minutes).toBeLessThanOrEqual(30);
     const plan = routed(events).find((d) => d.tier === "fast" && !d.fallback_from && d.model_id === "copilot" && d.reason.includes("complexity"));
     expect(plan?.skipped).toContainEqual({ id: "grok", reason: expect.stringContaining("quota exhausted until") });
+  });
+
+  it("falls back from Grok's free limit to Kilo's free models before Copilot when kilo is in the tier (ADR 0034)", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, fake, copilot, grok, kilo, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "flow", copilot: "flow", grok: "free-limit", kilo: "flow" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+
+    expect(run.status).toBe("done");
+    expect(grok!.calls()).toHaveLength(1);
+    expect(kilo!.calls()).toHaveLength(3);
+    expect(copilot!.calls()).toHaveLength(0);
+    // The reviewer goes to a provider other than Kilo's.
+    expect(fake.calls()).toHaveLength(1);
+    expect(run.tasks.find((t) => t.node_id === "implement")).toMatchObject({ adapter: "kilo", model: "kilo/kilo-auto/free" });
+    expect((kilo!.calls()[0] as { args: string[] }).args).toEqual(expect.arrayContaining(["--model", "kilo/kilo-auto/free"]));
   });
 
   it("pins every agent to --adapter, without routing", async () => {
