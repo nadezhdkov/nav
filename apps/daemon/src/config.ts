@@ -37,6 +37,8 @@ const BUILTIN_MODELS = {
   "claude-code": { adapter: "claude-code", provider: "anthropic", status: "active" },
   copilot: { adapter: "copilot", provider: "github-copilot", status: "active" },
   opencode: { adapter: "opencode", provider: "opencode", status: "active" },
+  /** Kilo's gateway picks a free model for each request; no account needed. In no tier by default (ADR 0034). */
+  kilo: { adapter: "kilo", model: "kilo/kilo-auto/free", provider: "kilo", status: "active" },
   grok: { adapter: "grok", provider: "xai", status: "active" },
   codex: { adapter: "codex", provider: "openai", status: "active" },
   "gemini-cli": { adapter: "gemini-cli", provider: "google", status: "active" },
@@ -53,7 +55,9 @@ const CatalogEntry = z.object({
 /**
  * Model Router v1 (spec §6.4, ADR 0013). The catalog lists adapter + model pairs the router may
  * use; prices and quotas are not in code. The defaults send triage and simple issues to Grok (free
- * with a grok.com sign-in, ADR 0024), then Copilot, and the rest to Claude Code, falling back to Copilot.
+ * with a grok.com sign-in, ADR 0024), then Copilot, and the rest to Claude Code, falling back to
+ * Copilot. Kilo's free models (ADR 0034) are in the catalog but in no tier: their providers may
+ * log prompts, so the operator adds `kilo` to a tier on purpose.
  */
 const Routing = z
   .object({
@@ -230,6 +234,15 @@ export const Config = z.object({
       /** OpenCode CLI (ADR 0015); the installer puts it in ~/.opencode/bin, which may not be on PATH. */
       opencode: z
         .object({ enabled: z.boolean().default(true), command: z.string().default("opencode"), model: z.string().optional() })
+        .prefault({}),
+      /** Kilo CLI (ADR 0034); without `command`, `kilo` on PATH, else ~/.kilo/bin/kilo where the installer puts it. */
+      kilo: z
+        .object({
+          enabled: z.boolean().default(true),
+          command: z.string().optional(),
+          /** For runs pinned with `--adapter kilo`; Kilo's own default may be a paid model. */
+          model: z.string().default("kilo/kilo-auto/free"),
+        })
         .prefault({}),
       /** Grok CLI (ADR 0024), signed in with `grok login`. */
       grok: z
