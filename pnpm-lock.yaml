@@ -211,6 +211,9 @@ importers:
       '@navarch/adapter-grok':
         specifier: workspace:*
         version: link:../../packages/adapters/grok
+      '@navarch/adapter-kilo':
+        specifier: workspace:*
+        version: link:../../packages/adapters/kilo
       '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../../packages/adapters/kit
@@ -356,6 +359,18 @@ importers:
       '@navarch/adapter-kit':
         specifier: workspace:*
         version: link:../kit
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../../contracts
+
+  packages/adapters/kilo:
+    dependencies:
+      '@navarch/adapter-kit':
+        specifier: workspace:*
+        version: link:../kit
+      '@navarch/adapter-opencode':
+        specifier: workspace:*
+        version: link:../opencode
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../../contracts

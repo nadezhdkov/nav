@@ -9,7 +9,7 @@ import { delimiter, join } from "node:path";
  * removed so the native adapter cannot reach a paid API either.
  */
 /** `secret-tool` too: a test must not read the operator's keychain (provider keys, the GitHub token); `tailscale` reads the operator's tailnet. */
-const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "grok", "ollama", "secret-tool", "tailscale"];
+const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "kilo", "grok", "ollama", "secret-tool", "tailscale"];
 
 const dir = mkdtempSync(join(tmpdir(), "navarch-no-agents-"));
 for (const name of AGENT_COMMANDS) {
