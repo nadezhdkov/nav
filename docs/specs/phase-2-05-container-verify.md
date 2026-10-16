@@ -1,6 +1,6 @@
 # Phase 2, slice 5: L2 container for verification
 
-Status: implemented · Branch: `feat/container-verify` · Spec: §6.5.1 (L2), §6.6, §10 (T2, T3), §14.1 `security`, §14.2 `isolation`, §16 · ADR: 0035
+Status: implemented (PR #51) · Branch: `feat/container-verify` · Spec: §6.5.1 (L2), §6.6, §10 (T2, T3), §14.1 `security`, §14.2 `isolation`, §16 · ADR: 0035
 
 A project can ask for its verify checks and setup commands to run in a container instead of on the operator's machine. This is isolation level **L2** of spec §6.5.1: Docker (or Podman) with the worktree mounted, restricted network and a non-root user. Agents still work in the worktree on the host (L1); only the commands Navarch itself runs move into the container.
 
