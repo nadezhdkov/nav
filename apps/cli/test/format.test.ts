@@ -26,6 +26,11 @@ describe("formatRunList", () => {
     expect(out).not.toContain("second line");
   });
 
+  it("lists runs from a daemon older than codenames, which sends no name", () => {
+    const { name: _, ...old } = run("from before names");
+    expect(formatRunList([old as RunView])).toMatch(/^\s+run_1\s+executing/m);
+  });
+
   it("shows an Agent Brief by its Summary line", () => {
     const brief = "## Agent Brief\n\n**Category:** bug\n**Summary:** Fix the slug fallback\n\n**Current behavior:**\n…";
     expect(formatRunList([run(brief)])).toContain("Fix the slug fallback");
