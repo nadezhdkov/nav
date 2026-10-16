@@ -37,15 +37,17 @@ export const TeamPlan = z.strictObject({
 });
 export type TeamPlan = z.infer<typeof TeamPlan>;
 
-/** Which part of a team a task is. */
-export const TeamTaskRole = z.enum(["lead", "member", "verify", "approval"]);
+/** Which part of a team a task is; `integrate` merges a parallel member back, and resolves its conflicts (ADR 0029). */
+export const TeamTaskRole = z.enum(["lead", "member", "verify", "approval", "integrate"]);
 export type TeamTaskRole = z.infer<typeof TeamTaskRole>;
 
 export const TeamTaskRef = z.object({
   node_id: z.string(),
   role: TeamTaskRole,
-  /** Member key, for members. */
+  /** Member key, for members and their integration. */
   key: z.string().optional(),
+  /** A parallel member works in its own worktree, forked from the run's (ADR 0029). */
+  own_worktree: z.boolean().optional(),
 });
 export type TeamTaskRef = z.infer<typeof TeamTaskRef>;
 

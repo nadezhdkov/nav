@@ -478,6 +478,8 @@ Toda decisão gera um evento `model.routed` com o motivo, exibido na UI ("escolh
 - Ao fim: worktree mantida até a Run ser encerrada (para inspeção), depois removida por política de limpeza.
 - **Integração de ramos paralelos:** quando subtarefas paralelas modificam o mesmo repositório, o Orchestrator executa um nó `integrate` que faz merge sequencial e, em conflito, aciona o `implementer` com o conflito como entrada.
 
+> **Fase 2, slice 1 (ADR 0029):** no Modo Equipe paralelo, cada membro parte do HEAD da worktree compartilhada da Run (não do commit base), para ver o trabalho já integrado das suas dependências. A integração é uma Task `team.<key>.integrate` por membro que edita; em conflito, um `implementer` (`team.<key>.resolve`) remove os marcadores sem usar git, e o Navarch conclui ou aborta o merge.
+
 #### 6.5.3 Controle de comandos
 
 - **Allowlist** por projeto (ex.: `composer test`, `npm run lint`, `cargo test`, `mvn -q verify`).
@@ -1423,6 +1425,8 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 - Aprovação pelo celular funcionando de fora da rede local.
 
 ### Fase 2 — Flow Studio e orquestração avançada (4–6 semanas)
+
+> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029).
 
 **Escopo**
 - Editor visual com validação, simulação, versionamento.

@@ -100,7 +100,7 @@ function expressionsOf(n: FlowNode | BodyNode): string[] {
   }
   if (n.type === "approval") out.push(...(n.show ?? []).map((p) => `\${{ ${p} }}`));
   if (n.type === "team") {
-    for (const v of [n.max_turns, n.max_members, n.approve_first_plan]) if (typeof v === "string") out.push(v);
+    for (const v of [n.max_turns, n.max_members, n.approve_first_plan, n.parallel, n.max_parallel]) if (typeof v === "string") out.push(v);
   }
   return out;
 }

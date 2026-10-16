@@ -59,9 +59,9 @@ describe("Fleet tree (slice 10)", () => {
     const team: TeamView = {
       node_id: "team", turn: 2, max_turns: 8, lead_task_id: "task_lead", question: null, summary: "split", plan_errors: [],
       members: [
-        { key: "api", title: "API", profile: "implementer", prefer: "codex", depends_on: [], turn: 1, task_id: "task_api", status: "succeeded", summary: "done" },
-        { key: "ui", title: "UI", profile: "implementer", prefer: null, depends_on: ["api"], turn: 2, task_id: "task_ui", status: "running", summary: null },
-        { key: "docs", title: "Docs", profile: "planner", prefer: null, depends_on: ["ui"], turn: 2, task_id: null, status: "planned", summary: null },
+        { key: "api", title: "API", profile: "implementer", prefer: "codex", depends_on: [], turn: 1, task_id: "task_api", status: "succeeded", summary: "done", merge: null, branch: null },
+        { key: "ui", title: "UI", profile: "implementer", prefer: null, depends_on: ["api"], turn: 2, task_id: "task_ui", status: "running", summary: null, merge: null, branch: null },
+        { key: "docs", title: "Docs", profile: "planner", prefer: null, depends_on: ["ui"], turn: 2, task_id: null, status: "planned", summary: null, merge: null, branch: null },
       ],
       subagents: [{ task_id: "task_lead", tool_use_id: "tu_1", description: "search", status: "finished" }],
     };
@@ -86,6 +86,26 @@ describe("Fleet tree (slice 10)", () => {
     expect(kinds).not.toContain("reports:team.ui->team.lead");
     expect(tree.nodes.some((n) => n.kind === "subagent")).toBe(false);
     expect(buildFleetTree(view([r]), [], new Set(), new Set([subagentsNodeId("run_1")])).nodes.filter((n) => n.kind === "subagent")).toHaveLength(1);
+  });
+
+  it("hangs a parallel member's conflict resolver under that member (ADR 0029)", () => {
+    const team: TeamView = {
+      node_id: "team", turn: 1, max_turns: 8, lead_task_id: "task_lead", question: null, summary: null, plan_errors: [], subagents: [],
+      members: [{ key: "b", title: "B", profile: "implementer", prefer: null, depends_on: [], turn: 1, task_id: "task_b", status: "succeeded", summary: "ok", merge: "resolving", branch: "navarch/run_1/team-b" }],
+    };
+    const r = run({
+      flow: "team",
+      team,
+      agents: [
+        agent({ id: "task_lead", node_id: "team.lead", profile: "lead", team_role: "lead", status: "succeeded" }),
+        agent({ id: "task_b", node_id: "team.b", team_role: "member", team_key: "b", status: "succeeded" }),
+        agent({ id: "task_res", node_id: "team.b.resolve", status: "running" }),
+      ],
+    });
+    const byId = new Map(buildFleetTree(view([r]), []).nodes.map((n) => [n.id, n]));
+    expect(byId.get(runNodeId("run_1"))!.children).toEqual([agentNodeId("run_1", "team.lead")]);
+    expect(byId.get(agentNodeId("run_1", "team.b"))!.children).toEqual([agentNodeId("run_1", "team.b.resolve")]);
+    expect(byId.get(agentNodeId("run_1", "team.b.resolve"))).toMatchObject({ kind: "agent", resolves: "b", role: null });
   });
 
   it("moves focus along the tree with the arrow keys", () => {

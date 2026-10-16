@@ -9,8 +9,9 @@ type Plan = { summary?: string; done?: boolean; question?: string | null; member
 const plan = (p: Plan) => ({ summary: "```navarch-team\n" + JSON.stringify({ summary: "turn summary", done: false, members: [], ...p }) + "\n```" });
 const member = (key: string, extra: Record<string, unknown> = {}) => ({ key, title: `Do ${key}`, brief: `Brief ${key}`, profile: "implementer", ...extra });
 
+// Slice 9's sequential team; parallel members are in team-parallel.test.ts (ADR 0029).
 function ctx(tasks: TaskState[], project: Record<string, unknown> = { autonomy_level: 3 }, params: Record<string, number | string | boolean> = {}): RunContext {
-  return { params: { ...resolveParams(flow), ...params }, project: { work_item: false, ...project }, tasks, skipped: [] };
+  return { params: { ...resolveParams(flow), parallel: false, ...params }, project: { work_item: false, ...project }, tasks, skipped: [] };
 }
 const done = (node_id: string, outputs: Record<string, unknown>, iteration = 1, status: TaskState["status"] = "succeeded"): TaskState => ({ node_id, iteration, status, outputs });
 const started = (step: Step) => {

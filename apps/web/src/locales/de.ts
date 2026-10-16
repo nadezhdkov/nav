@@ -152,6 +152,8 @@ export const de: Messages = {
     prefers: "Lead bevorzugt {agent}",
     waitingForYou: "Wartet auf dich",
     plannedHint: "In Runde {turn} geplant; startet nach seinen Abhängigkeiten.",
+    merge: { pending: "Wartet auf Merge", merging: "Wird gemergt", resolving: "Konflikt wird gelöst", merged: "Gemergt", conflict: "Nicht gemergt: Konflikt" },
+    resolves: "Merge-Konflikt von {key} lösen",
     internal: "{n} interne(r) Sub-Agent(en)",
     internalTag: "intern",
     subStarted: "arbeitet",

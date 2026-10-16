@@ -14,7 +14,7 @@ import {
   type SandboxHandle,
   type WorkItem,
 } from "@navarch/contracts";
-import { changedFiles, commitAll } from "@navarch/runner";
+import { changedFiles, commitAll, concludeMerge, mergeBranch } from "@navarch/runner";
 import { verify } from "@navarch/verification";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
@@ -32,6 +32,7 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
   return new Map([
     ["verification.run", verifyNode(deps)],
     ["pr.create", openPrNode(deps)],
+    ["team.integrate", integrateNode(deps)],
     ["approval", approvalNode()],
   ]);
 }
@@ -97,6 +98,42 @@ function verifyNode(deps: Deps): ActionExecutor {
   };
 }
 
+/**
+ * Merges a parallel team member's branch into the run's worktree (ADR 0029). The first attempt
+ * merges, leaving a conflict in progress for an implementer; the second, after it, concludes the
+ * merge when the markers are gone and aborts it otherwise. The result is the task's output.
+ */
+function integrateNode(deps: Deps): ActionExecutor {
+  return {
+    action: "team.integrate",
+    describe: (run, task) => `Merge team member ${task.inputs.member ?? "?"}'s branch into the run's worktree (${sharedSandbox(deps.store, run).branch}).`,
+    async execute({ run, task }) {
+      const started = Date.now();
+      const key = task.team?.key ?? task.inputs.member;
+      const member = deps.store.taskRecordsOfRun(run.id).filter((t) => task.team && t.node_id === `${task.team.node_id}.${key}` && t.sandbox_path && t.branch).at(-1);
+      if (!key || !member) return failed("fatal", `no worktree for team member ${key}`, started);
+      const target = sharedSandbox(deps.store, run);
+      const source = { path: member.sandbox_path!, branch: member.branch! };
+      try {
+        const result = task.iteration > 1
+          ? await concludeMerge({ repoPath: run.repo_path, target, source, files: conflictsOf(deps.store, task) })
+          : await mergeBranch({ repoPath: run.repo_path, target, source, message: `Merge team member ${key}: ${task.inputs.title ?? key}` });
+        const summary = result.merged ? `merged ${source.branch}` : `${task.iteration > 1 ? "not merged" : "merge conflict"}: ${result.conflicts.join(", ")}`;
+        return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { ...result }, cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        return failed("fatal", redact(err instanceof Error ? err.message : String(err)), started);
+      }
+    },
+  };
+}
+
+/** The files the first integration of this member left in conflict. */
+function conflictsOf(store: EventStore, task: TaskRecord): string[] {
+  const first = store.taskRecordsOfRun(task.run_id).find((t) => t.node_id === task.node_id && t.iteration === 1);
+  const conflicts = first?.outputs?.conflicts;
+  return Array.isArray(conflicts) ? conflicts.map(String) : [];
+}
+
 function openPrNode(deps: Deps): ActionExecutor {
   return {
     action: "github.pr.create",
@@ -156,7 +193,8 @@ function openPrNode(deps: Deps): ActionExecutor {
 function implementTask(store: EventStore, run: RunRecord): TaskRecord {
   const tasks = store.taskRecordsOfRun(run.id);
   const task = tasks.filter((t) => t.profile === "implementer" && t.status === "succeeded").at(-1) ?? tasks.find((t) => t.node_id === "implement");
-  const sandbox = tasks.find((t) => t.sandbox_path && t.branch);
+  // The run's own worktree, not a parallel member's (ADR 0029).
+  const sandbox = tasks.find((t) => t.sandbox_path && t.branch && !t.team?.own_worktree);
   if (!task || !sandbox) throw new Error(`run ${run.id} has no implement worktree`);
   return { ...task, sandbox_id: sandbox.sandbox_id, sandbox_path: sandbox.sandbox_path, branch: sandbox.branch };
 }
@@ -184,6 +222,13 @@ function agentOf(store: EventStore, runId: string, profile: string): string | un
 
 function implementSandbox(store: EventStore, run: RunRecord): SandboxHandle {
   const task = implementTask(store, run);
+  return { id: task.sandbox_id ?? "", kind: "worktree", path: task.sandbox_path!, branch: task.branch!, baseCommit: run.base_commit };
+}
+
+/** The run's shared worktree: the first agent's, never a parallel member's own. */
+function sharedSandbox(store: EventStore, run: RunRecord): SandboxHandle {
+  const task = store.taskRecordsOfRun(run.id).find((t) => t.sandbox_path && t.branch && !t.team?.own_worktree);
+  if (!task) throw new Error(`run ${run.id} has no worktree`);
   return { id: task.sandbox_id ?? "", kind: "worktree", path: task.sandbox_path!, branch: task.branch!, baseCommit: run.base_commit };
 }
 

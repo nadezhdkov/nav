@@ -152,6 +152,8 @@ export const zhCN: Messages = {
     prefers: "负责人偏好 {agent}",
     waitingForYou: "等待你的回复",
     plannedHint: "第 {turn} 轮计划；依赖完成后开始。",
+    merge: { pending: "等待合并", merging: "正在合并", resolving: "正在解决冲突", merged: "已合并", conflict: "未合并：冲突" },
+    resolves: "解决 {key} 的合并冲突",
     internal: "{n} 个内部子智能体",
     internalTag: "内部",
     subStarted: "工作中",

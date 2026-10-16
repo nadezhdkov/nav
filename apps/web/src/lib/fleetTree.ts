@@ -22,6 +22,8 @@ export type TreeNode =
       role: "lead" | "member" | null;
       member: TeamMemberView | null;
       team: TeamView | null;
+      /** The member key whose merge conflict this agent resolves, in a parallel team (ADR 0029). */
+      resolves?: string;
     })
   | (Base & { kind: "subagents"; run: FleetRun; count: number; expanded: boolean })
   | (Base & { kind: "subagent"; run: FleetRun; subagent: TeamView["subagents"][number] });
@@ -112,8 +114,15 @@ export function buildFleetTree(
     const team = run.team;
     const lead = team ? run.agents.find((a) => a.team_role === "lead") : undefined;
     const memberAgents = new Map(run.agents.filter((a) => a.team_role === "member" && a.team_key).map((a) => [a.team_key!, a]));
+    // A parallel member's conflict resolver hangs under that member (ADR 0029).
+    const resolvers = new Map(
+      (team?.members ?? []).flatMap((m) => {
+        const agent = run.agents.find((a) => a.node_id === `${team!.node_id}.${m.key}.resolve`);
+        return agent ? [[agent.id, m.key] as const] : [];
+      }),
+    );
     for (const agent of run.agents) {
-      if (agent.team_role === "member") continue;
+      if (agent.team_role === "member" || resolvers.has(agent.id)) continue;
       const nodeId = agentNodeId(run.id, agent.node_id);
       const role = agent.team_role === "lead" ? "lead" : null;
       add({ kind: "agent", ...base(nodeId, id, role ? SIZE.lead : SIZE.agent), run, agent, role, member: null, team: role ? team : null });
@@ -129,6 +138,13 @@ export function buildFleetTree(
       const running = agent?.status === "running";
       link(leadId, nodeId, lead ? "delegates" : "tree", running, lead ? member.turn : undefined);
       if (lead && (member.status === "succeeded" || member.status === "failed")) link(nodeId, leadId, "reports", false);
+    }
+    for (const [agentId, key] of resolvers) {
+      const agent = run.agents.find((a) => a.id === agentId)!;
+      const memberId = agentNodeId(run.id, `${team.node_id}.${key}`);
+      const nodeId = agentNodeId(run.id, agent.node_id);
+      add({ kind: "agent", ...base(nodeId, memberId, SIZE.agent), run, agent, role: null, member: null, team: null, resolves: key });
+      link(memberId, nodeId, "tree", agent.status === "running");
     }
     for (const member of team.members) {
       for (const dep of member.depends_on) {

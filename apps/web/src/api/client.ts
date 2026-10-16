@@ -156,9 +156,11 @@ export const api = {
   fleet: (window: FleetWindow = "active") => request<FleetView>("GET", `/api/v1/fleet?window=${window}`),
   taskLogs: (runId: string, taskId: string) =>
     request<string>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/logs?task=${encodeURIComponent(taskId)}`, undefined, "text"),
-  worktree: (runId: string) => request<WorktreeStatus>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/worktree`),
-  worktreeDiff: (runId: string, path: string) =>
-    request<string>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/worktree/diff?path=${encodeURIComponent(path)}`, undefined, "text"),
+  /** With `taskId`, that task's worktree: a parallel team member works in its own (ADR 0029). */
+  worktree: (runId: string, taskId?: string) =>
+    request<WorktreeStatus>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/worktree${taskId ? `?task=${encodeURIComponent(taskId)}` : ""}`),
+  worktreeDiff: (runId: string, path: string, taskId?: string) =>
+    request<string>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/worktree/diff?path=${encodeURIComponent(path)}${taskId ? `&task=${encodeURIComponent(taskId)}` : ""}`, undefined, "text"),
   messages: (runId: string) => request<RunMessage[]>("GET", `/api/v1/runs/${encodeURIComponent(runId)}/messages`),
   sendMessage: (runId: string, body: { text: string; task_id?: string; delivery: "next" | "now" }) =>
     request<RunMessage>("POST", `/api/v1/runs/${encodeURIComponent(runId)}/messages`, body),

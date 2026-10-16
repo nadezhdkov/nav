@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,15 +18,17 @@ afterEach(async () => {
 const fakeCodex = fileURLToPath(new URL("../../../packages/adapters/codex/test/fixtures/fake-codex.mjs", import.meta.url));
 const gitEnv = { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@e", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@e" };
 
-/** A repository at autonomy 3 whose check passes once codex.txt exists. */
-function repo(): string {
+/** A repository at autonomy 3 whose check passes once codex.txt exists (or the given check). */
+function repo(check = "test -f codex.txt"): string {
   const dir = makeRepo();
   mkdirSync(join(dir, ".navarch"));
-  writeFileSync(join(dir, ".navarch", "project.yaml"), "autonomy_level: 3\nverify:\n  - name: codex file\n    run: test -f codex.txt\n");
+  writeFileSync(join(dir, ".navarch", "project.yaml"), `autonomy_level: 3\nverify:\n  - name: team files\n    run: ${check}\n`);
   execFileSync("git", ["add", "."], { cwd: dir, env: gitEnv });
   execFileSync("git", ["commit", "-q", "-m", "cfg"], { cwd: dir, env: gitEnv });
   return dir;
 }
+
+const git = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" });
 
 async function start(scenario: FakeScenario) {
   const home = tempHome();
@@ -73,7 +75,7 @@ describe("team runs (ADR 0022)", () => {
     expect(detail.status, JSON.stringify(detail.tasks.map((t) => [t.node_id, t.status, t.error]))).toBe("done");
 
     const byNode = (id: string, iteration = 1) => detail.tasks.find((t) => t.node_id === id && t.iteration === iteration)!;
-    expect(detail.tasks.map((t) => `${t.node_id}#${t.iteration}`)).toEqual(["team.lead#1", "team.api#1", "team.verify#1", "team.lead#2", "team.verify#2", "review#1"]);
+    expect(detail.tasks.map((t) => `${t.node_id}#${t.iteration}`)).toEqual(["team.lead#1", "team.api#1", "team.api.integrate#1", "team.verify#1", "team.lead#2", "team.verify#2", "review#1"]);
     expect(byNode("team.lead")).toMatchObject({ profile: "lead", adapter: "claude-code" });
     expect(byNode("team.api")).toMatchObject({ profile: "implementer", adapter: "codex", status: "succeeded" });
 
@@ -88,7 +90,7 @@ describe("team runs (ADR 0022)", () => {
       question: null,
       summary: "Team finished: codex.txt added by the api member.",
       plan_errors: [],
-      members: [{ key: "api", profile: "implementer", prefer: "codex", turn: 1, task_id: byNode("team.api").id, status: "succeeded", summary: "Added codex.txt." }],
+      members: [{ key: "api", profile: "implementer", prefer: "codex", turn: 1, task_id: byNode("team.api").id, status: "succeeded", summary: "Added codex.txt.", merge: "merged" }],
       subagents: [{ task_id: byNode("team.lead").id, tool_use_id: "toolu_lead1", description: "Survey the repository", status: "finished" }],
     });
 
@@ -136,5 +138,52 @@ describe("team runs (ADR 0022)", () => {
     expect(leadCalls.length).toBeGreaterThanOrEqual(3);
     expect(leadCalls.slice(1).every((c) => c.args.includes("--resume"))).toBe(true);
     expect(message!.delivered).toMatchObject({ task_id: detail.tasks.find((t) => t.node_id === "team.lead" && t.iteration === 2)!.id });
+  });
+
+  it("runs independent members at once in their own worktrees and merges both back (ADR 0029)", async () => {
+    const { api, claude } = await start("lead-parallel");
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo("test -f a.txt && test -f b.txt"), prompt: "add a.txt and b.txt", flow: "team" })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status, JSON.stringify(detail.tasks.map((t) => [t.node_id, t.status, t.error]))).toBe("done");
+
+    // Both members ran at the same time.
+    expect(existsSync(join(claude.stateDir, "overlapped-a")) || existsSync(join(claude.stateDir, "overlapped-b"))).toBe(true);
+    const cwd = (key: string) => claude.calls().find((c) => c.prompt.includes(`Create ${key}.txt`))!.cwd;
+    expect(cwd("a")).toMatch(new RegExp(`${run.id}-team-a$`));
+    expect(cwd("b")).toMatch(new RegExp(`${run.id}-team-b$`));
+    expect(detail.team!.members.map((m) => [m.key, m.status, m.merge, m.branch])).toEqual([
+      ["a", "succeeded", "merged", `navarch/${run.id}/team-a`],
+      ["b", "succeeded", "merged", `navarch/${run.id}/team-b`],
+    ]);
+
+    // The run's own branch carries both members' work; verification ran there.
+    const lead = detail.tasks.find((t) => t.node_id === "team.lead")!;
+    const shared = (await api<{ path: string; branch: string; files: { path: string }[] }>("GET", `/api/v1/runs/${run.id}/worktree`)).body;
+    expect(shared.branch).toBe(`navarch/${run.id}/team`);
+    expect(shared.files.map((f) => f.path).sort()).toEqual(["a.txt", "b.txt"]);
+    expect(git(shared.path, "log", "--format=%s")).toMatch(/Merge team member b[\s\S]*Merge team member a|Merge team member a[\s\S]*Merge team member b/);
+    expect(detail.tasks.find((t) => t.node_id === "team.verify")).toMatchObject({ status: "succeeded" });
+    expect(lead.status).toBe("succeeded");
+
+    // A member's own worktree, by task.
+    const member = detail.tasks.find((t) => t.node_id === "team.a")!;
+    const own = (await api<{ branch: string; files: { path: string }[] }>("GET", `/api/v1/runs/${run.id}/worktree?task=${member.id}`)).body;
+    expect(own.branch).toBe(`navarch/${run.id}/team-a`);
+    expect(own.files.map((f) => f.path)).toEqual(["a.txt"]);
+  });
+
+  it("sends a merge conflict to an implementer and concludes the merge (ADR 0029)", async () => {
+    const { api } = await start("lead-conflict");
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo('grep -q "from a and b" shared.txt'), prompt: "write shared.txt", flow: "team" })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status, JSON.stringify(detail.tasks.map((t) => [t.node_id, t.iteration, t.status, t.error]))).toBe("done");
+    const ids = detail.tasks.map((t) => `${t.node_id}#${t.iteration}`);
+    const second = ids.includes("team.b.resolve#1") ? "b" : "a";
+    expect(ids).toEqual(expect.arrayContaining([`team.${second}.integrate#1`, `team.${second}.resolve#1`, `team.${second}.integrate#2`]));
+    expect(detail.tasks.find((t) => t.node_id === `team.${second}.resolve`)).toMatchObject({ profile: "implementer", status: "succeeded" });
+    expect(detail.team!.members.every((m) => m.merge === "merged")).toBe(true);
+    const shared = (await api<{ path: string }>("GET", `/api/v1/runs/${run.id}/worktree`)).body;
+    expect(readFileSync(join(shared.path, "shared.txt"), "utf8")).toBe("from a and b\n");
+    expect(git(shared.path, "status", "--porcelain")).toBe("");
   });
 });

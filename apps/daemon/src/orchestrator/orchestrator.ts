@@ -188,6 +188,16 @@ export class Orchestrator {
    * fixed chain of pre-created tasks.
    */
   advance(runId: string): void {
+    let started = false;
+    try {
+      this.step(runId, () => (started = true));
+    } finally {
+      if (started) this.onReady();
+    }
+  }
+
+  /** One pass of `advance`; a parallel team starts several tasks in one pass (ADR 0029). */
+  private step(runId: string, onStarted: () => void): void {
     for (let guard = 0; guard < 100; guard++) {
       const run = this.store.getRunRecord(runId);
       if (!run || isTerminalRun(run.status) || run.status === "paused") return;
@@ -269,8 +279,8 @@ export class Orchestrator {
             // A lead's turn after a question waits for the user's answer (ADR 0022).
             ...(step.start.blocked ? [taskStatus(runId, taskId, "ready", "blocked", 0, step.start.blocked)] : []),
           ]);
-          this.onReady();
-          return;
+          onStarted();
+          continue;
         }
       }
     }
