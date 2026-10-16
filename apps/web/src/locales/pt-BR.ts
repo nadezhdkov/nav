@@ -639,6 +639,9 @@ export const ptBR: Messages = {
       paramDefault: "Padrão de {name}",
       newParam: "novo_param",
       addParam: "Adicionar param",
+      connectAfter: "Rodar depois de",
+      connectPick: "Escolha um nó…",
+      connectFirst: "Primeiro",
       selectHint: "Selecione um nó para editá-lo.",
     },
     sim: {

@@ -6,8 +6,9 @@ export type DiffLine = { kind: "same" | "del" | "add"; text: string; a?: number;
  * hundred lines (the publish preview and lossless editing, ADR 0033).
  */
 export function lineDiff(a: string, b: string): DiffLine[] {
-  const x = a.split("\n");
-  const y = b.split("\n");
+  // An empty text has no lines, so a first version is all additions.
+  const x = a === "" ? [] : a.split("\n");
+  const y = b === "" ? [] : b.split("\n");
   const n = x.length;
   const m = y.length;
   // lcs[i][j]: length of the LCS of x[i..] and y[j..].

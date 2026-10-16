@@ -639,6 +639,9 @@ export const es: Messages = {
       paramDefault: "Valor por defecto de {name}",
       newParam: "nuevo_param",
       addParam: "Añadir param",
+      connectAfter: "Ejecutar después de",
+      connectPick: "Elige un nodo…",
+      connectFirst: "Primero",
       selectHint: "Selecciona un nodo para editarlo.",
     },
     sim: {

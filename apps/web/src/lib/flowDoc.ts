@@ -201,6 +201,20 @@ export function connect(source: string, target: string) {
   };
 }
 
+/**
+ * Puts a top-level node in the chain right after `after`, or first (after the trigger, if any)
+ * when `after` is null: the keyboard way to connect a node.
+ */
+export function placeAfter(id: string, after: string | null) {
+  return (doc: Document) => {
+    if (after !== null) return connect(after, id)(doc);
+    const chain = chainOf(doc.toJS().edges).filter((x) => x !== id);
+    const first = findNode(doc, chain[0] ?? "");
+    chain.splice(first?.type === "trigger" ? 1 : 0, 0, id);
+    setChain(doc, chain);
+  };
+}
+
 /** Takes a node out of the chain without deleting it. */
 export function disconnect(id: string) {
   return (doc: Document) => {

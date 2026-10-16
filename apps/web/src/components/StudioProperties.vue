@@ -4,7 +4,7 @@ import { ArrowLeft, ArrowRight, Plus, Trash2, Unplug, X } from "@lucide/vue";
 import { computed, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { Document } from "yaml";
-import { disconnect, moveNode, removeNode, renameNode, setField, setMeta, setParam, type DraftNode, type DraftView } from "../lib/flowDoc.ts";
+import { disconnect, moveNode, placeAfter, removeNode, renameNode, setField, setMeta, setParam, type DraftNode, type DraftView } from "../lib/flowDoc.ts";
 
 /**
  * Flow Studio's properties panel (spec §6.2.3): a form per node type, or the Flow's description
@@ -210,6 +210,14 @@ const label = "mb-1 block text-xs font-medium text-muted";
         <p v-else class="text-xs text-muted">{{ t("studio.props.triggerHint") }}</p>
       </fieldset>
 
+      <label v-if="!readOnly && !node.parent && !connected && node.type !== 'trigger'" class="block border-t border-line pt-3">
+        <span :class="label">{{ t("studio.props.connectAfter") }}</span>
+        <select :class="input" value="" @change="emit('op', placeAfter(node.id, value($event) === '^' ? null : value($event)))">
+          <option value="" disabled>{{ t("studio.props.connectPick") }}</option>
+          <option value="^">{{ t("studio.props.connectFirst") }}</option>
+          <option v-for="id in view.chain" :key="id" :value="id">{{ id }}</option>
+        </select>
+      </label>
       <div v-if="!readOnly" class="flex flex-wrap gap-2 border-t border-line pt-3">
         <button type="button" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line px-3 text-sm hover:bg-surface-2" @click="emit('op', moveNode(node.id, -1))"><ArrowLeft :size="14" aria-hidden="true" />{{ t("studio.props.earlier") }}</button>
         <button type="button" class="inline-flex min-h-10 items-center gap-1.5 rounded-md border border-line px-3 text-sm hover:bg-surface-2" @click="emit('op', moveNode(node.id, 1))">{{ t("studio.props.later") }}<ArrowRight :size="14" aria-hidden="true" /></button>

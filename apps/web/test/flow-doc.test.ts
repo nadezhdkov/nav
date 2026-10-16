@@ -2,7 +2,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { addNode, connect, disconnect, duplicateYaml, edit, moveNode, readDraft, removeNode, renameNode, setField, setMeta, setParam } from "../src/lib/flowDoc.ts";
+import { addNode, connect, disconnect, placeAfter, duplicateYaml, edit, moveNode, readDraft, removeNode, renameNode, setField, setMeta, setParam } from "../src/lib/flowDoc.ts";
 import { hunks, lineDiff } from "../src/lib/lineDiff.ts";
 
 const FLOWS = fileURLToPath(new URL("../../../flows/", import.meta.url));
@@ -66,6 +66,13 @@ describe("Flow document operations", () => {
     expect(readDraft(text)!.chain).toEqual(["approve"]);
   });
 
+  it("places a node after another or first, after the trigger", () => {
+    let text = edit(base, addNode("approval", null, false));
+    text = edit(text, addNode("trigger", null));
+    expect(readDraft(edit(text, placeAfter("approve", null)))!.chain).toEqual(["start", "approve", "implement"]);
+    expect(readDraft(edit(text, placeAfter("approve", "implement")))!.chain).toEqual(["start", "implement", "approve"]);
+  });
+
   it("puts a trigger first, and refuses to connect anything before it", () => {
     const text = edit(base, addNode("trigger", "implement"));
     expect(readDraft(text)!.chain).toEqual(["start", "implement"]);
@@ -112,6 +119,12 @@ describe("Flow document operations", () => {
   it("reads invalid YAML as null and refuses to edit it", () => {
     expect(readDraft("nodes: [")).toBeNull();
     expect(() => edit("nodes: [", setMeta("name", "x"))).toThrow(/does not parse/);
+  });
+});
+
+describe("lineDiff", () => {
+  it("diffs a first version as all additions, blank lines included", () => {
+    expect(lineDiff("", "a\n\nb").map((d) => d.kind)).toEqual(["add", "add", "add"]);
   });
 });
 

@@ -36,7 +36,13 @@ const LOOP_HEADER = 36;
 const ROW_GAP = 72;
 const ROW_HEIGHT = LOOP_HEADER + NODE_HEIGHT + LOOP_PAD * 2;
 
-export function detailOf(n: DraftNode): string | null {
+/** `${{ params.x }}` as the param's default, so the canvas shows a value instead of the expression. */
+function shown(value: unknown, params: DraftView["params"]): string {
+  const name = typeof value === "string" ? /^\$\{\{\s*params\.([a-z0-9_]+)\s*\}\}$/i.exec(value)?.[1] : undefined;
+  return name && params[name] ? `${String(params[name].default)} (${name})` : String(value);
+}
+
+export function detailOf(n: DraftNode, params: DraftView["params"] = {}): string | null {
   const r = n.raw as Record<string, unknown> & { lead?: { profile?: unknown }; judge?: { profile?: unknown } };
   switch (n.type) {
     case "agent":
@@ -47,11 +53,11 @@ export function detailOf(n: DraftNode): string | null {
     case "team":
       return typeof r.lead?.profile === "string" ? r.lead.profile : null;
     case "compete":
-      return `${r.competitors ?? "?"} × · ${typeof r.judge?.profile === "string" ? r.judge.profile : "?"}`;
+      return `${r.competitors === undefined ? "?" : shown(r.competitors, params)} × · ${typeof r.judge?.profile === "string" ? r.judge.profile : "?"}`;
     case "subflow":
       return typeof r.flow === "string" ? r.flow : null;
     case "loop":
-      return r.max_iterations !== undefined ? `≤ ${String(r.max_iterations)}` : null;
+      return r.max_iterations !== undefined ? `≤ ${shown(r.max_iterations, params)}` : null;
     default:
       return null;
   }
@@ -77,6 +83,9 @@ export function buildStudioGraph(view: DraftView, problems: readonly FlowProblem
 
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
   const chain = view.chain.filter((id) => byId.has(id));
+  // The trigger never runs as a step; a dry run that went anywhere started from it.
+  const trigger = chain[0] && byId.get(chain[0])?.type === "trigger" ? chain[0] : null;
+  if (trigger && sim?.steps.length && !simOf.has(trigger)) simOf.set(trigger, { state: "succeeded", runs: 0 });
   const nodes: StudioNode[] = [];
   const edges: StudioEdge[] = [];
   const rowOf = new Map<string, number>();
@@ -93,7 +102,7 @@ export function buildStudioGraph(view: DraftView, problems: readonly FlowProblem
     id: n.id,
     type: n.type,
     label: n.name ?? n.id,
-    detail: detailOf(n),
+    detail: detailOf(n, view.params),
     parent: n.parent,
     connected,
     errors: counts.get(n.id)?.errors ?? 0,

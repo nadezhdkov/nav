@@ -41,7 +41,7 @@ const connectable = computed(() => !props.readOnly && !props.data.parent);
       <span v-if="data.runs > 1" class="ml-auto font-mono text-[11px] text-muted">×{{ data.runs }}</span>
     </div>
     <div class="truncate font-mono text-[11px] text-muted">{{ data.detail ?? (known ? t(`node.kind.${data.type}`) : data.type || "?") }}</div>
-    <div class="flex items-center gap-2 text-xs font-medium">
+    <div class="flex min-w-0 items-center gap-2 text-xs font-medium whitespace-nowrap [&>span]:shrink-0">
       <span v-if="data.errors" class="tone-danger inline-flex items-center gap-1" style="color: var(--tone)">
         <CircleX :size="13" aria-hidden="true" />{{ t("studio.problems.errors", { n: data.errors }) }}
       </span>

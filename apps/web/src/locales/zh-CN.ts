@@ -639,6 +639,9 @@ export const zhCN: Messages = {
       paramDefault: "{name} 的默认值",
       newParam: "new_param",
       addParam: "添加参数",
+      connectAfter: "在此之后运行",
+      connectPick: "选择一个节点…",
+      connectFirst: "最先",
       selectHint: "选择一个节点进行编辑。",
     },
     sim: {

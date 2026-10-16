@@ -1,6 +1,6 @@
 # Phase 2, slice 4: Flow Studio
 
-Status: in progress · Branch: `feat/flow-studio` · Spec: §6.2.3 (Flow Studio), §6.2.2, §9.4, §15.1, §16 (Phase 2 go/no-go "create a new Flow only in the UI and run it without editing YAML"), UC-11 · ADR: 0033
+Status: implemented · Branch: `feat/flow-studio` · Spec: §6.2.3 (Flow Studio), §6.2.2, §9.4, §15.1, §16 (Phase 2 go/no-go "create a new Flow only in the UI and run it without editing YAML"), UC-11 · ADR: 0033
 
 The Web UI gets a **Flow Studio**: a canvas that edits Flows visually, with a library of node types, a properties panel, a YAML view that shows the same document, live validation, a dry-run simulation, and versions (Save draft, Publish). A published Flow is what new runs of that name execute, from the Web UI, the CLI and the concierge.
 
@@ -69,6 +69,7 @@ All routes are desktop only (not in `DEVICE_ROUTES`) and need the token:
 | Route | Does |
 |---|---|
 | `GET /api/v1/flows` | every Flow: name, description, source, published version, draft revision and save time, node count, `shadowed` |
+| `GET /api/v1/flows/catalog` | what the forms offer: profiles (and whether they edit), adapters, `uses`, and the Flows a subflow may run with their params |
 | `GET /api/v1/flows/:name` | one Flow: the draft's YAML, the latest published YAML (or the built-in's), and the versions with their time and actor |
 | `GET /api/v1/flows/:name/versions/:version` | the YAML of a published version |
 | `PUT /api/v1/flows/:name/draft` | `{ yaml, revision }` saves the draft (policy `flow.save`) |
@@ -91,11 +92,11 @@ All routes are desktop only (not in `DEVICE_ROUTES`) and need the token:
 - `/flows` (desktop sidebar "Flows"): the list of Flows, with source, published version, draft state and description, and the actions New Flow, Open and Duplicate.
 - `/flows/:name`, the Studio, desktop only:
   - **Top bar**: the name, a version chip (`v3 · draft r2`, or `built-in`), the Visual | YAML switch, the problem indicator (opens the Problems panel), Simulate, Save draft (Ctrl+S) and Publish.
-  - **Left, library**: the node types the engine runs (`agent`, `action`, `approval`, `loop`, `github`, `subflow`, `team`, `compete`, `trigger`), each with an icon, a name and one line about it. Click one to add it after the selected node, or drag it onto the canvas or onto an edge.
+  - **Left, library**: the node types the engine runs (`agent`, `action`, `approval`, `loop`, `github`, `subflow`, `team`, `compete`, `trigger`), each with an icon, a name and one line about it. Click one to add it after the selected node, drag it onto a node to put it after that node, or drag it onto the empty canvas to leave it disconnected.
   - **Center, canvas** (Vue Flow, graphite theme, the TaskGraph's node style with per-type accents):
     - The Flow drawn left to right in chain order, wrapping into rows like the run's TaskGraph, with loops as groups around their body.
     - A dropped node that is not on an edge stays disconnected, off the chain, and is marked as a problem until it is connected.
-    - Dragging from a node's output handle to another node puts that node right after it in the chain.
+    - Dragging from a node's output handle to another node puts that node right after it in the chain. Without a pointer, a disconnected node's properties offer "Run after" (a node of the chain, or first).
     - Delete removes the selected node and its edges (the chain closes over the gap). The arrow keys walk the nodes, and Enter focuses the properties.
     - Node positions are not stored: the layout always comes from the chain.
   - **Right, properties**: a form for the selected node type (id, name, `when`, profile from the daemon's profiles, adapter, inputs, `uses`, `with`, loop limits and `until`, team and compete fields, the subflow's Flow and params), plus the Flow's metadata and params when nothing is selected.

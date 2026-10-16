@@ -639,6 +639,9 @@ export const de: Messages = {
       paramDefault: "Standard von {name}",
       newParam: "neuer_param",
       addParam: "Param hinzufügen",
+      connectAfter: "Ausführen nach",
+      connectPick: "Knoten wählen…",
+      connectFirst: "Als Erstes",
       selectHint: "Wähle einen Knoten, um ihn zu bearbeiten.",
     },
     sim: {

@@ -637,6 +637,9 @@ export const en = {
       paramDefault: "Default of {name}",
       newParam: "new_param",
       addParam: "Add param",
+      connectAfter: "Run after",
+      connectPick: "Pick a node…",
+      connectFirst: "First",
       selectHint: "Select a node to edit it.",
     },
     sim: {
