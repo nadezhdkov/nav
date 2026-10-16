@@ -1,7 +1,8 @@
 /**
  * Parser for `opencode run --format json`: one event per line, `{ type, sessionID, part | error }`.
  * The adapter uses step_start (session id), text, tool_use (commands, edits, denials),
- * step_finish (tokens, cost) and error. Shapes checked against a real OpenCode 2.0.29 run.
+ * step_finish (tokens, cost) and error. Shapes checked against a real OpenCode 2.0.29 run, and
+ * against Kilo CLI 7.8.12 (an OpenCode fork), which words denials and errors differently.
  */
 
 export type OpencodeItem =
@@ -47,7 +48,7 @@ export function parseOpencodeLine(line: string): OpencodeItem | undefined {
         kind: "tool",
         tool: str(part.tool),
         ok: state.status === "completed",
-        denied: /^permission denied/i.test(error),
+        denied: DENIED.test(error),
         ...(command ? { command } : {}),
         ...(path ? { path } : {}),
         ...(error ? { error } : {}),
@@ -66,15 +67,23 @@ export function parseOpencodeLine(line: string): OpencodeItem | undefined {
     }
     case "error": {
       const error = isObject(event.error) ? event.error : {};
-      const message = str(error.message) || str(event.message) || "opencode error";
+      // Kilo nests the message under `data` and names the error instead of typing it.
+      const data = isObject(error.data) ? error.data : {};
+      const message = str(error.message) || str(data.message) || str(event.message) || "opencode error";
       // The status goes into the message so the kit's classifier sees a 429 as a rate limit.
-      const status = num(error.status);
-      return { kind: "failed", message: `${str(error.type) || "error"}: ${message}${status ? ` (HTTP ${status})` : ""}` };
+      const status = num(error.status) || num(data.statusCode);
+      return { kind: "failed", message: `${str(error.type) || str(error.name) || "error"}: ${message}${status ? ` (HTTP ${status})` : ""}` };
     }
     default:
       return undefined;
   }
 }
+
+/**
+ * OpenCode says "Permission denied: <tool>". Kilo explains the matching rule instead, and calls a
+ * tool its rules removed "unavailable".
+ */
+const DENIED = /^permission denied|rule which prevents you from using|tried to call unavailable tool/i;
 
 /** Some free models put their reasoning in the text, closed by `</think>`; keep what follows. */
 function visibleText(text: string): string {

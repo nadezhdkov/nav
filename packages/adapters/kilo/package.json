@@ -1,0 +1,14 @@
+{
+  "name": "@navarch/adapter-kilo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@navarch/adapter-kit": "workspace:*",
+    "@navarch/adapter-opencode": "workspace:*",
+    "@navarch/contracts": "workspace:*"
+  }
+}
