@@ -94,7 +94,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     }
     if (err instanceof OrchestratorError) {
       const status =
-        err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : err.code === "github_error" ? 502 : 400;
+        err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" || err.code === "push_denied" ? 403 : err.code === "github_error" ? 502 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;

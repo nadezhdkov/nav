@@ -351,6 +351,19 @@ describe("issue → verified draft PR", () => {
     expect(first.gh.pulls).toHaveLength(1);
   });
 
+  it("refuses an issue run when the token cannot push to the repository, before any agent works on it", async () => {
+    const { repo, gitUrl, bare } = project(VERIFY_OK);
+    const { api, fake } = await start({ gitUrl });
+    // GitHub answers a token without write access like a repository it cannot reach.
+    renameSync(bare, `${bare}.gone`);
+    const res = await api<{ error: string; message: string }>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("push_denied");
+    expect(res.body.message).toMatch(/cannot push to acme\/widgets.*Contents/s);
+    expect((await api<RunView[]>("GET", "/api/v1/runs")).body).toEqual([]);
+    expect(fake.calls()).toHaveLength(0);
+  });
+
   it("refuses an issue from a repository other than the clone's origin, before any run exists", async () => {
     const { repo, gitUrl } = project(VERIFY_OK);
     const { api } = await start({ gitUrl });
