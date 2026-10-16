@@ -12,3 +12,4 @@ export * from "./usage.ts";
 export * from "./attachments.ts";
 export * from "./compete.ts";
 export * from "./pulls.ts";
+export * from "./studio.ts";
