@@ -15,7 +15,9 @@ import { Budgets, spends } from "./budgets/budgets.ts";
 import { modelMetrics } from "./budgets/metrics.ts";
 import { ConciergeService } from "./concierge/service.ts";
 import { InboxService } from "./inbox/service.ts";
-import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView } from "@navarch/contracts";
+import { PrWatcher } from "./github/outcomes.ts";
+import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
+import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
@@ -67,6 +69,7 @@ export class Daemon {
   readonly devices: DeviceService;
   readonly notifier: Notifier;
   readonly inbox: InboxService;
+  readonly prs: PrWatcher;
   readonly budgets: Budgets;
   readonly flows: FlowLibrary;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
@@ -132,8 +135,10 @@ export class Daemon {
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
       listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
       usage: () => this.usage({ days: 30 }),
+      metrics: () => this.metrics({ days: 30 }),
     });
     this.inbox = new InboxService({ home: this.home, config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
+    this.prs = new PrWatcher({ config: this.config, store: this.store, github });
   }
 
   get url(): string {
@@ -188,6 +193,20 @@ export class Daemon {
     };
   }
 
+  /** The cost and quality panels (ADR 0037) over the last `days` local days. */
+  metrics(opts: { days: number }): MetricsView {
+    const now = Date.now();
+    const from = windowStart(now, opts.days).toISOString();
+    const attempts = this.store.attemptsSince(from);
+    const models = modelMetrics(attempts, { now, billingOf: (adapter) => this.adapters.get(adapter)?.capabilities().billing ?? "metered" });
+    return {
+      generated_at: new Date(now).toISOString(),
+      window_days: opts.days,
+      cost: costPanel(this.store.ledgerSince(from), { now, days: opts.days, projects: this.store.listProjects() }),
+      quality: qualityPanel(attempts, this.store.pullRequestsSince(from), models),
+    };
+  }
+
   /** The kill switch: pauses every active run. */
   stopAll(actor: Actor): string[] {
     return this.orchestrator.stopAll(actor, (taskId) => this.scheduler.requestInterrupt(taskId, PAUSE_INTERRUPT));
@@ -211,6 +230,7 @@ export class Daemon {
     this.orchestrator.recover();
     this.notifier.start();
     this.inbox.start();
+    this.prs.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
     void this.remoteStatus().catch(() => {});
@@ -245,6 +265,7 @@ export class Daemon {
     await this.server?.close();
     await this.notifier.stop();
     await this.inbox.stop();
+    await this.prs.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });

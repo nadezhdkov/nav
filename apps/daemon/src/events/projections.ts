@@ -305,6 +305,35 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "github.pr.opened": {
       const p = (event as NavarchEvent<"github.pr.opened">).payload;
       db.prepare("UPDATE runs SET pr_url = ?, updated_at = ? WHERE id = ?").run(p.url, ts, event.run_id);
+      // Navarch's last push to the branch, which the PR's outcome is compared with (ADR 0037).
+      const push = db
+        .prepare("SELECT payload FROM events WHERE type = 'github.push' AND run_id = ? AND seq < ? ORDER BY seq DESC LIMIT 1")
+        .get(event.run_id, event.seq) as { payload: string } | undefined;
+      const commit = push ? (JSON.parse(push.payload) as { commit: string }).commit : null;
+      db.prepare(
+        "INSERT OR IGNORE INTO pull_requests (repo, number, run_id, url, branch, commit_sha, opened_at, state) VALUES (?, ?, ?, ?, ?, ?, ?, 'open')",
+      ).run(p.repo, p.number, event.run_id, p.url, p.branch, commit, ts);
+      return;
+    }
+    case "github.push": {
+      const p = (event as NavarchEvent<"github.push">).payload;
+      db.prepare("UPDATE pull_requests SET commit_sha = ? WHERE repo = ? AND branch = ? AND state = 'open'").run(p.commit, p.repo, p.branch);
+      return;
+    }
+    case "github.pr.lost": {
+      const p = (event as NavarchEvent<"github.pr.lost">).payload;
+      db.prepare("UPDATE pull_requests SET state = 'gone', closed_at = ? WHERE repo = ? AND number = ?").run(ts, p.repo, p.number);
+      return;
+    }
+    case "github.pr.closed": {
+      const p = (event as NavarchEvent<"github.pr.closed">).payload;
+      db.prepare("UPDATE pull_requests SET state = ?, closed_at = ?, commits_after = ? WHERE repo = ? AND number = ?").run(
+        p.merged ? "merged" : "closed",
+        p.closed_at,
+        p.commits_after,
+        p.repo,
+        p.number,
+      );
       return;
     }
     case "flow.node.skipped": {
@@ -411,7 +440,6 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       return;
     }
     case "verification.completed":
-    case "github.push":
     case "policy.denied":
     case "quota.observed":
     case "concierge.message":

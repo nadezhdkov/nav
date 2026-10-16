@@ -25,6 +25,7 @@ import {
   type BudgetView,
   type SetBudgetRequest,
   type UsageView,
+  type MetricsView,
   type FlowDetail,
   type FlowSummary,
   type ValidateFlowResponse,
@@ -32,7 +33,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -88,6 +89,7 @@ Usage:
                                          change a limit; raising one releases tasks waiting on it
   navarch usage [--days <n>] [--profile <name>]
                                          spend today and this month, tokens, success and cost per model
+  navarch metrics [--days <n>]             cost by day, project, profile and model; success rates, accepted PRs, rework
   navarch flow list                        built-in Flows and the Flows published in Flow Studio (Web UI → Flows)
   navarch flow show <name> [--version <n>] [--draft]
                                          print a Flow's YAML: the latest published version by default
@@ -325,6 +327,10 @@ async function main(argv: string[]): Promise<number> {
       const query = new URLSearchParams({ ...(values.days ? { days: values.days } : {}), ...(values.profile ? { profile: values.profile } : {}) }).toString();
       const usage = await new ApiClient(home).request<UsageView>("GET", `/api/v1/usage${query ? `?${query}` : ""}`);
       return print(json ? usage : formatUsage(usage), json);
+    }
+    case "metrics": {
+      const metrics = await new ApiClient(home).request<MetricsView>("GET", `/api/v1/metrics${values.days ? `?days=${encodeURIComponent(values.days)}` : ""}`);
+      return print(json ? metrics : formatMetrics(metrics), json);
     }
     case "sync": {
       const result = await new ApiClient(home).request<SyncInboxResult>("POST", "/api/v1/inbox/sync", values.project ? { project_id: values.project } : {});

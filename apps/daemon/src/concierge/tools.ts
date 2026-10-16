@@ -1,7 +1,7 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { ConciergeTool } from "@navarch/concierge";
-import { ATTACHMENT_LIMITS, CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView } from "@navarch/contracts";
+import { ATTACHMENT_LIMITS, CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView, type MetricsView } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 
@@ -21,6 +21,8 @@ export type ToolDeps = {
   listInbox?: () => InboxView;
   /** Budgets, spend and observed metrics per model (ADR 0023); absent in tests without a daemon. */
   usage?: () => UsageView;
+  /** The cost and quality panels (ADR 0037): `show_usage` adds the PR rates. */
+  metrics?: () => MetricsView;
   /** Who confirmed the action (the client that sent the decision). */
   actor: () => Actor;
   /** The operator's working directory: the default repository for `start_run`. */
@@ -189,7 +191,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
           {
             name: "show_usage",
             description:
-              "Budgets (run, project per day, global per month: billed use against each limit), spend today and this month, and per agent/model over 30 days: tasks, success rate, tokens, cost per succeeded task. Plan (subscription) use is shown as an API-equivalent cost and never counts against budgets. Budgets cannot be changed from here; tell the operator to use `navarch budget set` or the Usage screen.",
+              "Budgets (run, project per day, global per month: billed use against each limit), spend today and this month, per agent/model over 30 days: tasks, success rate, tokens, cost per succeeded task, and the PRs Navarch opened in 30 days: merged, closed, acceptance rate, accepted as is, rework (more than 2 commits added after Navarch's). Plan (subscription) use is shown as an API-equivalent cost and never counts against budgets. Budgets cannot be changed from here; tell the operator to use `navarch budget set` or the Usage screen.",
             parameters: obj({}),
             kind: "read" as const,
             run: async () => {
@@ -210,6 +212,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
                   plan_equivalent: m.plan_cost,
                 })),
                 quotas: u.quotas.map((q) => ({ adapter: q.adapter, window: q.window, utilization: q.utilization, exhausted: q.exhausted, resets_at: q.resets_at })),
+                ...(deps.metrics ? { pull_requests_30_days: pullRequestRates(deps.metrics()) } : {}),
               };
             },
           },
@@ -371,4 +374,10 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
 function clip(value: string, max: number): string {
   const flat = value.replace(/\s+/g, " ").trim();
   return flat.length <= max ? flat : `${flat.slice(0, max - 1)}…`;
+}
+
+/** The PR rates of the quality panel, without the list of PRs (ADR 0037). */
+function pullRequestRates(m: MetricsView) {
+  const { recent: _recent, ...rates } = m.quality.pull_requests;
+  return rates;
 }

@@ -236,6 +236,22 @@ CREATE TABLE IF NOT EXISTS flow_versions (
   published_at TEXT NOT NULL,
   PRIMARY KEY (name, version)
 );
+-- Pull requests Navarch opened and what became of them (ADR 0037). commit_sha is Navarch's last push
+-- to the branch; state is open, merged, closed or gone.
+CREATE TABLE IF NOT EXISTS pull_requests (
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  run_id TEXT NOT NULL,
+  url TEXT NOT NULL,
+  branch TEXT NOT NULL,
+  commit_sha TEXT,
+  opened_at TEXT NOT NULL,
+  state TEXT NOT NULL,
+  closed_at TEXT,
+  commits_after INTEGER,
+  PRIMARY KEY (repo, number)
+);
+CREATE INDEX IF NOT EXISTS pull_requests_opened ON pull_requests(opened_at);
 -- budget.threshold events already recorded, so each is notified once per period.
 CREATE TABLE IF NOT EXISTS budget_alerts (
   scope TEXT NOT NULL,
@@ -262,6 +278,7 @@ DROP TABLE IF EXISTS budget_overrides;
 DROP TABLE IF EXISTS budget_alerts;
 DROP TABLE IF EXISTS studio_flows;
 DROP TABLE IF EXISTS flow_versions;
+DROP TABLE IF EXISTS pull_requests;
 `;
 
 /**
