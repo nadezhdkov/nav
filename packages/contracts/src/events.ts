@@ -114,6 +114,10 @@ export const EventPayloads = {
         params: z.record(z.string(), z.union([z.number(), z.string(), z.boolean()])),
         /** The Flows its `subflow` nodes run, copied as well (ADR 0032). */
         subflows: z.record(z.string(), FlowDefinition).optional(),
+        /** Where the Flow came from (ADR 0033); absent (built-in) before Flow Studio. */
+        source: z.enum(["builtin", "studio"]).optional(),
+        /** The published version of a Studio Flow. */
+        version: z.number().int().positive().optional(),
       })
       .optional(),
     /** Spec §11: from `.navarch/project.yaml`, else the daemon's configuration. Absent before per-run levels. */
@@ -261,6 +265,11 @@ export const EventPayloads = {
   /** A repository the Inbox watches (ADR 0021). In Phase 1 a project is one clone of one GitHub repository. */
   "project.added": z.object({ project_id: z.string(), name: z.string(), repo: z.string(), path: z.string() }),
   "project.removed": z.object({ project_id: z.string() }),
+  /** The user saved a Studio Flow's draft (ADR 0033): its YAML as written, the draft's revision (1, 2, …) and the version it started from. */
+  "flow.draft.saved": z.object({ name: z.string(), yaml: z.string(), revision: z.number().int().positive(), based_on: z.number().int().positive().nullable() }),
+  "flow.draft.discarded": z.object({ name: z.string(), revision: z.number().int().positive() }),
+  /** The user published a Studio Flow's draft as an immutable version, used by runs started after it. */
+  "flow.published": z.object({ name: z.string(), version: z.number().int().positive(), yaml: z.string(), sha256: z.string(), revision: z.number().int().positive() }),
   /** One sync of a project ended; `cursor` is the newest `updated_at` seen, the next sync's `since`. */
   "inbox.synced": z.object({
     project_id: z.string(),

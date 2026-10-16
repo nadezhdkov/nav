@@ -154,6 +154,12 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "repo.clone", effect: "deny", reason: "only the user has repositories cloned" },
   {
+    match: (r) => (r.action === "flow.save" || r.action === "flow.publish") && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user edits and publishes Flows in Flow Studio (ADR 0033)",
+  },
+  { match: (r) => r.action === "flow.save" || r.action === "flow.publish", effect: "deny", reason: "only the user edits Flows, from the desktop" },
+  {
     match: (r) => r.action === "inbox.sync" && (r.actor.kind === "user" || r.actor.kind === "system"),
     effect: "allow",
     reason: "reading issues of registered projects (ADR 0021)",

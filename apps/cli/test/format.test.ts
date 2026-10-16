@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatGitHubRepos, formatInbox, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -219,5 +219,26 @@ describe("formatGitHubRepos", () => {
     expect(out).toMatch(/acme\/widgets\s+private\s+yes\s+prj_1\s+Widgets/);
     expect(out).toMatch(/me\/notes\s+public\s+no\s+-/);
     expect(formatGitHubRepos([])).toMatch(/reaches no repositories/);
+  });
+});
+
+describe("flow formatting (ADR 0033)", () => {
+  it("lists built-in and Studio Flows with their versions and drafts", () => {
+    const out = formatFlows([
+      { name: "fix-issue", description: "Issue to PR.", source: "builtin", published_version: null, draft: null, node_count: 7, shadowed: false, updated_at: null },
+      { name: "my-task", description: null, source: "studio", published_version: 2, draft: { revision: 3, saved_at: "t" }, node_count: 1, shadowed: false, updated_at: "t" },
+      { name: "scratch", description: null, source: "studio", published_version: null, draft: { revision: 1, saved_at: "t" }, node_count: null, shadowed: false, updated_at: "t" },
+    ]);
+    expect(out).toMatch(/fix-issue\s+built-in\s+Issue to PR\./);
+    expect(out).toMatch(/my-task\s+v2 · draft r3\s+-/);
+    expect(out).toMatch(/scratch\s+unpublished · draft r1/);
+  });
+
+  it("prints problems as file:line: severity: message", () => {
+    expect(formatProblems("f.yaml", [])).toBe("f.yaml: valid");
+    expect(formatProblems("f.yaml", [
+      { severity: "error", message: 'node "a" is not in edges', node: "a", line: 7 },
+      { severity: "warning", message: "no agent" },
+    ])).toBe('f.yaml:7: error: node "a" is not in edges\nf.yaml: warning: no agent\n1 error(s), 1 warning(s)');
   });
 });

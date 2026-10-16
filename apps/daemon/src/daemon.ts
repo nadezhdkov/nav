@@ -24,6 +24,7 @@ import { EventStore } from "./events/store.ts";
 import { DeviceService } from "./devices/devices.ts";
 import { Notifier } from "./notifications/notifier.ts";
 import { tailscaleStatus } from "./remote/tailscale.ts";
+import { FlowLibrary } from "./flows/library.ts";
 import { Orchestrator } from "./orchestrator/orchestrator.ts";
 import { PolicyEngine } from "./policy/engine.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
@@ -65,6 +66,7 @@ export class Daemon {
   readonly notifier: Notifier;
   readonly inbox: InboxService;
   readonly budgets: Budgets;
+  readonly flows: FlowLibrary;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
   private readonly logListeners = new Set<LogListener>();
   private server?: FastifyInstance;
@@ -115,7 +117,8 @@ export class Daemon {
     });
     this.devices = new DeviceService(this.store, join(this.home, "device-key"));
     this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });
-    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github, undefined, policy);
+    this.flows = new FlowLibrary({ store: this.store, policy, adapters: [...adapters.keys()], autonomyLevel: this.config.autonomy_level });
+    this.orchestrator = new Orchestrator(this.store, this.config, [...adapters.keys()], () => this.scheduler.pump(), github, this.flows, policy);
     this.concierge = new ConciergeService({
       config: this.config,
       store: this.store,

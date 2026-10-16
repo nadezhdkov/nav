@@ -25,11 +25,14 @@ import {
   type BudgetView,
   type SetBudgetRequest,
   type UsageView,
+  type FlowDetail,
+  type FlowSummary,
+  type ValidateFlowResponse,
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatGitHubRepos, formatInbox, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -85,6 +88,10 @@ Usage:
                                          change a limit; raising one releases tasks waiting on it
   navarch usage [--days <n>] [--profile <name>]
                                          spend today and this month, tokens, success and cost per model
+  navarch flow list                        built-in Flows and the Flows published in Flow Studio (Web UI → Flows)
+  navarch flow show <name> [--version <n>] [--draft]
+                                         print a Flow's YAML: the latest published version by default
+  navarch flow validate <file>             check a Flow YAML file against this daemon (profiles, adapters, Flows)
 
 Adapters: claude-code, gemini-cli, antigravity, codex, copilot, opencode, grok, native.
   Without --adapter or --model the Model Router picks one per agent task (routing in config.yaml);
@@ -133,6 +140,8 @@ async function main(argv: string[]): Promise<number> {
       daily: { type: "string" },
       run: { type: "string" },
       days: { type: "string" },
+      version: { type: "string" },
+      draft: { type: "boolean", default: false },
       profile: { type: "string" },
     },
   });
@@ -286,6 +295,31 @@ async function main(argv: string[]): Promise<number> {
       if (rest[0] !== "show" && rest[0] !== undefined) throw new CliError("usage: navarch budget [show] | set ...", EXIT.usage);
       const budgets = await api.request<BudgetView[]>("GET", "/api/v1/budgets");
       return print(json ? budgets : formatBudgets(budgets), json);
+    }
+    case "flow": {
+      const api = new ApiClient(home);
+      if (rest[0] === "list" || rest[0] === undefined) {
+        const flows = await api.request<FlowSummary[]>("GET", "/api/v1/flows");
+        return print(json ? flows : formatFlows(flows), json);
+      }
+      if (rest[0] === "show") {
+        const name = required(rest[1], "flow name");
+        if (values.version !== undefined) {
+          const v = await api.request<{ yaml: string }>("GET", `/api/v1/flows/${encodeURIComponent(name)}/versions/${encodeURIComponent(values.version)}`);
+          return print(json ? v : v.yaml.trimEnd(), json);
+        }
+        const flow = await api.request<FlowDetail>("GET", `/api/v1/flows/${encodeURIComponent(name)}`);
+        const yaml = values.draft ? flow.draft_yaml : (flow.published_yaml ?? flow.draft_yaml);
+        if (yaml === null) throw new CliError(values.draft ? `flow ${name} has no draft` : `flow ${name} has nothing published`, EXIT.error);
+        return print(json ? flow : yaml.trimEnd(), json);
+      }
+      if (rest[0] === "validate") {
+        const file = required(rest[1], "file");
+        const result = await api.request<ValidateFlowResponse>("POST", "/api/v1/flows/validate", { yaml: readFileSync(resolvePath(file), "utf8") });
+        print(json ? result : formatProblems(file, result.problems), json);
+        return result.problems.some((p) => p.severity === "error") ? EXIT.error : EXIT.ok;
+      }
+      throw new CliError("usage: navarch flow list | show <name> [--version <n>] [--draft] | validate <file>", EXIT.usage);
     }
     case "usage": {
       const query = new URLSearchParams({ ...(values.days ? { days: values.days } : {}), ...(values.profile ? { profile: values.profile } : {}) }).toString();
