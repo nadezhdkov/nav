@@ -1,6 +1,7 @@
-import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type FlowNode, type RunStatus, type TeamTaskRef } from "@navarch/contracts";
+import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type TeamTaskRef } from "@navarch/contracts";
 import { parse } from "yaml";
 import { evaluate, exprPaths, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
+import { competeOutputs, competeStep, competitorCount } from "./compete.ts";
 import { teamState, teamStep } from "./team.ts";
 
 export class FlowError extends Error {}
@@ -102,6 +103,9 @@ function expressionsOf(n: FlowNode | BodyNode): string[] {
   if (n.type === "team") {
     for (const v of [n.max_turns, n.max_members, n.approve_first_plan, n.parallel, n.max_parallel]) if (typeof v === "string") out.push(v);
   }
+  if (n.type === "compete") {
+    for (const v of [n.competitors, n.max_fix_iterations, n.approve_pick]) if (typeof v === "string") out.push(v);
+  }
   return out;
 }
 
@@ -146,6 +150,10 @@ export type NodeToStart = {
   blocked?: string;
   /** An adapter or catalog entry the lead prefers for this member. */
   prefer?: string;
+  /** The compete node a task belongs to (ADR 0031). */
+  compete?: CompeteTaskRef;
+  /** Options an approval lets the approver pick, the default first. */
+  choices?: string[];
 };
 
 export type Step =
@@ -176,6 +184,14 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
         return { kind: "skip", nodeId: node.id, reason: `when ${node.when.replace(/^\$\{\{\s*|\s*\}\}$/g, "")} is false` };
       }
       const step = teamStep(node, ctx, scope);
+      if (step) return step;
+      continue;
+    }
+    if (node.type === "compete") {
+      if (node.when && !ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) && !truthy(evaluate(parseExpr(node.when), scope))) {
+        return { kind: "skip", nodeId: node.id, reason: `when ${node.when.replace(/^\$\{\{\s*|\s*\}\}$/g, "")} is false` };
+      }
+      const step = competeStep(node, ctx, scope);
       if (step) return step;
       continue;
     }
@@ -222,8 +238,9 @@ export function progress(flow: FlowDefinition, ctx: RunContext): { done: number;
       done += node.body.filter((b) => ctx.tasks.some((t) => t.node_id === b.id && t.iteration === current && t.status === "succeeded" && t.outputs?.passed !== false)).length;
       break;
     }
-    if (node.type === "team") {
-      if (!ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) || safely(() => teamStep(node, ctx, scope)) !== undefined) break;
+    if (node.type === "team" || node.type === "compete") {
+      const step = () => (node.type === "team" ? teamStep(node, ctx, scope) : competeStep(node, ctx, scope));
+      if (!ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) || safely(step) !== undefined) break;
       done++;
       continue;
     }
@@ -282,10 +299,22 @@ function scopeOf(ctx: RunContext, flow?: FlowDefinition): Scope {
     const summary = teamState(n.id, ctx.tasks).summary;
     if (summary !== undefined) nodes[n.id] = { outputs: { summary }, status: "succeeded", iteration: 1 };
   }
+  // A compete node's output is its winner's summary and why it won, once adopted.
+  for (const n of flow?.nodes ?? []) {
+    if (n.type !== "compete") continue;
+    let count: number;
+    try {
+      count = competitorCount(n, { nodes, params: ctx.params, project: ctx.project });
+    } catch {
+      continue;
+    }
+    const outputs = competeOutputs(n.id, count, ctx.tasks);
+    if (outputs) nodes[n.id] = { outputs, status: "succeeded", iteration: 1 };
+  }
   return { nodes, params: ctx.params, project: ctx.project };
 }
 
-function toStart(node: Exclude<FlowNode, { type: "team" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
+function toStart(node: Exclude<FlowNode, { type: "team" | "compete" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
   const inputs: Record<string, unknown> = {};
   if (node.type === "agent") {
     for (const [name, value] of Object.entries(node.inputs ?? {})) inputs[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;
@@ -304,7 +333,7 @@ export function stageOf(node: NodeToStart["node"]): RunStatus {
     case "github":
       return "ready_for_pr";
     case "agent":
-      return ["triager", "planner", "explorer"].includes(node.profile) ? "planning" : node.profile === "reviewer" ? "reviewing" : "executing";
+      return ["triager", "planner", "explorer"].includes(node.profile) ? "planning" : ["reviewer", "judge"].includes(node.profile) ? "reviewing" : "executing";
     default:
       return "executing";
   }

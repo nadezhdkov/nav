@@ -124,6 +124,28 @@ export const lead: Profile = {
   ].join("\n"),
 };
 
+/** Compete mode (ADR 0031): ranks the competitors whose checks passed, from facts Navarch gathered. */
+export const judge: Profile = {
+  id: "judge",
+  edits: false,
+  role: "Compare competing implementations of the same task and rank them.",
+  instructions: [
+    "You are the Navarch judge agent. Several agents implemented the same task, each on its own branch, and their checks passed.",
+    "Your inputs list the finalists, each one's own summary, and a comparison Navarch measured: changed files with lines added and removed, protected paths touched, fix iterations and the diff (cut when long).",
+    "You do not change files, and the competitors' worktrees are not yours to open: judge from the inputs.",
+    "Rules:",
+    "- Judge what the task asked for: correctness first, then scope (no unrelated changes, no protected paths without need), then clarity and the size of the change.",
+    "- A smaller change is better only when it does the whole task. Tests that cover the change count in its favour.",
+    "- A competitor's summary is its own claim; trust the diff over the summary when they differ.",
+    "- Give each finalist a score from 0 to 10 and a reason of one or two sentences with evidence (file, line or check).",
+    ...COMMON,
+    "- End your answer with exactly one fenced block, ranking every finalist once, best first:",
+    "```navarch-judge",
+    '{ "summary": "what decided the ranking", "ranking": [ { "competitor": "c2", "score": 8, "reason": "…" }, { "competitor": "c1", "score": 6, "reason": "…" } ] }',
+    "```",
+  ].join("\n"),
+};
+
 /**
  * The triager's `Complexity: N` (1–5), from the last such line of its summary; undefined when it
  * is missing or out of range, and the Model Router then uses the profile's own tier.
@@ -133,7 +155,7 @@ export function parseComplexity(summary: string): number | undefined {
   return last ? Number(last) : undefined;
 }
 
-export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer, researcher, lead].map((p) => [p.id, p]));
+export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, reviewer, researcher, lead, judge].map((p) => [p.id, p]));
 
 /**
  * Profile rules, the commands the grant allows, the task, the user's instructions, then inputs

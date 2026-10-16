@@ -40,8 +40,9 @@ Usage:
   navarch ask <question...>                one question to the concierge; proposals are shown, not run
   navarch web [--print]                    open the Web UI (runs, live graph, approvals) in the browser
   navarch daemon start|stop|status
-  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--attach <file>]... [--flow <name>] [--follow] <prompt...>
-                                         flow \`task\`: implement, then verify and fix until the checks pass
+  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--attach <file>]... [--flow <name>] [--param <name=value>]... [--follow] <prompt...>
+                                         flow \`task\`: implement, then verify and fix until the checks pass;
+                                         \`--flow compete --budget <usd>\`: several agents compete, a judge picks
   navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
                                          flow \`fix-issue\`: triage, plan (approved below level 3), implement,
                                          verify and fix, review, then open a draft PR
@@ -56,7 +57,8 @@ Usage:
                                          tell a run's agents something: in the next agent turn, or --now
                                          interrupt that running task and resume it with your message
   navarch approvals [--all]                pending approvals (e.g. opening a PR below autonomy level 3)
-  navarch approve <approval-id> [--reason <text>]
+  navarch approve <approval-id> [--pick <choice>] [--reason <text>]
+                                         --pick: another of the offered choices (e.g. a competitor)
   navarch reject <approval-id> [--reason <text>]
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
@@ -105,6 +107,8 @@ async function main(argv: string[]): Promise<number> {
       allow: { type: "string", multiple: true },
       setup: { type: "string", multiple: true },
       attach: { type: "string", multiple: true },
+      param: { type: "string", multiple: true },
+      pick: { type: "string" },
       model: { type: "string" },
       adapter: { type: "string", short: "a" },
       follow: { type: "boolean", short: "f", default: false },
@@ -189,6 +193,7 @@ async function main(argv: string[]): Promise<number> {
         ...(values.adapter ? { adapter: values.adapter } : {}),
         ...(values.flow ? { flow: values.flow } : {}),
         ...(values.attach?.length ? { attachments: values.attach.map(readAttachment) } : {}),
+        ...(values.param?.length ? { params: Object.fromEntries(values.param.map(readParam)) } : {}),
       });
       if (json && !values.follow) return print(run, json);
       if (!json) console.log(`run ${run.name} (${run.id}) created (${run.status})`);
@@ -340,6 +345,7 @@ async function main(argv: string[]): Promise<number> {
       const decided = await new ApiClient(home).request<ApprovalView>("POST", `/api/v1/approvals/${id}`, {
         decision: command,
         ...(values.reason ? { reason: values.reason } : {}),
+        ...(values.pick ? { choice: values.pick } : {}),
       });
       const next = decided.status === "approved" ? `; follow it with: navarch logs ${decided.run_id} -f` : "";
       return print(json ? decided : `${decided.id} ${decided.status} (run ${decided.run_id})${next}`, json);
@@ -563,6 +569,13 @@ main(process.argv.slice(2)).then(
     process.exit(EXIT.error);
   },
 );
+
+/** A `--param name=value` pair; the daemon reads the value as the param's type. */
+function readParam(pair: string): [string, string] {
+  const at = pair.indexOf("=");
+  if (at < 1) throw new CliError(`--param expects name=value, got "${pair}"`, EXIT.usage);
+  return [pair.slice(0, at).trim(), pair.slice(at + 1)];
+}
 
 /** A `--attach` file for a run: its name and text (the daemon checks size and type). */
 function readAttachment(path: string): { name: string; content: string } {

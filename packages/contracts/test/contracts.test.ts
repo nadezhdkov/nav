@@ -149,7 +149,7 @@ describe("Fleet tree (slice 10)", () => {
   const run = {
     id: "run_1", name: "brave-frigate", status: "executing", repo_path: "/r", base_commit: "abc", prompt: "p", budget: 5, cost_total: 0, plan_cost: 0,
     created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z", ended_at: null, work_item: null, pr_url: null,
-    flow: "task", autonomy_level: null, agents: [], team: null,
+    flow: "task", autonomy_level: null, agents: [], team: null, compete: null,
   };
 
   it("carries step progress and the run's project", () => {

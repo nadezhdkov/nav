@@ -102,7 +102,25 @@ export const TeamNode = z.strictObject({
   max_parallel: z.union([z.number().int().positive(), Expr]).default(3),
 });
 
-export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode]);
+/**
+ * N competitors on the same task, each in its own worktree with its own fix loop, a judge that
+ * ranks those whose checks passed, a human pick below autonomy 3, and the winner merged into the
+ * run's worktree (ADR 0031). Tasks: `<id>.c<i>`, `<id>.c<i>.verify`, `<id>.compare`, `<id>.judge`,
+ * `<id>.approve_pick`, `<id>.adopt`.
+ */
+export const CompeteNode = z.strictObject({
+  ...base,
+  type: z.literal("compete"),
+  /** A number (2–5) or an expression. */
+  competitors: z.union([z.number().int().min(2).max(5), Expr]),
+  /** A number or an expression: implement ⇄ verify iterations per competitor. */
+  max_fix_iterations: z.union([z.number().int().positive(), Expr]).default(2),
+  judge: z.strictObject({ profile: z.string().min(1) }),
+  /** When true, a human confirms the judge's pick or chooses another finalist. */
+  approve_pick: z.union([z.boolean(), Expr]).default(false),
+});
+
+export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode, CompeteNode]);
 export type FlowNode = z.infer<typeof FlowNode>;
 
 export const FlowParam = z.strictObject({

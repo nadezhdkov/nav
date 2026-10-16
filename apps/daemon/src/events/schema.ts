@@ -80,6 +80,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   outputs TEXT,
   team TEXT,
   prefer TEXT,
+  compete TEXT,
+  choices TEXT,
   subagents TEXT,
   updated_at TEXT NOT NULL
 );
@@ -95,6 +97,8 @@ CREATE TABLE IF NOT EXISTS approvals (
   summary TEXT NOT NULL,
   status TEXT NOT NULL,
   decision_reason TEXT,
+  choices TEXT,
+  choice TEXT,
   created_at TEXT NOT NULL,
   decided_at TEXT
 );

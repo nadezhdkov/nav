@@ -15,7 +15,7 @@ function run(over: Partial<FleetRun> = {}): FleetRun {
   return {
     id: "run_1", name: "brave-frigate", status: "executing", repo_path: "/src/app", base_commit: "abc", prompt: "p", budget: 2, cost_total: 0, plan_cost: 0,
     created_at: "2026-10-15T00:00:00Z", updated_at: "2026-10-15T00:00:00Z", ended_at: null, work_item: null, pr_url: null,
-    flow: "task", autonomy_level: 2, team: null, progress: { done: 0, total: 2 }, project_id: null, agents: [], ...over,
+    flow: "task", autonomy_level: 2, team: null, compete: null, progress: { done: 0, total: 2 }, project_id: null, agents: [], ...over,
   };
 }
 

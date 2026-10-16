@@ -121,8 +121,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       // The run's model belongs to the run's adapter; a routed task gets its own with model.routed.
       const model = p.type === "agent" && p.adapter === run.adapter ? run.model : null;
       db.prepare(
-        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, team, prefer, updated_at)
-         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO tasks (id, run_id, node_id, type, status, max_attempts, profile, adapter, model, routing, iteration, stage, uses, inputs, team, prefer, compete, choices, updated_at)
+         VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         event.task_id,
         event.run_id,
@@ -139,6 +139,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
         p.inputs ? JSON.stringify(p.inputs) : null,
         p.team ? JSON.stringify(p.team) : null,
         p.prefer ?? null,
+        p.compete ? JSON.stringify(p.compete) : null,
+        p.choices ? JSON.stringify(p.choices) : null,
         ts,
       );
       return;
@@ -258,9 +260,9 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "approval.requested": {
       const p = (event as NavarchEvent<"approval.requested">).payload;
       db.prepare(
-        `INSERT INTO approvals (id, run_id, task_id, action, resource, reason, summary, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      ).run(p.approval_id, event.run_id, event.task_id, p.action, p.resource, p.reason, p.summary, ts);
+        `INSERT INTO approvals (id, run_id, task_id, action, resource, reason, summary, status, choices, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+      ).run(p.approval_id, event.run_id, event.task_id, p.action, p.resource, p.reason, p.summary, p.choices ? JSON.stringify(p.choices) : null, ts);
       return;
     }
     case "approval.decided": {
@@ -268,9 +270,10 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       const row = db.prepare("SELECT status FROM approvals WHERE id = ?").get(p.approval_id) as { status: string } | undefined;
       if (!row) throw new ProjectionError(`unknown approval ${p.approval_id}`);
       if (row.status !== "pending") throw new ProjectionError(`approval ${p.approval_id} is already ${row.status}`);
-      db.prepare("UPDATE approvals SET status = ?, decision_reason = ?, decided_at = ? WHERE id = ?").run(
+      db.prepare("UPDATE approvals SET status = ?, decision_reason = ?, choice = ?, decided_at = ? WHERE id = ?").run(
         p.decision,
         p.reason ?? null,
+        p.choice ?? null,
         ts,
         p.approval_id,
       );

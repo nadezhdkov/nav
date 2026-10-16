@@ -10,3 +10,4 @@ export * from "./inbox.ts";
 export * from "./team.ts";
 export * from "./usage.ts";
 export * from "./attachments.ts";
+export * from "./compete.ts";

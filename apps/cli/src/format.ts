@@ -115,7 +115,12 @@ export function formatApprovals(approvals: ApprovalView[]): string {
     // Pending approvals show the whole summary (a plan is read before it is approved); decided ones one line.
     const summary = a.status === "pending" ? a.summary.trim().split("\n").map((l) => `  ${l}`.trimEnd()) : [`  ${truncate(oneLine(a.summary), 200)}`];
     lines.push(`${a.id}  ${a.action}  run ${a.run_id}  (${a.status})`, ...summary, `  why: ${a.reason}`);
-    if (a.status === "pending") lines.push(`  decide: navarch approve ${a.id} | navarch reject ${a.id} [--reason <text>]`);
+    if (a.status === "pending" && a.choices.length) {
+      lines.push(`  choices: ${a.choices.join(", ")} (default ${a.choices[0]})`, `  decide: navarch approve ${a.id} [--pick <choice>] | navarch reject ${a.id} [--reason <text>]`);
+    } else if (a.status === "pending") {
+      lines.push(`  decide: navarch approve ${a.id} | navarch reject ${a.id} [--reason <text>]`);
+    }
+    if (a.choice) lines.push(`  picked: ${a.choice}`);
     lines.push("");
   }
   return lines.join("\n").trimEnd();

@@ -6,6 +6,7 @@ import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
 import { buildInstructions, implementer, leadTurnPrompt, parseComplexity, PROFILES, resumeWithInstructions } from "../orchestrator/profiles.ts";
+import { ownsWorktree, ownWorktreeKey } from "../orchestrator/worktrees.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
 const RETRYABLE = new Set(["transient", "interrupted"]);
@@ -225,7 +226,7 @@ export class Scheduler {
           run_id: run.id,
           task_id: task.id,
           actor: scheduler,
-          payload: { approval_id: newId("apr"), action, resource: task.id, reason: decision.reason, summary: describe },
+          payload: { approval_id: newId("apr"), action, resource: task.id, reason: decision.reason, summary: describe, ...(task.choices?.length ? { choices: task.choices } : {}) },
         },
       ];
       // An approval node puts the run in awaiting_approval; a budget stop shows as budget_exceeded;
@@ -271,10 +272,11 @@ export class Scheduler {
     const previousLead = this.previousLeadTurn(task);
     const leadSession = previousLead?.adapter === task.adapter ? (previousLead.resume_token ?? undefined) : undefined;
     const runSlug = run.flow_definition?.definition.metadata.name;
-    // A parallel team member works in its own worktree, forked from the run's (ADR 0029).
-    const own = runSlug && task.team?.own_worktree && task.team.key ? task.team.key : undefined;
+    // A parallel team member or a competitor works in its own worktree, forked from the run's (ADR 0029, 0031).
+    const ownKey = ownWorktreeKey(task);
+    const own = runSlug && ownKey ? ownKey : undefined;
     const sandboxSlug = own ? `${runSlug}-${own}` : runSlug;
-    const runSandboxId = runSlug && !own ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id && !t.team?.own_worktree)?.sandbox_id : undefined;
+    const runSandboxId = runSlug && !own ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id && !ownsWorktree(t))?.sandbox_id : undefined;
     const sandboxId = task.sandbox_id ?? runSandboxId;
     const abort = new AbortController();
     this.aborts.set(task.id, abort);
@@ -442,8 +444,12 @@ export class Scheduler {
    */
   private routeTask(run: RunRecord, task: TaskRecord, exclude: string[] = []): NewEvent<"model.routed"> {
     const tasks = this.store.taskRecordsOfRun(run.id);
-    // A lead's later turns prefer the agent of its previous turn, so it can resume that session (ADR 0022).
-    const prefer = task.prefer ?? this.previousLeadTurn(task)?.model_id ?? undefined;
+    // A lead's later turns prefer the agent of its previous turn, so it can resume that session (ADR 0022);
+    // a competitor's fix iterations stay with its agent, and its first one avoids the others' (ADR 0031).
+    const competitor = task.compete?.role === "competitor" ? task.compete : undefined;
+    const rivals = competitor ? tasks.filter((t) => t.compete?.role === "competitor" && t.compete.node_id === competitor.node_id && t.compete.key !== competitor.key && t.model_id) : [];
+    const earlier = competitor ? tasks.filter((t) => t.node_id === task.node_id && t.iteration < task.iteration && t.model_id).at(-1) : undefined;
+    const prefer = task.prefer ?? this.previousLeadTurn(task)?.model_id ?? earlier?.model_id ?? undefined;
     const triage = tasks.filter((t) => t.profile === "triager" && t.status === "succeeded").at(-1);
     const complexity = typeof triage?.outputs?.complexity === "number" ? triage.outputs.complexity : undefined;
     const implementerProviders = [
@@ -470,6 +476,8 @@ export class Scheduler {
       exhausted: this.store.exhaustedQuotas(),
       exclude,
       ...(prefer ? { prefer } : {}),
+      ...(earlier && prefer === earlier.model_id ? { preferredBy: "this competitor's earlier iteration" } : {}),
+      ...(rivals.length ? { spread: [...new Set(rivals.map((t) => t.model_id!))] } : {}),
       // What running billed agents hold is not there to spend (ADR 0030).
       budgetRemaining: this.budgets.available(run),
       quotaUse,

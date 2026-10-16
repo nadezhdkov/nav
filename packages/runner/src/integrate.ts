@@ -39,8 +39,13 @@ export function forkWorktree(spec: WorktreeSpec & { from: SandboxHandle }): Prom
       () => true,
       () => false,
     );
+    const fromExists = await git(spec.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${spec.from.branch}`]).then(
+      () => true,
+      () => false,
+    );
     let baseCommit = spec.baseCommit;
-    if (exists) baseCommit = (await git(spec.repoPath, ["merge-base", branch, spec.from.branch])).trim();
+    // Without a shared branch yet (a compete node first in its Flow, ADR 0031) the fork point is the base.
+    if (exists) baseCommit = fromExists ? (await git(spec.repoPath, ["merge-base", branch, spec.from.branch])).trim() : spec.baseCommit;
     else if (existsSync(join(spec.from.path, ".git"))) {
       // A merge waiting for its conflicts to be resolved is not committed: the member forks from before it.
       baseCommit = (await merging(spec.from.path))

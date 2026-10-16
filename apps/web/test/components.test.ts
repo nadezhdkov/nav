@@ -45,6 +45,8 @@ const approval: ApprovalView = {
   summary: "Open a draft PR from navarch/run_01ABC/task",
   status: "pending",
   decision_reason: null,
+  choices: [],
+  choice: null,
   created_at: "2026-10-15T00:00:00Z",
   decided_at: null,
 };

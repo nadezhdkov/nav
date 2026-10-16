@@ -72,6 +72,7 @@ const view: FleetView = {
       flow: "task",
       autonomy_level: 2,
       team: null,
+      compete: null,
       progress: { done: 1, total: 2 },
       project_id: null,
       agents: [
