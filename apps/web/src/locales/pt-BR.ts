@@ -335,6 +335,7 @@ export const ptBR: Messages = {
       seven_day: "semana",
       seven_day_opus: "semana (Opus)",
       seven_day_sonnet: "semana (Sonnet)",
+      rate_limit: "limite de uso",
       primary: "primária",
       secondary: "secundária",
     },
