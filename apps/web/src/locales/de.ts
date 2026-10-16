@@ -334,6 +334,7 @@ export const de: Messages = {
       seven_day: "Woche",
       seven_day_opus: "Woche (Opus)",
       seven_day_sonnet: "Woche (Sonnet)",
+      rate_limit: "Nutzungslimit",
       primary: "primär",
       secondary: "sekundär",
     },

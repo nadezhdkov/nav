@@ -369,6 +369,7 @@ export class Scheduler {
       events.push(taskStatus(runId, task.id, "running", "failed", attempt, error.message, error));
       // Waits for a quota reset and interruptions by the user are not counted as attempts.
       const attempts = attempt - task.rate_limit_waits - task.instruction_interrupts;
+      if (kind === "rate_limited" && task.type === "agent") events.push(this.rateLimitObserved(task, error.retry_at));
       const fallback = kind === "rate_limited" && !isTerminalRun(run.status) ? this.fallback(task) : undefined;
       if (fallback) {
         // Another agent takes over right away; like a quota wait, this is not an attempt.
@@ -473,6 +474,26 @@ export class Scheduler {
     const left = [...this.store.routedFrom(task.id), task.model_id ?? task.adapter];
     const routed = this.routeTask(run, task, left);
     return left.includes(routed.payload.model_id) ? undefined : routed;
+  }
+
+  /**
+   * Records a rate limit as an exhausted quota window until the reset the agent reported, or for
+   * `routing.rate_limit_cooldown_minutes` when it gave none, so the Model Router skips the agent
+   * meanwhile instead of trying it first on every task (go/no-go finding F4).
+   */
+  private rateLimitObserved(task: TaskRecord, retryAt: string | undefined): NewEvent<"quota.observed"> {
+    const now = Date.now();
+    const reset = retryAt ? Date.parse(retryAt) : NaN;
+    const until = Number.isFinite(reset) ? Math.max(reset, now) : now + this.config.routing.rate_limit_cooldown_minutes * 60_000;
+    // A native model's limit belongs to its provider, not to every native model (ADR 0014).
+    const prefix = task.adapter === "native" && task.model?.includes("/") ? `${task.model.split("/")[0]}/` : undefined;
+    return {
+      type: "quota.observed",
+      run_id: task.run_id,
+      task_id: task.id,
+      actor: scheduler,
+      payload: { adapter: task.adapter, window: "rate_limit", exhausted: true, resets_at: new Date(until).toISOString(), ...(prefix ? { model_prefix: prefix } : {}) },
+    };
   }
 
   private providerOf(task: TaskRecord): string {

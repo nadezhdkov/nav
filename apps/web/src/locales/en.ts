@@ -332,6 +332,7 @@ export const en = {
       seven_day: "week",
       seven_day_opus: "week (Opus)",
       seven_day_sonnet: "week (Sonnet)",
+      rate_limit: "rate limit",
       primary: "primary",
       secondary: "secondary",
     },
