@@ -334,6 +334,7 @@ export const zhCN: Messages = {
       seven_day: "一周",
       seven_day_opus: "一周 (Opus)",
       seven_day_sonnet: "一周 (Sonnet)",
+      rate_limit: "速率限制",
       primary: "主要",
       secondary: "次要",
     },

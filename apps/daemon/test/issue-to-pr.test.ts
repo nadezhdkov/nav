@@ -459,6 +459,27 @@ describe("Model Router (ADR 0013)", () => {
     ]);
   });
 
+  it("skips a rate-limited agent that gave no reset time for a cooldown, instead of trying it on every task", async () => {
+    const { repo, gitUrl } = project(VERIFY_OK);
+    const { api, copilot, grok, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "flow", copilot: "flow", grok: "free-limit" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    const run = await waitRun(created.body.id, (r) => r.status === "done" || r.status === "failed");
+
+    expect(run.status).toBe("done");
+    // Grok is tried once, on triage; plan and implement go straight to Copilot.
+    expect(grok!.calls()).toHaveLength(1);
+    expect(copilot!.calls()).toHaveLength(3);
+
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    const quota = events.find((e): e is NavarchEvent<"quota.observed"> => e.type === "quota.observed");
+    expect(quota?.payload).toMatchObject({ adapter: "grok", window: "rate_limit", exhausted: true, resets_at: expect.any(String) });
+    const minutes = (Date.parse(quota!.payload.resets_at!) - Date.now()) / 60_000;
+    expect(minutes).toBeGreaterThan(25);
+    expect(minutes).toBeLessThanOrEqual(30);
+    const plan = routed(events).find((d) => d.tier === "fast" && !d.fallback_from && d.model_id === "copilot" && d.reason.includes("complexity"));
+    expect(plan?.skipped).toContainEqual({ id: "grok", reason: expect.stringContaining("quota exhausted until") });
+  });
+
   it("pins every agent to --adapter, without routing", async () => {
     const { repo, gitUrl } = project(VERIFY_OK);
     const { api, copilot, waitRun } = await start({ gitUrl, autonomy: 3, scenario: "edit", copilot: "flow" });

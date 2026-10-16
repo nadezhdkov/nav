@@ -94,6 +94,11 @@ switch (scenario) {
     result("error_during_execution", "", { stop_reason: "error", errors: ["rate limit exceeded: too many requests, retry in 30s"], modelUsage: {} });
     process.exit(1);
     break;
+  case "free-limit":
+    // The real free-tier message carries no reset time.
+    result("error_during_execution", "", { stop_reason: "error", errors: ["You've reached your free Grok Build usage limit for now"], modelUsage: {} });
+    process.exit(1);
+    break;
   case "slow":
     writeFileSync(join(stateDir, "started"), "1");
     await new Promise((r) => setTimeout(r, 60_000));
