@@ -68,7 +68,7 @@ function approvalNode(deps: Deps): ActionExecutor {
 function verifyNode(deps: Deps): ActionExecutor {
   return {
     action: "verification.run",
-    describe: (run) => `Run ${run.verify.length} verify command(s) in the run's worktree: ${run.verify.map((c) => c.run).join("; ")}`,
+    describe: (run) => `Run ${run.verify.length} verify command(s) ${run.isolation ? `in a container (${run.isolation.image}, network ${run.isolation.network}) on` : "in"} the run's worktree: ${run.verify.map((c) => c.run).join("; ")}`,
     async execute({ run, task, attempt, signal }) {
       const started = Date.now();
       // A competitor's checks run in its own worktree (ADR 0031).
@@ -85,6 +85,7 @@ function verifyNode(deps: Deps): ActionExecutor {
           timeoutMs: deps.config.scheduler.task_timeout_minutes * 60_000,
           onOutput: (chunk) => log.write(chunk),
           signal,
+          ...(run.isolation ? { container: { runtime: deps.config.container.runtime, isolation: run.isolation, name: `navarch-${task.id}-${attempt}`.toLowerCase() } } : {}),
         });
         if (signal.aborted) return failed("cancelled", "verification cancelled", started);
         const artifactId = await saveArtifact(deps, run.id, task.id, "report", JSON.stringify(report, null, 2), summarise(report));

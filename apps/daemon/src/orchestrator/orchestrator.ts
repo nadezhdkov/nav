@@ -25,7 +25,7 @@ import { pullRequestDiff, resolveHead, resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
-import { loadProjectConfig } from "../project.ts";
+import { loadProjectConfig, resolveIsolation } from "../project.ts";
 import { PolicyEngine } from "../policy/engine.ts";
 import { issuePrompt, prPrompt } from "./issue.ts";
 import { implementer, PROFILES } from "./profiles.ts";
@@ -200,6 +200,7 @@ export class Orchestrator {
       }
     }
 
+    const isolation = resolveIsolation(project, this.config);
     const runId = newId("run");
     const name = uniqueCodename(runId, (n) => this.store.runIdByName(n) !== undefined);
     this.store.append([
@@ -222,6 +223,7 @@ export class Orchestrator {
           ...(workItem ? { work_item: { source: workItem.source, ...(pr ? { kind: "pull_request" as const } : {}), repo: workItem.repo, number: workItem.number, url: workItem.url } } : {}),
           verify: project.verify,
           protected_paths: project.protected_paths,
+          ...(isolation ? { isolation } : {}),
           flow: { definition: flow, params, ...(Object.keys(subflows).length ? { subflows } : {}), ...(resolved.source === "studio" ? { source: "studio" as const, version: resolved.version } : {}) },
           autonomy_level: project.autonomy_level ?? this.config.autonomy_level,
           routing,

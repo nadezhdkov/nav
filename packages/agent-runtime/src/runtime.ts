@@ -9,6 +9,7 @@ import {
   type Actor,
   type AgentAdapter,
   type AgentProfile,
+  type ContainerIsolation,
   type NewEvent,
   type SandboxHandle,
   type TaskResult,
@@ -16,7 +17,7 @@ import {
 } from "@navarch/contracts";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import { route, type RouteDecision, type RouteRequest, type RouterConfig } from "@navarch/model-router";
-import { branchName, changedFiles, createWorktree, forkWorktree, runShell, worktreeDiff, worktreePath } from "@navarch/runner";
+import { branchName, changedFiles, containerRuntimeProblem, createWorktree, forkWorktree, gitCommonDir, hostUser, runInContainer, runShell, worktreeDiff, worktreePath } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -52,6 +53,8 @@ export type TaskSpec = {
   tools: ToolGrant;
   /** Run by the Runner in the sandbox, once per sandbox, before the agent; not part of the agent's grant. */
   setupCommands?: string[];
+  /** L2 (ADR 0035): setup commands run in a container of this runtime and image, never on the host. */
+  container?: { runtime: string; isolation: ContainerIsolation };
   /** Also saves the agent's summary as an artifact of this kind (the planner's plan). */
   summaryArtifact?: "plan";
   budget: { maxCost: number; maxTurns: number; timeoutMs: number };
@@ -225,16 +228,24 @@ export class AgentRuntime {
     const marker = join(this.deps.home, "logs", spec.runId, `${spec.sandboxSlug ?? spec.taskId}.setup-done`);
     if (!commands.length || existsSync(marker)) return undefined;
     const runner: Actor = { kind: "system", component: "runner" };
-    for (const command of commands) {
-      log.write(`--- setup: ${command}\n`);
+    const container = spec.container;
+    if (container) {
+      const problem = await containerRuntimeProblem(container.runtime);
+      if (problem) return redact(`setup needs a container: container runtime unavailable: ${problem}`);
+    }
+    const gitDir = container ? await gitCommonDir(sandbox.path).catch(() => undefined) : undefined;
+    for (const [i, command] of commands.entries()) {
+      log.write(`--- setup: ${command}${container ? ` (container ${container.isolation.image})` : ""}\n`);
       const started = Date.now();
-      const { code, tail } = await runShell(command, {
-        cwd: sandbox.path,
-        env: scrubbedEnv(DEFAULT_SCRUB_ENV),
+      const options = {
         timeoutMs: spec.budget.timeoutMs,
-        onOutput: (chunk) => log.write(redact(chunk)),
+        onOutput: (chunk: string) => log.write(redact(chunk)),
         ...(spec.signal ? { signal: spec.signal } : {}),
-      });
+      };
+      // Setup installs dependencies: it gets a network even when the verify checks do not.
+      const { code, tail } = container
+        ? await runInContainer({ ...container, network: "bridge", name: `navarch-${spec.taskId}-${spec.attempt}-setup-${i + 1}`.toLowerCase(), worktree: sandbox.path, ...(gitDir ? { gitDir } : {}), user: hostUser() }, command, options)
+        : await runShell(command, { cwd: sandbox.path, env: scrubbedEnv(DEFAULT_SCRUB_ENV), ...options });
       if (spec.signal?.aborted) return undefined;
       this.publish(spec, runner, "sandbox.setup", { command, exit_code: code, duration_ms: Date.now() - started });
       if (code !== 0) {

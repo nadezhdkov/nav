@@ -4,7 +4,7 @@ import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { CompeteTaskRef } from "./compete.ts";
 import { TeamTaskRef } from "./team.ts";
-import { VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
+import { ContainerIsolation, VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
 /** Who caused an event (spec §9.2 `actor`). */
 export const Actor = z.discriminatedUnion("kind", [
@@ -107,6 +107,8 @@ export const EventPayloads = {
     /** From `.navarch/project.yaml` at `base_commit`; absent in runs created before verification existed. */
     verify: z.array(VerifyCommand).optional(),
     protected_paths: z.array(z.string()).optional(),
+    /** L2: verify checks and setup commands run in this container (ADR 0035); absent on the host. */
+    isolation: ContainerIsolation.optional(),
     /** The Flow this run executes, copied whole so a later edit of the YAML cannot change a running run. Absent before Flows. */
     flow: z
       .object({

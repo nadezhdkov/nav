@@ -81,11 +81,31 @@ export const VerificationCheck = z.object({
 });
 export type VerificationCheck = z.infer<typeof VerificationCheck>;
 
+/**
+ * Isolation level L2 (spec §6.5.1, ADR 0035): the run's verify checks and setup commands run in a
+ * container of this image instead of on the host. Resolved when the run is created.
+ */
+/** An image reference; it never starts with `-`, so the runtime cannot read it as a flag (`--privileged`). */
+export const ContainerImage = z.string().regex(/^[a-z0-9][a-z0-9._/:@-]*$/i, "an image reference such as node:22-bookworm-slim");
+
+export const ContainerIsolation = z.object({
+  kind: z.literal("container"),
+  image: ContainerImage,
+  /** Container network of the verify checks; setup commands always get `bridge`. */
+  network: z.enum(["none", "bridge"]),
+  memory: z.string().regex(/^\d+[kmg]?$/i),
+  cpus: z.number().positive(),
+  pids_limit: z.number().int().positive(),
+});
+export type ContainerIsolation = z.infer<typeof ContainerIsolation>;
+
 export const VerificationReport = z.object({
   checks: z.array(VerificationCheck),
   /** False when a required check failed. A run with no checks passes but is unverified (a warning). */
   passed: z.boolean(),
   blocking_failures: z.array(z.string()),
   warnings: z.array(z.string()),
+  /** Where the checks ran; absent on the host (ADR 0035). */
+  sandbox: z.object({ kind: z.literal("container"), image: z.string(), network: z.enum(["none", "bridge"]) }).optional(),
 });
 export type VerificationReport = z.infer<typeof VerificationReport>;
