@@ -403,6 +403,12 @@ describe("Model Router (ADR 0013)", () => {
     expect(decisions[3]!.reason).toContain("provider other than the implementer's (github-copilot)");
     // Grok leads the fast tier but is not signed in here.
     expect(decisions[0]!.skipped).toEqual([{ id: "grok", reason: expect.stringContaining("grok login") }]);
+
+    // The PR says which agent planned, implemented and reviewed, with the model each one used.
+    const body = gh.pulls[0]!.body;
+    expect(body).toMatch(/<summary>Plan the implementation followed · planned by copilot · [^<]+<\/summary>/);
+    expect(body).toMatch(/_Reviewed by claude-code · [^_]+_/);
+    expect(body).toMatch(/_Implemented by copilot · [^_]+_/);
   });
 
   it("sends the fast tier to Grok when it is signed in (ADR 0024)", async () => {
