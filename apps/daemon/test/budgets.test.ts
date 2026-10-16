@@ -151,6 +151,7 @@ describe("observed metrics (ADR 0023)", () => {
       succeeded: 2,
       success_rate: 0.667,
       error_rate_24h: null,
+      rate_limited: 1,
       median_tokens_per_success: 250,
       median_cost_per_success: 0.2,
       cost: 0.45,

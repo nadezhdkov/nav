@@ -268,13 +268,14 @@ export function formatUsage(u: UsageView): string {
     lines.push(`agents and models, last ${u.window_days} days${u.models[0]?.profile ? ` (profile ${u.models[0].profile})` : ""}:`);
     lines.push(
       table(
-        ["MODEL", "BILLING", "TASKS", "OK", "ERR 24H", "TOKENS IN/OUT", "TOKENS/OK", "COST/OK", "BILLED", "P50"],
+        ["MODEL", "BILLING", "TASKS", "OK", "ERR 24H", "LIMITED", "TOKENS IN/OUT", "TOKENS/OK", "COST/OK", "BILLED", "P50"],
         u.models.map((m) => [
           m.id,
           m.billing,
           String(m.tasks),
           pct(m.success_rate),
           pct(m.error_rate_24h),
+          String(m.rate_limited),
           `${tokens(m.tokens_in)}/${tokens(m.tokens_out)}`,
           m.median_tokens_per_success === null ? "-" : tokens(m.median_tokens_per_success),
           m.median_cost_per_success === null ? "-" : usd(m.median_cost_per_success),
