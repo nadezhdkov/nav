@@ -35,6 +35,11 @@ export const FlowSummary = z.object({
   draft: z.object({ revision: z.number().int().positive(), saved_at: z.string() }).nullable(),
   /** Top-level nodes of the published (or built-in) Flow; null when only a draft exists. */
   node_count: z.number().int().nonnegative().nullable(),
+  /**
+   * What a run of the published (or built-in) Flow must start from: any prompt, an issue (it opens
+   * a PR unconditionally) or a pull request; null when only a draft exists.
+   */
+  needs: z.enum(["prompt", "issue", "pull_request"]).nullable(),
   /** A built-in with the same name took precedence over this Studio Flow. */
   shadowed: z.boolean(),
   updated_at: z.string().nullable(),

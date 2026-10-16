@@ -11,7 +11,7 @@ The Web UI gets a **Flow Studio**: a canvas that edits Flows visually, with a li
 - **Built-in** Flows are the YAML files of `flows/`, loaded when the daemon starts, as today. They are read-only in the Studio. "Duplicate" copies one into a new Studio Flow.
 - **Studio** Flows live in the event store. Their YAML text is stored as written, with comments and key order:
   - `flow.draft.saved` `{ name, yaml, revision, based_on }`: the user saved the draft. `revision` counts the saves of the current draft from 1, and `based_on` is the published version it started from (null for a new Flow).
-  - `flow.draft.discarded` `{ name }`: the user dropped the draft.
+  - `flow.draft.discarded` `{ name }`: the user dropped the draft. A Flow that was never published is gone with it, and the Studio calls this "Delete flow" (go/no-go finding F5, F6).
   - `flow.published` `{ name, version, yaml, sha256 }`: the user published the draft as `version` (1, 2, …). A published version never changes. Publishing clears the draft.
   - Projection `flows` (one row per Studio Flow, with its draft) and `flow_versions` (one row per published version).
 - A Flow's name is its `metadata.name` and never changes. A Studio Flow cannot take a built-in's name. Saving YAML whose `metadata.name` is not the Flow's name is refused. To rename a Flow, duplicate it.
@@ -25,6 +25,7 @@ The Web UI gets a **Flow Studio**: a canvas that edits Flows visually, with a li
 - `--flow <name>` (CLI, `CreateRunRequest.flow`, concierge `start_run`, Inbox start) looks up the built-in Flows first, then the **latest published version** of the Studio Flows. A Studio Flow with only a draft cannot run (`invalid_request`, "publish it first").
 - A Studio Flow may run as the child of a `subflow` node: a built-in or a published Studio Flow, with the usual one-level rules of ADR 0032. Built-in Flows never name Studio Flows.
 - `run.created` records `flow.source` (`builtin` | `studio`) and, for Studio Flows, `flow.version`. The run already keeps a copy of its Flow and its children, so publishing a new version never changes a running run. `RunDetail.flow_version` shows it.
+- What a run of a Flow must start from is `FlowSummary.needs` (`flowNeeds` in `packages/flow-engine`, also used by the orchestrator): `pull_request` when it or a subflow reviews or comments on one, `issue` when a top-level GitHub node opens a PR without `when`, otherwise `prompt`. New run offers a Flow that needs an issue or a pull request as disabled, with the reason, and the Inbox start dialog offers fix-issue, team and the published Studio Flows that take an issue (go/no-go findings F1, F3).
 - Everything else about a run is the same as for built-in Flows. Policy still decides approvals by autonomy level and action (`github.pr.create`, `verification.run`, `task.start`, …), so a Flow without `approval` nodes cannot skip an approval the policy requires. A Flow with a `compete` node still needs `--budget`.
 
 ### Validation

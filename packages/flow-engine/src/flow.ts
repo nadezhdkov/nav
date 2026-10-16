@@ -43,6 +43,24 @@ export function subflowsOf(flow: FlowDefinition, flows: ReadonlyMap<string, Flow
   return out;
 }
 
+/** GitHub operations that act on a pull request the run works on, rather than open one. */
+export const PR_USES = ["pr.review", "pr.comment"];
+
+/** What a run of a Flow must start from. */
+export type FlowNeeds = "prompt" | "issue" | "pull_request";
+
+/**
+ * What a run of `flow` must start from: a pull request when it (or a subflow) reviews or
+ * comments on one, an issue when a top-level GitHub node opens a PR unconditionally (a node with
+ * `when`, e.g. `project.work_item`, runs only if the condition holds), otherwise any prompt.
+ */
+export function flowNeeds(flow: FlowDefinition, subflows: Record<string, FlowDefinition> = {}): FlowNeeds {
+  const all = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
+  if (all.some((n) => n.type === "github" && PR_USES.includes(n.uses))) return "pull_request";
+  if (flow.nodes.some((n) => n.type === "github" && !n.when)) return "issue";
+  return "prompt";
+}
+
 /** Default param values, overridden by the caller's. */
 export function resolveParams(flow: FlowDefinition, given: Record<string, number | string | boolean> = {}): Record<string, number | string | boolean> {
   const out: Record<string, number | string | boolean> = {};

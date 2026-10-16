@@ -256,6 +256,8 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "flow.draft.discarded": {
       const p = (event as NavarchEvent<"flow.draft.discarded">).payload;
       db.prepare("UPDATE studio_flows SET draft_yaml = NULL, draft_revision = NULL, draft_saved_at = NULL, based_on = NULL, updated_at = ? WHERE name = ?").run(ts, p.name);
+      // A Flow that was never published is gone with its draft.
+      db.prepare("DELETE FROM studio_flows WHERE name = ? AND published_version IS NULL").run(p.name);
       return;
     }
     case "flow.published": {

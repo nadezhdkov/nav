@@ -38,6 +38,7 @@ function detail(over: Partial<FlowDetail> = {}): FlowDetail {
     published_version: null,
     draft: { revision: 1, saved_at: "2026-10-16T00:00:00Z" },
     node_count: null,
+    needs: null,
     shadowed: false,
     updated_at: "2026-10-16T00:00:00Z",
     draft_yaml: newFlowYaml("my-flow"),
@@ -133,6 +134,23 @@ describe("Flow Studio (ADR 0033)", () => {
     expect(page.findAll("button").some((b) => b.text().includes("Save draft"))).toBe(false);
     expect(button(page, "Agent").attributes("disabled")).toBeDefined();
     expect(button(page, "Duplicate")).toBeDefined();
+    page.unmount();
+  });
+
+  it("deletes a Flow that was never published and goes back to the list (go/no-go finding)", async () => {
+    api.flow.mockResolvedValue(detail());
+    api.discardFlowDraft.mockResolvedValue({ flow: null });
+    const confirm = vi.fn(() => true);
+    const before = window.confirm;
+    window.confirm = confirm;
+    const { page, router } = await open();
+    expect(page.findAll("button").some((b) => b.text().includes("Discard draft"))).toBe(false);
+    await button(page, "Delete flow").trigger("click");
+    await flushPromises();
+    expect(confirm).toHaveBeenCalledWith("Delete this flow? It was never published, so no run uses it.");
+    expect(api.discardFlowDraft).toHaveBeenCalledWith("my-flow", 1);
+    expect(router.currentRoute.value.path).toBe("/flows");
+    window.confirm = before;
     page.unmount();
   });
 

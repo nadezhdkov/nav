@@ -185,7 +185,9 @@ async function publish() {
 }
 
 async function discard() {
-  if (revision.value === null || !window.confirm(t("studio.discardConfirm"))) return;
+  // A Flow never published is deleted with its draft.
+  const confirm = detail.value?.published_version ? t("studio.discardConfirm") : t("studio.deleteConfirm");
+  if (revision.value === null || !window.confirm(confirm)) return;
   try {
     const res = await api.discardFlowDraft(props.name, revision.value);
     savedText.value = text.value;
@@ -282,7 +284,9 @@ const btn = "inline-flex min-h-10 items-center gap-2 rounded-md border border-li
         <button type="button" :class="btn" :aria-expanded="panel === 'simulate'" @click="panel = panel === 'simulate' ? null : 'simulate'"><FlaskConical :size="16" aria-hidden="true" />{{ t("studio.simulate") }}</button>
         <button type="button" :class="btn" @click="duplicating = !duplicating; dupName = `${name}-copy`"><Copy :size="16" aria-hidden="true" />{{ t("flows.duplicate") }}</button>
         <template v-if="!readOnly">
-          <button v-if="revision !== null && detail?.published_version" type="button" :class="btn" @click="discard"><Trash2 :size="16" aria-hidden="true" />{{ t("studio.discard") }}</button>
+          <button v-if="revision !== null" type="button" :class="btn" @click="discard">
+            <Trash2 :size="16" aria-hidden="true" />{{ detail?.published_version ? t("studio.discard") : t("studio.deleteFlow") }}
+          </button>
           <button type="button" :class="btn" :disabled="busy || !dirty" :title="t('studio.saveHint')" @click="save"><Save :size="16" aria-hidden="true" />{{ t("studio.save") }}</button>
           <button type="button" class="inline-flex min-h-10 items-center gap-2 rounded-md bg-accent px-3 text-sm font-semibold text-bg disabled:opacity-60" :disabled="busy || errors > 0 || (!dirty && revision === null)" @click="publishing = true">
             <Upload :size="16" aria-hidden="true" />{{ t("studio.publishButton") }}

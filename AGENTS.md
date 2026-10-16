@@ -90,6 +90,8 @@ Slice 4, [Flow Studio](docs/specs/phase-2-04-flow-studio.md) (ADR 0033): `/flows
 - `--flow <name>` (and New run's "Your flows") gets a built-in first, then a Studio Flow's latest published version. Drafts never run. `run.created` records `flow.source|version`, and the run page shows `name · vN`. A built-in added later shadows a Studio Flow with the same name.
 - Routes `GET /api/v1/flows[/catalog|/:name|/:name/versions/:v]`, `PUT|DELETE /api/v1/flows/:name/draft`, `POST /api/v1/flows/:name/publish`, `POST /api/v1/flows/validate|simulate`; none is open to paired devices. Policy actions `flow.save` and `flow.publish` are allowed for the user only.
 - CLI `navarch flow list|show|validate`.
+- `FlowSummary.needs` (`prompt`, `issue`, `pull_request`, from `flowNeeds` in `packages/flow-engine`) says what a run of a Flow must start from. New run disables a Flow that needs an issue, the Inbox start dialog offers the published Studio Flows that take one, and "Delete flow" removes a Flow that was never published.
+- Go/no-go met on 2026-10-16: `plan-and-pr` was built only through the Studio, ran from New run and from an issue, and opened the draft PR vectr-sandbox#9. Report and findings F1–F7 are in [`docs/reports/2026-10-16-flow-studio-go-no-go.md`](docs/reports/2026-10-16-flow-studio-go-no-go.md).
 
 Not yet: generic `parallel`/`join` Flow nodes, label triggers, webhooks and `check_run` triggers for `ci-fix`, starting PR runs from the Web UI, the morning summary (§7.4), WebAuthn (comes with the first action that needs re-authentication), relay.
 
