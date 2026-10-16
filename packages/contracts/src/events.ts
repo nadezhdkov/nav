@@ -112,6 +112,8 @@ export const EventPayloads = {
     autonomy_level: z.number().int().min(0).max(4).optional(),
     /** `auto`: the Model Router picks each agent task's adapter; `pinned`: the run's adapter and model (ADR 0013). Absent (pinned) before routing. */
     routing: z.enum(["auto", "pinned"]).optional(),
+    /** Documents the user attached (`RunAttachments` checked them on the way in); absent when none. */
+    attachments: z.array(z.object({ name: z.string(), content: z.string() })).optional(),
   }),
   "run.status_changed": z.object({ from: RunStatus, to: RunStatus, reason: z.string().optional() }),
   "task.created": z.object({
