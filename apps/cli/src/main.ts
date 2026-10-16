@@ -18,6 +18,7 @@ import {
   type InboxItemDetail,
   type InboxView,
   type ProjectView,
+  type AddProjectResult,
   type StartInboxResult,
   type SyncInboxResult,
   type BudgetView,
@@ -233,11 +234,12 @@ async function main(argv: string[]): Promise<number> {
     case "project": {
       const api = new ApiClient(home);
       if (rest[0] === "add") {
-        const project = await api.request<ProjectView>("POST", "/api/v1/projects", {
+        const project = await api.request<AddProjectResult>("POST", "/api/v1/projects", {
           path: resolvePath(required(rest[1], "path of a clone")),
           ...(values.github ? { github: values.github } : {}),
           ...(values.name ? { name: values.name } : {}),
         });
+        if (!json) for (const w of project.warnings ?? []) console.error(`warning: ${w}`);
         return print(json ? project : `project ${project.id}: ${project.repo} (${project.path}); sync now with: navarch sync`, json);
       }
       if (rest[0] === "clone") {

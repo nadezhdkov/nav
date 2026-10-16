@@ -15,6 +15,7 @@ import {
   type NewEvent,
   type ProjectSyncResult,
   type ProjectView,
+  type AddProjectResult,
   type StartInboxRequest,
   type StartInboxResult,
   type TriageState,
@@ -104,7 +105,7 @@ export class InboxService {
     return this.deps.store.listProjects().map((p) => this.projectView(p, items));
   }
 
-  async addProject(req: CreateProjectRequest, actor: Actor): Promise<ProjectView> {
+  async addProject(req: CreateProjectRequest, actor: Actor): Promise<AddProjectResult> {
     let path: string;
     try {
       path = await resolveRepoRoot(resolve(req.path));
@@ -122,7 +123,23 @@ export class InboxService {
     const id = newId("prj");
     const name = req.name ?? origin.split("/")[1]!;
     this.deps.store.append([{ type: "project.added", run_id: null, task_id: null, actor, payload: { project_id: id, name, repo: origin, path } }]);
-    return this.projectView(this.deps.store.getProject(id)!, []);
+    return { ...this.projectView(this.deps.store.getProject(id)!, []), warnings: await this.pushWarnings(path, origin) };
+  }
+
+  /**
+   * A project the token cannot push to still syncs its Inbox and can run read-only work, but its
+   * issue runs will be refused at start (go/no-go F5): say so when it is added.
+   */
+  private async pushWarnings(path: string, repo: string): Promise<string[]> {
+    try {
+      await this.deps.github.checkPush(path, repo);
+      return [];
+    } catch (err) {
+      const why = err instanceof Error ? err.message.split("\n")[0] : String(err);
+      return [
+        `${why}: issue runs here cannot open PRs until the GitHub token has write access (fine-grained PAT: Contents and Pull requests read and write).`,
+      ];
+    }
   }
 
   // --- GitHub repositories (ADR 0026) ---
