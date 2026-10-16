@@ -29,7 +29,7 @@ import type {
   WorkItemStatus,
 } from "@navarch/contracts";
 import { ref } from "vue";
-import { bearer, forgetDevice, isDevice, refresh } from "./session.ts";
+import { bearer, forgetDevice, GATEWAY, isDevice, refresh } from "./session.ts";
 import { clearToken, getToken, setToken } from "./token.ts";
 
 /** Core API client (spec §9.1). The SPA talks to nothing else (architecture rule 1). */
@@ -43,6 +43,17 @@ export class ApiError extends Error {
     this.code = code;
   }
 }
+
+/**
+ * False while the daemon cannot be reached: no network, Tailscale off on this phone, or the daemon
+ * down behind `tailscale serve`. Views then say so instead of showing empty lists (go/no-go F2).
+ */
+export const reachable = ref(true);
+
+const unreachable = (detail: string) => {
+  reachable.value = false;
+  return new ApiError(0, "unreachable", `Navarch is not reachable: ${detail}`);
+};
 
 /** False once the daemon refused the token; the app then shows the sign-in or pairing screen. */
 export const authorized = ref(getToken() !== null || isDevice.value);
@@ -88,23 +99,34 @@ export async function signInFromFragment(location: Location = window.location, h
 }
 
 async function request<T>(method: string, path: string, body?: unknown, as: "json" | "text" = "json", retried = false): Promise<T> {
-  const token = await bearer();
-  if (!token) {
-    authorized.value = false;
-    throw new ApiError(401, "unauthorized", "no token");
+  let token: string | null;
+  let res: Response;
+  try {
+    token = await bearer();
+    if (!token) {
+      authorized.value = false;
+      throw new ApiError(401, "unauthorized", "no token");
+    }
+    res = await fetch(path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        "x-navarch-client": client(),
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  } catch (err) {
+    if (err instanceof ApiError) throw err;
+    throw unreachable((err as Error).message);
   }
-  const res = await fetch(path, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      "x-navarch-client": client(),
-      ...(body === undefined ? {} : { "content-type": "application/json" }),
-    },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
+  if (GATEWAY.has(res.status)) throw unreachable(`the daemon did not answer (${res.status})`);
+  reachable.value = true;
   if (res.status === 401) {
     // A device's access token may have just expired or been signed by an old key: refresh once.
-    if (isDevice.value && !getToken() && !retried && (await refresh())) return request<T>(method, path, body, as, true);
+    if (isDevice.value && !getToken() && !retried && (await refresh().catch((err: Error) => Promise.reject(unreachable(err.message))))) {
+      return request<T>(method, path, body, as, true);
+    }
     if (getToken()) clearToken();
     else forgetDevice();
     authorized.value = false;

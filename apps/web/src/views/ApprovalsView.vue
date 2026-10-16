@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reachable } from "../api/client.ts";
 import type { ApprovalView } from "@navarch/contracts";
 import { Check, Hand, X } from "@lucide/vue";
 import { computed, nextTick, reactive, watch } from "vue";
@@ -47,10 +48,13 @@ async function decide(a: ApprovalView, decision: "approve" | "reject") {
 <template>
   <section class="max-w-4xl p-6 max-md:p-4">
     <h1 class="mb-4 text-xl font-semibold">{{ t("approvals.title") }}</h1>
-    <p v-if="store.error" class="tone-danger mb-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+    <template v-if="store.error">
+      <!-- Unreachable: App shows why; repeating the raw error here would only add noise. -->
+      <p v-if="reachable" class="tone-danger mb-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+    </template>
 
     <h2 class="mb-2 text-sm font-medium tracking-wide text-muted uppercase">{{ t("approvals.pending") }}</h2>
-    <p v-if="store.loaded && !store.pending.length" class="rounded-lg border border-dashed border-line p-6 text-center text-muted">
+    <p v-if="store.loaded && !store.error && !store.pending.length" class="rounded-lg border border-dashed border-line p-6 text-center text-muted">
       {{ t("approvals.empty") }}
     </p>
     <article

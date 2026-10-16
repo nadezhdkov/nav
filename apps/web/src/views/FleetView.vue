@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { reachable } from "../api/client.ts";
 import type { FleetRun } from "@navarch/contracts";
 import { ChevronsDownUp, ChevronsUpDown, CircleCheck, CircleX, Hand, LayoutGrid, LoaderCircle, Maximize, Network, Ship } from "@lucide/vue";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
@@ -156,7 +157,10 @@ const counts = computed(() => [
         <KillSwitch compact class="ml-auto [&_button]:min-h-8 [&_button]:px-3" />
       </div>
 
-      <p v-if="store.error" class="tone-danger px-6 py-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+      <template v-if="store.error">
+        <!-- Unreachable: App shows why; repeating the raw error here would only add noise. -->
+        <p v-if="reachable" class="tone-danger px-6 py-3 text-sm" style="color: var(--tone)" role="alert">{{ store.error }}</p>
+      </template>
       <p v-else-if="!store.view" class="px-6 py-6 text-muted">{{ t("fleet.loading") }}</p>
       <p v-else-if="!runs.length" class="px-6 py-6 text-muted">{{ t("fleet.empty") }}</p>
 

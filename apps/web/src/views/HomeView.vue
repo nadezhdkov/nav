@@ -104,7 +104,7 @@ function at(runId: string): string | null {
 
     <div>
       <h2 class="mb-2 text-sm font-medium tracking-wide text-muted uppercase">{{ t("home.active") }}</h2>
-      <p v-if="runs.loaded && !active.length" class="rounded-lg border border-dashed border-line p-6 text-center text-muted">{{ t("home.empty") }}</p>
+      <p v-if="runs.loaded && !runs.error && !active.length" class="rounded-lg border border-dashed border-line p-6 text-center text-muted">{{ t("home.empty") }}</p>
       <ul class="space-y-2">
         <li v-for="r in active" :key="r.id">
           <RouterLink :to="`/runs/${r.id}`" class="block rounded-lg border border-line bg-surface p-3 hover:bg-surface-2">

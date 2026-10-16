@@ -9,6 +9,8 @@ import { getToken } from "./token.ts";
  */
 
 const KEY = "navarch.device";
+/** What `tailscale serve` (or another proxy) answers while the daemon behind it is down. */
+export const GATEWAY = new Set([502, 503, 504]);
 /** Refresh this long before the access token expires. */
 const EARLY_MS = 60_000;
 
@@ -104,11 +106,14 @@ async function doRefresh(): Promise<string | null> {
   const stored = load();
   if (!stored) return null;
   if (before && before.expires - EARLY_MS > Date.now()) return before.token;
+  // A network failure throws; the caller reports the daemon as unreachable, and the device stays paired.
   const res = await fetch("/api/v1/devices/refresh", {
     method: "POST",
     headers: { "content-type": "application/json", "x-navarch-client": "mobile" },
     body: JSON.stringify({ refresh_token: stored.refresh_token }),
   });
+  // `tailscale serve` answers 502–504 while the daemon is down: not a refused token either.
+  if (GATEWAY.has(res.status)) throw new TypeError(`the daemon did not answer (${res.status})`);
   if (res.status === 401) {
     // Rotated by another tab in the meantime? Then storage holds a newer token: try that once.
     const latest = load();
