@@ -98,6 +98,8 @@ export type PrBodyInput = {
   cost: number;
   models: string[];
   runId: string;
+  /** The Flow the run executed, with its version when it is a Studio Flow (ADR 0033). */
+  flow?: { name: string; version?: number };
   /** Compete mode (ADR 0031): who competed, how the judge ranked them and who chose the winner. */
   compete?: {
     winner: string;
@@ -139,7 +141,8 @@ export function prBody(input: PrBodyInput): string {
   const red = [...(report?.warnings ?? ["unverified: no verification report"]), ...(input.review === undefined ? ["not reviewed by an agent"] : [])];
   if (red.length) out.push("## 🔴 Needs human attention", "", ...red.map((w) => `- ${w}`), "");
   const models = input.models.length ? input.models.join(", ") : "unknown";
-  out.push("## Run", "", `- Run: \`${input.runId}\``, `- Cost: $${input.cost.toFixed(2)} · Models: ${models}`, "");
+  const flow = input.flow ? [`- Flow: ${input.flow.name}${input.flow.version ? ` v${input.flow.version} (Flow Studio)` : ""}`] : [];
+  out.push("## Run", "", `- Run: \`${input.runId}\``, ...flow, `- Cost: $${input.cost.toFixed(2)} · Models: ${models}`, "");
   out.push("_Opened as a draft by Navarch. Review before marking it ready._");
   return out.join("\n");
 }

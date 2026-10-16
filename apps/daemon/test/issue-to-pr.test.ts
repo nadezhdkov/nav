@@ -188,6 +188,7 @@ describe("issue → verified draft PR", () => {
     expect(body).toContain("`test -f hello.txt`");
     expect(body).toContain("hello.txt");
     expect(body).toMatch(/Cost/);
+    expect(body).toContain("- Flow: fix-issue\n");
     expect(body).toContain("## Plan");
     expect(body).toContain("## Review");
 

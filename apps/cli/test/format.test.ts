@@ -1,6 +1,6 @@
-import type { ApprovalView, DeviceView, InboxView, RunView, NavarchEvent } from "@navarch/contracts";
+import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunList, formatSync, formatUsage } from "../src/format.ts";
+import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -225,13 +225,20 @@ describe("formatGitHubRepos", () => {
 describe("flow formatting (ADR 0033)", () => {
   it("lists built-in and Studio Flows with their versions and drafts", () => {
     const out = formatFlows([
-      { name: "fix-issue", description: "Issue to PR.", source: "builtin", published_version: null, draft: null, node_count: 7, shadowed: false, updated_at: null },
-      { name: "my-task", description: null, source: "studio", published_version: 2, draft: { revision: 3, saved_at: "t" }, node_count: 1, shadowed: false, updated_at: "t" },
-      { name: "scratch", description: null, source: "studio", published_version: null, draft: { revision: 1, saved_at: "t" }, node_count: null, shadowed: false, updated_at: "t" },
+      { name: "fix-issue", description: "Issue to PR.", source: "builtin", published_version: null, draft: null, node_count: 7, needs: "issue", shadowed: false, updated_at: null },
+      { name: "my-task", description: null, source: "studio", published_version: 2, draft: { revision: 3, saved_at: "t" }, node_count: 1, needs: "prompt", shadowed: false, updated_at: "t" },
+      { name: "scratch", description: null, source: "studio", published_version: null, draft: { revision: 1, saved_at: "t" }, node_count: null, needs: null, shadowed: false, updated_at: "t" },
     ]);
     expect(out).toMatch(/fix-issue\s+built-in\s+Issue to PR\./);
     expect(out).toMatch(/my-task\s+v2 · draft r3\s+-/);
     expect(out).toMatch(/scratch\s+unpublished · draft r1/);
+  });
+
+  it("shows a Studio Flow's version in run show", () => {
+    const detail = { ...run("do it"), flow: "plan-and-pr", autonomy_level: 2, work_item: null, pr_url: null, tasks: [], artifacts: [] } as unknown as RunDetail;
+    const studio = { ...detail, flow_definition: { definition: {}, source: "studio", version: 3 } } as unknown as RunDetail;
+    expect(formatRunDetail(studio)).toContain("flow     plan-and-pr v3 (Flow Studio) (autonomy level 2)");
+    expect(formatRunDetail({ ...detail, flow: "task", flow_definition: { definition: {} } } as unknown as RunDetail)).toContain("flow     task (autonomy level 2)");
   });
 
   it("prints problems as file:line: severity: message", () => {

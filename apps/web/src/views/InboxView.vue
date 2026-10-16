@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { InboxItemDetail, InboxItemView, WorkItemStatus } from "@navarch/contracts";
+import type { FlowSummary, InboxItemDetail, InboxItemView, WorkItemStatus } from "@navarch/contracts";
 import { Ban, CircleAlert, ExternalLink, Inbox, Play, RefreshCw, RotateCcw, X } from "@lucide/vue";
 import { computed, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
@@ -64,18 +64,28 @@ async function sync() {
 // The start dialog (§15.3: "Start run with Flow X" with the total estimate).
 const dialog = ref<HTMLDialogElement | null>(null);
 const budget = ref<number | null>(null);
-/** Start the items as team runs (ADR 0022) instead of fix-issue; desktop only, like the budget. */
-const team = ref(false);
+/**
+ * The Flow to start the items with: fix-issue, team (ADR 0022) or a published Studio Flow that
+ * takes an issue (ADR 0033, go/no-go finding). Desktop only, like the budget.
+ */
+const flow = ref("fix-issue");
+const studioFlows = ref<FlowSummary[]>([]);
 const starting = ref(false);
 const startErrors = ref<{ item_id: string; message: string }[]>([]);
 function openStart() {
   startErrors.value = [];
+  if (!mobile.value) {
+    api.flows().then(
+      (all) => (studioFlows.value = all.filter((f) => f.source === "studio" && f.published_version && !f.shadowed && (f.needs === "issue" || f.needs === "prompt"))),
+      () => (studioFlows.value = []),
+    );
+  }
   dialog.value?.showModal?.();
 }
 async function start() {
   starting.value = true;
   try {
-    const result = await api.startInbox({ item_ids: [...selected.value], ...(budget.value && !mobile.value ? { budget: budget.value } : {}), ...(team.value && !mobile.value ? { flow: "team" } : {}) });
+    const result = await api.startInbox({ item_ids: [...selected.value], ...(budget.value && !mobile.value ? { budget: budget.value } : {}), ...(flow.value !== "fix-issue" && !mobile.value ? { flow: flow.value } : {}) });
     startErrors.value = result.errors;
     selected.value = new Set(result.errors.map((e) => e.item_id).filter((id) => selected.value.has(id)));
     await store.load();
@@ -307,7 +317,7 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
     <dialog ref="dialog" class="m-auto w-[min(34rem,calc(100%-2rem))] rounded-lg border border-line bg-surface p-0 text-fg backdrop:bg-black/60" :aria-label="t('inbox.startTitle')">
       <form method="dialog" class="space-y-4 p-5" @submit.prevent="start">
         <h2 class="text-lg font-semibold">{{ t("inbox.startTitle") }}</h2>
-        <p class="text-sm">{{ t("inbox.startWhat", { n: chosen.length, flow: team ? "team" : "fix-issue" }) }}</p>
+        <p class="text-sm">{{ t("inbox.startWhat", { n: chosen.length, flow: mobile ? "fix-issue" : flow }) }}</p>
         <ul class="max-h-48 space-y-1 overflow-auto rounded-md border border-line p-2 text-sm">
           <li v-for="i in chosen" :key="i.id" class="flex gap-2">
             <span class="font-mono text-muted">#{{ i.number }}</span>
@@ -320,13 +330,27 @@ const statuses: ("open" | "all" | WorkItemStatus)[] = ["open", "new", "triaged",
           {{ total.known ? t("inbox.total", { usd: money(total.usd), n: chosen.length }) : t("inbox.totalNone") }}
           <span v-if="total.unknown && total.known" class="text-muted">· {{ t("inbox.withoutEstimate", { n: total.unknown }) }}</span>
         </p>
-        <label v-if="!mobile" class="flex items-start gap-3 text-sm">
-          <input v-model="team" type="checkbox" class="mt-1 size-4" />
-          <span>
-            <span class="block font-medium">{{ t("newRun.team") }}</span>
-            <span class="block text-xs text-muted">{{ t("newRun.teamHint") }}</span>
-          </span>
-        </label>
+        <fieldset v-if="!mobile" class="space-y-2">
+          <legend class="mb-1 text-sm font-medium">{{ t("inbox.flow") }}</legend>
+          <label class="flex items-start gap-3 text-sm">
+            <input v-model="flow" type="radio" name="inbox-flow" value="fix-issue" class="mt-1 size-4" />
+            <span class="block font-mono font-medium">fix-issue</span>
+          </label>
+          <label class="flex items-start gap-3 text-sm">
+            <input v-model="flow" type="radio" name="inbox-flow" value="team" class="mt-1 size-4" />
+            <span>
+              <span class="block font-medium">{{ t("newRun.team") }}</span>
+              <span class="block text-xs text-muted">{{ t("newRun.teamHint") }}</span>
+            </span>
+          </label>
+          <label v-for="f in studioFlows" :key="f.name" class="flex items-start gap-3 text-sm">
+            <input v-model="flow" type="radio" name="inbox-flow" :value="f.name" class="mt-1 size-4" />
+            <span>
+              <span class="block font-medium"><span class="font-mono">{{ f.name }}</span> <span class="text-xs text-muted">v{{ f.published_version }}</span></span>
+              <span class="block text-xs text-muted">{{ f.description || t("flows.noDescription") }}</span>
+            </span>
+          </label>
+        </fieldset>
         <label v-if="!mobile" class="flex items-center gap-3 text-sm">
           <span>{{ t("inbox.budget") }}</span>
           <input v-model.number="budget" type="number" min="0.1" step="0.1" :placeholder="t('inbox.budgetDefault')" class="min-h-9 w-32 rounded-md border border-line bg-bg px-2 font-mono" />
