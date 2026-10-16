@@ -137,6 +137,15 @@ export class Orchestrator {
     // A PR node that runs only `when` something holds (e.g. `project.work_item`) does not need an issue.
     const usesGitHub = flow.nodes.some((n) => n.type === "github" && !n.when);
     if (usesGitHub && !workItem) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR and needs an issue (--issue owner/repo#N)`);
+    // A run that will push finds out now, not after all the agent work (go/no-go finding F5).
+    if (workItem && this.github && flow.nodes.some((n) => n.type === "github")) {
+      try {
+        await this.github.checkPush(repoPath, workItem.repo);
+      } catch (err) {
+        if (err instanceof GitHubIntegrationError) throw new OrchestratorError(err.code, err.message);
+        throw err;
+      }
+    }
 
     const runId = newId("run");
     const name = uniqueCodename(runId, (n) => this.store.runIdByName(n) !== undefined);

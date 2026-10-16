@@ -21,3 +21,5 @@ process.env.PATH = `${dir}${delimiter}${process.env.PATH ?? ""}`;
 for (const key of ["OPENCODE_API_KEY", "OPENROUTER_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "COPILOT_GITHUB_TOKEN", "XAI_API_KEY"]) delete process.env[key];
 // The operator's Grok login must not make the grok adapter routable in tests (ADR 0024).
 process.env.GROK_HOME = join(dir, "grok-home");
+// git may only reach local repositories: a push, push check or clone aimed at the real GitHub fails at once.
+process.env.GIT_ALLOW_PROTOCOL = "file";

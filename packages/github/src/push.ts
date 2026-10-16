@@ -47,6 +47,23 @@ export async function pushBranch(spec: PushSpec): Promise<string> {
   return commit;
 }
 
+/** The branch a push check names; nothing is ever written to it. */
+const CHECK_BRANCH = "refs/heads/navarch/push-check";
+
+/**
+ * Checks that the token may push to `repo`, without writing anything: `git push --dry-run` asks
+ * GitHub for the push side of the repository, which it refuses (403, or "not found" for a private
+ * repository) when the token has no write access. Throws with git's message when it may not.
+ */
+export async function checkPush(spec: { repoPath: string; repo: string; token: string; gitUrl?: string }): Promise<void> {
+  const remote = remoteFor(spec.repo, spec.gitUrl);
+  try {
+    await git(spec.repoPath, ["push", "--dry-run", "--no-verify", "--porcelain", remote.url, `HEAD:${CHECK_BRANCH}`], remote.auth(spec.token));
+  } catch (err) {
+    throw remote.failure(`cannot push to ${spec.repo}`, err, spec.token);
+  }
+}
+
 /**
  * Clones a GitHub repository into `dest` for a managed project (ADR 0026), with the token for this
  * one command as for a push. The clone's `origin` is the plain GitHub URL, with no credentials, so

@@ -1,12 +1,12 @@
 import { parseIssueRef, type Actor, type WorkItem } from "@navarch/contracts";
-import { cloneRepo, GitHubClient, pushBranch, repoFromRemote, type GitHubRepo } from "@navarch/github";
+import { checkPush, cloneRepo, GitHubClient, pushBranch, repoFromRemote, type GitHubRepo } from "@navarch/github";
 import { remoteUrl } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 import type { Vault } from "../vault/vault.ts";
 
 export class GitHubIntegrationError extends Error {
-  readonly code: "invalid_issue" | "repo_mismatch" | "policy_denied";
+  readonly code: "invalid_issue" | "repo_mismatch" | "policy_denied" | "push_denied";
 
   constructor(code: GitHubIntegrationError["code"], message: string) {
     super(message);
@@ -78,6 +78,22 @@ export class GitHubIntegration {
     if (decision.effect !== "allow") throw new GitHubIntegrationError("policy_denied", `push of ${branch} denied: ${decision.reason}`);
     const token = await this.vault.get("github/token");
     return pushBranch({ repoPath, repo, branch, token, gitUrl: this.config.github.git_url });
+  }
+
+  /**
+   * Refuses a run that would end in a PR when the token cannot push to `repo`, before any agent
+   * works on it (go/no-go finding F5). A dry run writes nothing, so it needs no policy decision.
+   */
+  async checkPush(repoPath: string, repo: string): Promise<void> {
+    const token = await this.vault.get("github/token");
+    try {
+      await checkPush({ repoPath, repo, token, gitUrl: this.config.github.git_url });
+    } catch (err) {
+      throw new GitHubIntegrationError(
+        "push_denied",
+        `${(err as Error).message}\nGive the GitHub token write access to ${repo} (fine-grained PAT: Contents and Pull requests read and write), then start the run again.`,
+      );
+    }
   }
 
   /** Opens a draft PR, or returns the one already open for the branch (a retried task must not fail on it). */

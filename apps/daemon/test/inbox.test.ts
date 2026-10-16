@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { InboxItemDetail, InboxView, ProjectView, QuotaView, RunDetail, StartInboxResult, SyncInboxResult } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
@@ -39,12 +40,15 @@ async function start(opts: { issues?: [number, FakeIssue][]; script?: Scripted[]
   const model: FakeServer = await fakeModelServer(opts.script ?? [triage()]);
   closers.push(model);
   const home = tempHome();
+  // Pushes (and the push check before an issue run) go to a local bare repository, never to GitHub.
+  const gitUrl = mkdtempSync(join(tmpdir(), "navarch-remote-"));
+  execFileSync("git", ["init", "-q", "--bare", join(gitUrl, "acme", "widgets.git")]);
   const daemon = new Daemon({
     home,
     config: Config.parse({
       daemon: { port: 0 },
       routing: { enabled: false },
-      github: { api_url: gh.apiUrl },
+      github: { api_url: gh.apiUrl, git_url: gitUrl },
       inbox: { poll_minutes: 0, model: "fake/triage-1" },
       ...opts.config,
     }),
