@@ -179,7 +179,9 @@ export class Scheduler {
       return;
     }
     const profile = task.type === "agent" ? (PROFILES.get(task.profile) ?? implementer) : undefined;
-    const runAction = executor?.action ?? (task.team?.role === "lead" ? "team.turn" : task.team?.role === "member" ? "team.delegate" : "task.start");
+    // A conflict's resolver is delegated like a member (ADR 0029).
+    const delegated = task.team?.role === "member" || task.team?.role === "integrate";
+    const runAction = executor?.action ?? (task.team?.role === "lead" ? "team.turn" : delegated ? "team.delegate" : "task.start");
     // A used-up budget (run, project day or global month) asks a human before any agent starts (ADR 0023).
     const exceeded = executor ? [] : this.budgets.scopesOf(run).filter((s) => s.state === "exceeded");
     const overBudget = exceeded.length > 0 && !this.store.taskApproved(task.id, "budget.exceed");
@@ -251,8 +253,11 @@ export class Scheduler {
     const tools = this.policy.taskGrant(run.allow_commands, profile?.edits ?? true);
     const previousLead = this.previousLeadTurn(task);
     const leadSession = previousLead?.adapter === task.adapter ? (previousLead.resume_token ?? undefined) : undefined;
-    const sandboxSlug = run.flow_definition?.definition.metadata.name;
-    const runSandboxId = sandboxSlug ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id)?.sandbox_id : undefined;
+    const runSlug = run.flow_definition?.definition.metadata.name;
+    // A parallel team member works in its own worktree, forked from the run's (ADR 0029).
+    const own = runSlug && task.team?.own_worktree && task.team.key ? task.team.key : undefined;
+    const sandboxSlug = own ? `${runSlug}-${own}` : runSlug;
+    const runSandboxId = runSlug && !own ? this.store.taskRecordsOfRun(run.id).find((t) => t.sandbox_id && !t.team?.own_worktree)?.sandbox_id : undefined;
     const sandboxId = task.sandbox_id ?? runSandboxId;
     const abort = new AbortController();
     this.aborts.set(task.id, abort);
@@ -267,6 +272,7 @@ export class Scheduler {
         baseCommit: run.base_commit,
         adapter: task.adapter,
         ...(sandboxSlug ? { sandboxSlug } : {}),
+        ...(own ? { forkFrom: runSlug } : {}),
         profile: profile!,
         instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id)),
         ...(task.model ? { model: task.model } : {}),
@@ -378,8 +384,9 @@ export class Scheduler {
         events.push(...this.waitForQuota(task, attempt, run.status, error.retry_at));
       } else if (RETRYABLE.has(kind) && attempts < task.max_attempts && !isTerminalRun(run.status)) {
         events.push(taskStatus(runId, task.id, "failed", "ready", attempt, `retry after ${kind}`));
-      } else if (task.team?.role === "member" && kind !== "budget_exceeded" && !isTerminalRun(run.status)) {
-        // A member that failed does not fail the team: its lead reads the failure next turn (ADR 0022).
+      } else if ((task.team?.role === "member" || task.team?.role === "integrate") && kind !== "budget_exceeded" && !isTerminalRun(run.status)) {
+        // A member that failed does not fail the team: its lead reads the failure next turn (ADR 0022),
+        // nor does a failed merge of a parallel member (ADR 0029).
         this.store.append(events);
         this.onSucceeded(runId);
         return;

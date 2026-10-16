@@ -431,25 +431,35 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   // The run's worktree, read-only (slice 10): changed files since the base commit, and one file's
-  // diff. Only a path already in the status list reaches git, after `--`.
-  const worktreeOf = async (runId: string): Promise<WorktreeStatus | undefined> => {
+  // diff. Only a path already in the status list reaches git, after `--`. With `task`, that task's
+  // worktree: a parallel team member's own, measured from where it forked (ADR 0029).
+  const worktreeOf = async (runId: string, taskId?: string): Promise<WorktreeStatus | "no_task" | undefined> => {
     const run = daemon.store.getRun(runId);
     if (!run) return undefined;
-    const task = daemon.store.tasksOfRun(runId).filter((t) => t.sandbox_path).at(-1);
+    const records = daemon.store.taskRecordsOfRun(run.id);
+    const named = taskId === undefined ? undefined : records.find((t) => t.id === taskId);
+    if (taskId !== undefined && !named) return "no_task";
+    const task = named?.sandbox_path ? named : records.find((t) => t.sandbox_path && !t.team?.own_worktree) ?? records.filter((t) => t.sandbox_path).at(-1);
     const path = task?.sandbox_path ?? null;
+    const forked = task?.team?.own_worktree
+      ? (daemon.store.events({ runId: run.id }).filter((e) => e.type === "sandbox.created" && e.task_id === task.id).at(-1)?.payload as { base_commit?: string } | undefined)?.base_commit
+      : undefined;
+    const baseCommit = forked ?? run.base_commit;
     const empty = { files: [], totals: { files: 0, added: 0, removed: 0 } };
-    const base = { run_id: runId, branch: task?.branch ?? null, path, base_commit: run.base_commit };
+    const base = { run_id: run.id, branch: task?.branch ?? null, path, base_commit: baseCommit };
     if (!path || !existsSync(join(path, ".git"))) return { ...base, exists: false, ...empty };
-    return { ...base, exists: true, ...(await worktreeStatus(path, run.base_commit)) };
+    return { ...base, exists: true, ...(await worktreeStatus(path, baseCommit)) };
   };
 
   app.get("/api/v1/runs/:id/worktree", async (req, reply) => {
-    const status = await worktreeOf((req.params as { id: string }).id);
+    const status = await worktreeOf((req.params as { id: string }).id, (req.query as { task?: string }).task);
+    if (status === "no_task") return notFound(reply, "task");
     return status ?? notFound(reply, "run");
   });
 
   app.get("/api/v1/runs/:id/worktree/diff", async (req, reply) => {
-    const status = await worktreeOf((req.params as { id: string }).id);
+    const status = await worktreeOf((req.params as { id: string }).id, (req.query as { task?: string }).task);
+    if (status === "no_task") return notFound(reply, "task");
     if (!status) return notFound(reply, "run");
     const wanted = (req.query as { path?: string }).path;
     const file = status.files.find((f) => f.path === wanted);

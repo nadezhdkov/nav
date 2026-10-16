@@ -15,7 +15,7 @@ import {
 } from "@navarch/contracts";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import { route, type RouteDecision, type RouteRequest, type RouterConfig } from "@navarch/model-router";
-import { changedFiles, createWorktree, runShell, worktreeDiff } from "@navarch/runner";
+import { branchName, changedFiles, createWorktree, forkWorktree, runShell, worktreeDiff, worktreePath } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -39,6 +39,8 @@ export type TaskSpec = {
   nodeId: string;
   /** Names the run's worktree and branch (`navarch/<run>/<slug>`); every agent of a run shares it. Defaults to `nodeId`. */
   sandboxSlug?: string;
+  /** A parallel team member (ADR 0029): its own worktree forks from the run's worktree of this slug. */
+  forkFrom?: string;
   attempt: number;
   repoPath: string;
   baseCommit: string;
@@ -184,14 +186,21 @@ export class AgentRuntime {
 
   private async prepareSandbox(spec: TaskSpec): Promise<SandboxHandle> {
     const sandboxId = spec.sandboxId ?? newId("sbx");
-    const handle = await createWorktree({
+    const worktree = {
       sandboxId,
       repoPath: spec.repoPath,
       runId: spec.runId,
       taskSlug: spec.sandboxSlug ?? spec.nodeId,
       baseCommit: spec.baseCommit,
       home: this.deps.home,
-    });
+    };
+    const from = spec.forkFrom;
+    const handle = from
+      ? await forkWorktree({
+        ...worktree,
+        from: { id: "", kind: "worktree", path: worktreePath(this.deps.home, spec.repoPath, spec.runId, from), branch: branchName(spec.runId, from), baseCommit: spec.baseCommit },
+      })
+      : await createWorktree(worktree);
     this.publish(spec, { kind: "system", component: "runner" }, "sandbox.created", {
       sandbox_id: handle.id,
       kind: handle.kind,

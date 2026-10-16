@@ -152,6 +152,8 @@ export const es: Messages = {
     prefers: "el líder prefiere {agent}",
     waitingForYou: "Esperándote",
     plannedHint: "Planificado en el turno {turn}; empieza tras sus dependencias.",
+    merge: { pending: "Esperando merge", merging: "Haciendo merge", resolving: "Resolviendo un conflicto", merged: "Fusionado", conflict: "Sin fusionar: conflicto" },
+    resolves: "Resolver el conflicto de {key}",
     internal: "{n} subagente(s) interno(s)",
     internalTag: "interno",
     subStarted: "trabajando",

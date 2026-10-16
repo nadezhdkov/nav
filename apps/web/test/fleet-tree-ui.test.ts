@@ -81,7 +81,7 @@ describe("Chat threads (slice 10)", () => {
   it("joins every lead turn, the members each added, the question and the user's instructions to the run", () => {
     const team: TeamView = {
       node_id: "team", turn: 2, max_turns: 8, lead_task_id: "lead_2", question: "Which database?", summary: null, plan_errors: [],
-      members: [{ key: "api", title: "API", profile: "implementer", prefer: null, depends_on: [], turn: 1, task_id: "m1", status: "succeeded", summary: "ok" }],
+      members: [{ key: "api", title: "API", profile: "implementer", prefer: null, depends_on: [], turn: 1, task_id: "m1", status: "succeeded", summary: "ok", merge: null, branch: null }],
       subagents: [],
     };
     const tasks = [{ id: "lead_1", node_id: "team.lead", iteration: 1 }, { id: "lead_2", node_id: "team.lead", iteration: 2 }, { id: "m1", node_id: "team.api", iteration: 1 }] as TaskView[];
@@ -109,12 +109,12 @@ describe("Worktree tab (slice 10)", () => {
     await flushPromises();
     await panel.findAll('[role="tab"]').find((b) => b.text() === "Worktree")!.trigger("click");
     await flushPromises();
-    expect(api.worktree).toHaveBeenCalledWith("run_1");
+    expect(api.worktree).toHaveBeenCalledWith("run_1", "task_impl");
     expect(panel.text()).toContain("2 changed file(s)");
     expect(panel.text()).toContain("binary");
     await panel.findAll("button[aria-expanded]").find((b) => b.text().includes("src/hello.ts"))!.trigger("click");
     await flushPromises();
-    expect(api.worktreeDiff).toHaveBeenCalledWith("run_1", "src/hello.ts");
+    expect(api.worktreeDiff).toHaveBeenCalledWith("run_1", "src/hello.ts", "task_impl");
     expect(panel.text()).toContain("+export const hello = 1;");
   });
 

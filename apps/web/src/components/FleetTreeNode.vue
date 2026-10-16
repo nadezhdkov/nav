@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { isTerminalRun } from "@navarch/contracts";
-import { Bot, ChevronDown, ChevronRight, Clock, Crown, FolderGit2, GitBranch, Hand, MessageSquare, MessagesSquare, Sparkles } from "@lucide/vue";
+import { Bot, ChevronDown, ChevronRight, Clock, Crown, FolderGit2, GitBranch, GitMerge, Hand, MessageSquare, MessagesSquare, Sparkles } from "@lucide/vue";
 import { Handle, Position } from "@vue-flow/core";
 import { computed, inject } from "vue";
 import { useI18n } from "vue-i18n";
@@ -12,6 +12,7 @@ import StatusBadge from "./StatusBadge.vue";
 
 /** One node of the Fleet tree (slice 10): a project, a run, an agent, or a lead's sub-agents. */
 const props = defineProps<{ data: TreeNode }>();
+const mergeTone = { pending: "tone-info", merging: "tone-info", resolving: "tone-warning", merged: "tone-success", conflict: "tone-danger" } as const;
 const { t, locale } = useI18n();
 const actions = inject(TREE_ACTIONS)!;
 
@@ -28,6 +29,7 @@ const live = computed(() => agentNode.value?.agent?.status === "running");
 const label = computed(() => {
   const n = agentNode.value;
   if (!n) return "";
+  if (n.resolves) return t("tree.resolves", { key: n.resolves });
   return n.member?.title ?? n.agent?.node_id ?? "";
 });
 const canPrompt = computed(() => {
@@ -142,6 +144,10 @@ function activate() {
         <StatusBadge v-else :look="nodeLook.not_started" status="planned" />
         <span v-if="data.agent" class="min-w-0 truncate font-mono text-[11px] text-muted">{{ data.agent.model ?? data.agent.adapter }}</span>
         <span v-else-if="data.member?.prefer" class="min-w-0 truncate font-mono text-[11px] text-muted">{{ t("tree.prefers", { agent: data.member.prefer }) }}</span>
+        <!-- A parallel member's merge back into the run's worktree (ADR 0029): icon and text, not color alone. -->
+        <span v-if="data.member?.merge" :class="mergeTone[data.member.merge]" class="inline-flex shrink-0 items-center gap-1 text-[11px]" style="color: var(--tone)">
+          <GitMerge :size="11" aria-hidden="true" />{{ t(`tree.merge.${data.member.merge}`) }}
+        </span>
       </div>
 
       <p v-if="data.agent" class="flex items-center gap-2 text-[11px] text-muted">

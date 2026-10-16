@@ -152,6 +152,8 @@ export const ptBR: Messages = {
     prefers: "o lead prefere {agent}",
     waitingForYou: "Esperando por você",
     plannedHint: "Planejado no turno {turn}; começa depois das dependências.",
+    merge: { pending: "Aguardando merge", merging: "Fazendo merge", resolving: "Resolvendo conflito", merged: "Merge feito", conflict: "Sem merge: conflito" },
+    resolves: "Resolver o conflito de {key}",
     internal: "{n} sub-agente(s) interno(s)",
     internalTag: "interno",
     subStarted: "trabalhando",

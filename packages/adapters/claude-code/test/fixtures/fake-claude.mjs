@@ -87,6 +87,36 @@ switch (scenario) {
     }
     break;
   }
+  case "lead-parallel":
+  case "lead-conflict": {
+    // A lead with two independent implementers (ADR 0029). Each member waits until the other has
+    // started, so the test sees them overlap; in lead-conflict both write the same file.
+    const team = (plan) => "```navarch-team\n" + JSON.stringify(plan) + "\n```";
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1];
+    const conflict = scenario === "lead-conflict";
+    if (resume && prompt.includes("This is your next turn as the team lead")) {
+      result(true, team({ summary: "Both members are merged.", done: true }));
+    } else if (profile === "lead") {
+      const members = ["a", "b"].map((key) => ({ key, title: `Member ${key}`, brief: conflict ? `Write shared.txt as ${key}.` : `Create ${key}.txt.`, profile: "implementer" }));
+      result(true, team({ summary: "Two members in parallel.", done: false, members }));
+    } else if (profile === "implementer" && prompt.includes("conflict markers")) {
+      // A demo can hold the resolver to show the team mid-merge.
+      while (existsSync(join(stateDir, "hold-resolve"))) await sleep(200);
+      writeFileSync("shared.txt", "from a and b\n");
+      result(true, "Resolved shared.txt keeping both.");
+    } else if (profile === "implementer") {
+      const key = /(?:Create|as) (\w)\b/.exec(prompt.split('<input name="brief">')[1] ?? "")?.[1] ?? "x";
+      writeFileSync(join(stateDir, `started-${key}`), "");
+      const other = key === "a" ? "b" : "a";
+      for (let i = 0; i < 100 && !existsSync(join(stateDir, `started-${other}`)); i++) await sleep(50);
+      if (existsSync(join(stateDir, `started-${other}`))) writeFileSync(join(stateDir, `overlapped-${key}`), "");
+      writeFileSync(conflict ? "shared.txt" : `${key}.txt`, `from ${key}\n`);
+      result(true, `Member ${key} done.`);
+    } else {
+      result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });

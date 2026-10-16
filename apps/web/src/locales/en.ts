@@ -150,6 +150,8 @@ export const en = {
     prefers: "lead prefers {agent}",
     waitingForYou: "Waiting for you",
     plannedHint: "Planned in turn {turn}; starts after its dependencies.",
+    merge: { pending: "Waiting to merge", merging: "Merging", resolving: "Resolving a conflict", merged: "Merged", conflict: "Not merged: conflict" },
+    resolves: "Resolve {key}'s merge conflict",
     internal: "{n} internal sub-agent(s)",
     internalTag: "internal",
     subStarted: "working",

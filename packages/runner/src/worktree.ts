@@ -92,19 +92,19 @@ export async function remoteUrl(repoPath: string, name = "origin"): Promise<stri
   );
 }
 
+/** The author and committer of Navarch's own commits. */
+export const NAVARCH_IDENTITY = { GIT_AUTHOR_NAME: "Navarch", GIT_AUTHOR_EMAIL: "navarch@localhost", GIT_COMMITTER_NAME: "Navarch", GIT_COMMITTER_EMAIL: "navarch@localhost" };
+
 /**
  * Commits whatever the agent left uncommitted in the sandbox, as Navarch, and returns HEAD.
  * Repository hooks are skipped (`--no-verify`): they are repository code and would run as the operator.
  */
-export async function commitAll(sandbox: SandboxHandle, message: string): Promise<string> {
+export async function commitAll(sandbox: Pick<SandboxHandle, "path">, message: string): Promise<string> {
   await git(sandbox.path, ["add", "--all"]);
   const dirty = await git(sandbox.path, ["diff", "--cached", "--quiet"]).then(
     () => false,
     () => true,
   );
-  if (dirty) {
-    const who = { GIT_AUTHOR_NAME: "Navarch", GIT_AUTHOR_EMAIL: "navarch@localhost", GIT_COMMITTER_NAME: "Navarch", GIT_COMMITTER_EMAIL: "navarch@localhost" };
-    await git(sandbox.path, ["commit", "--no-verify", "-q", "-m", message], who);
-  }
+  if (dirty) await git(sandbox.path, ["commit", "--no-verify", "-q", "-m", message], NAVARCH_IDENTITY);
   return (await git(sandbox.path, ["rev-parse", "HEAD"])).trim();
 }

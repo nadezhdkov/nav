@@ -237,7 +237,9 @@ export class EventStore {
     if (!flow || !node || node.type !== "team") return null;
     const rows = (this.db.prepare("SELECT * FROM tasks WHERE run_id = ? AND node_id LIKE ? ORDER BY rowid").all(runId, `${node.id}.%`) as TaskRow[]).map(toTaskRecord);
     const subagentRows = this.db.prepare("SELECT id, subagents FROM tasks WHERE run_id = ? AND subagents IS NOT NULL ORDER BY rowid").all(runId) as { id: string; subagents: string }[];
-    const state = teamState(node.id, rows.map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })));
+    // A parallel team's members carry their own worktree (ADR 0029).
+    const parallel = rows.some((t) => t.team?.own_worktree);
+    const state = teamState(node.id, rows.map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })), parallel);
     const lead = rows.filter((t) => t.node_id === teamTaskId.lead(node.id)).sort((a, b) => b.iteration - a.iteration)[0];
     const lastPlan = state.turns.filter((t) => t.plan).at(-1)?.plan;
     let maxTurns: number | null = null;
@@ -264,6 +266,8 @@ export class EventStore {
           task_id: task?.id ?? null,
           status: m.skipped ? "skipped" : m.status,
           summary: m.summary ?? null,
+          merge: m.merge ?? null,
+          branch: task?.team?.own_worktree ? (task.branch ?? null) : null,
         };
       }),
       question: lead?.status === "blocked" && lastPlan?.question ? lastPlan.question : null,

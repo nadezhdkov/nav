@@ -108,6 +108,10 @@ export const TeamMemberView = z.object({
   /** The task's status; `planned` before it starts, `skipped` when a dependency did not succeed. */
   status: z.string(),
   summary: z.string().nullable(),
+  /** How a parallel member's branch got back into the run's worktree (ADR 0029); null when it is not merged (read-only, sequential team). */
+  merge: z.enum(["pending", "merging", "resolving", "merged", "conflict"]).nullable(),
+  /** The member's own branch in a parallel team. */
+  branch: z.string().nullable(),
 });
 export type TeamMemberView = z.infer<typeof TeamMemberView>;
 

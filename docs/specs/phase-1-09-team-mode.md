@@ -81,7 +81,7 @@ Navarch does not manage a CLI agent's internal context (each has its own harness
 
 ## 🔴 Open
 
-- Members in parallel, each in its own worktree, with an `integrate` node (Phase 2, ADR 0022 §4).
+- ~~Members in parallel, each in its own worktree, with an `integrate` node~~: done in Phase 2 slice 1 (ADR 0029).
 - A lead that spawns a whole sub-team (members that lead): Phase 2 `subflow`.
 - The Fleet tree and lead chat UI: slice 10.
 - Daily and per-project budgets before leaving team runs unattended: budgets slice.

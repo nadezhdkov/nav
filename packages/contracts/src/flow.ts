@@ -83,7 +83,8 @@ export const LoopNode = z.strictObject({
 /**
  * A lead agent and the members it delegates to, turn by turn (ADR 0022). Its tasks are the lead's
  * turns (`<id>.lead`), one per member (`<id>.<key>`), a verification per turn (`<id>.verify`)
- * and the approval of the first plan (`<id>.approve_plan`).
+ * and the approval of the first plan (`<id>.approve_plan`); a parallel team also merges each editing
+ * member back (`<id>.<key>.integrate`, `<id>.<key>.resolve` on a conflict).
  */
 export const TeamNode = z.strictObject({
   ...base,
@@ -95,6 +96,10 @@ export const TeamNode = z.strictObject({
   max_members: z.union([z.number().int().positive(), Expr]).default(12),
   /** When true, the first plan that adds members waits for a human. */
   approve_first_plan: z.union([z.boolean(), Expr]).default(false),
+  /** When true, members whose dependencies are done run at once, each in its own worktree, merged back by `<id>.<key>.integrate` (ADR 0029). */
+  parallel: z.union([z.boolean(), Expr]).default(false),
+  /** A number or an expression; at most this many members of the team run at once. */
+  max_parallel: z.union([z.number().int().positive(), Expr]).default(3),
 });
 
 export const FlowNode = z.discriminatedUnion("type", [TriggerNode, AgentNode, ActionNode, GitHubNode, ApprovalNode, LoopNode, TeamNode]);

@@ -69,7 +69,7 @@ watch(tab, (next) => {
   if (next === "worktree") void loadWorktree(true);
 });
 
-// The run's worktree, live: read when the tab opens and on the run's events, at most every 5 s.
+// The agent's worktree (the run's, or a parallel member's own), live: read when the tab opens and on the run's events, at most every 5 s.
 let pendingWorktree: ReturnType<typeof setTimeout> | null = null;
 async function loadWorktree(now = false) {
   const wait = lastWorktree + 5_000 - Date.now();
@@ -83,7 +83,7 @@ async function loadWorktree(now = false) {
   lastWorktree = Date.now();
   const runId = props.run.id;
   try {
-    const status = await api.worktree(runId);
+    const status = await api.worktree(runId, props.agent.id);
     if (props.run.id !== runId) return;
     worktree.value = status;
     worktreeError.value = null;
@@ -98,7 +98,7 @@ onBeforeUnmount(() => {
 async function showFile(f: WorktreeFile) {
   if (file.value?.path === f.path) return void (file.value = null);
   file.value = { path: f.path, text: "…" };
-  const text = await api.worktreeDiff(props.run.id, f.path).catch((err: Error) => err.message);
+  const text = await api.worktreeDiff(props.run.id, f.path, props.agent.id).catch((err: Error) => err.message);
   if (file.value?.path === f.path) file.value = { path: f.path, text };
 }
 const fileLook: Record<WorktreeFile["status"], { letter: string; tone: string }> = {

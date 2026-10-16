@@ -43,6 +43,7 @@ describe("PolicyEngine", () => {
     const at = (level: number, action: string) => policy.decide(agent, action, "t", { autonomyLevel: level }).effect;
     expect([0, 1, 2, 3, 4].map((l) => at(l, "github.pr.create"))).toEqual(["require_approval", "require_approval", "require_approval", "allow", "allow"]);
     expect([0, 1, 2, 3].map((l) => at(l, "verification.run"))).toEqual(["require_approval", "require_approval", "allow", "allow"]);
+    expect([0, 1, 2, 3].map((l) => at(l, "team.integrate"))).toEqual(["require_approval", "require_approval", "allow", "allow"]);
   });
 
   it("checks commands against the allowlist and denies unknown actions", () => {
