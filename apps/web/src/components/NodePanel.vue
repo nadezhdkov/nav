@@ -62,6 +62,16 @@ watch(
         <dt class="text-muted">{{ t("node.cost") }}</dt><dd class="font-mono text-xs">{{ money(node.tasks.reduce((s, x) => s + x.cost, 0)) }}</dd>
         <template v-if="task.not_before"><dt class="text-muted">{{ t("node.retryAt") }}</dt><dd><time :datetime="task.not_before">{{ new Date(task.not_before).toLocaleString(locale) }}</time></dd></template>
       </dl>
+      <section v-if="node.kind === 'subflow' && node.tasks.length">
+        <h3 class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ t("node.steps") }}</h3>
+        <ul class="space-y-1">
+          <li v-for="x in node.tasks" :key="x.id" class="flex items-center gap-2">
+            <span class="font-mono text-xs">{{ x.node_id.slice(node.id.length + 1) }}</span>
+            <span v-if="x.iteration > 1" class="font-mono text-[11px] text-muted">×{{ x.iteration }}</span>
+            <span class="ml-auto"><StatusBadge :look="nodeLook[x.status]" :status="x.status" /></span>
+          </li>
+        </ul>
+      </section>
       <section v-if="routing">
         <h3 class="mb-1 text-xs font-medium tracking-wide text-muted uppercase">{{ t("node.routing") }}</h3>
         <p class="font-mono text-xs">{{ routing.model_id }} · {{ routing.tier }}<template v-if="routing.fallback_from"> ← {{ routing.fallback_from }}</template></p>

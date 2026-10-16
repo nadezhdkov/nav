@@ -74,6 +74,7 @@ export const es: Messages = {
     routing: "Enrutamiento",
     noTask: "Aún no ha empezado.",
     close: "Cerrar",
+    steps: "Pasos del subflujo",
     kind: {
       trigger: "Disparador",
       agent: "Agente",
@@ -83,6 +84,7 @@ export const es: Messages = {
       loop: "Bucle",
       team: "Equipo",
       compete: "Competencia",
+      subflow: "Subflujo",
     },
   },
   fleet: {

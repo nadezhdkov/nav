@@ -6,9 +6,11 @@ const SEGMENT = String.raw`(?!\.\.?(?![\w.-]))[\w.-]+`;
 export const REPO_PATTERN = `${SEGMENT}/${SEGMENT}`;
 export const ISSUE_REF = new RegExp(`^(${REPO_PATTERN})#(\\d+)$`);
 
-/** Where a run's work came from (spec §4 WorkItem, §6.7). Phase 1 has GitHub issues only. */
+/** Where a run's work came from (spec §4 WorkItem, §6.7): a GitHub issue, or a pull request (ADR 0032). */
 export const WorkItemRef = z.object({
   source: z.literal("github"),
+  /** Absent (an issue) before runs on pull requests. */
+  kind: z.enum(["issue", "pull_request"]).optional(),
   /** `owner/name`. */
   repo: z.string().regex(new RegExp(`^${REPO_PATTERN}$`)),
   number: z.number().int().positive(),
@@ -16,12 +18,37 @@ export const WorkItemRef = z.object({
 });
 export type WorkItemRef = z.infer<typeof WorkItemRef>;
 
-/** The issue as read from GitHub. Title and body are untrusted data, never instructions (T1). */
+/** A failing check of a pull request's head commit, with the tail of its log (untrusted, redacted). */
+export const FailingCheck = z.object({
+  name: z.string(),
+  conclusion: z.string(),
+  url: z.string(),
+  log_tail: z.string(),
+});
+export type FailingCheck = z.infer<typeof FailingCheck>;
+
+/** What a run on a pull request knows about it (ADR 0032). */
+export const PullRequestInfo = z.object({
+  head_ref: z.string(),
+  /** The head commit the run works on, as fetched into `refs/navarch/pr/<N>/head`. */
+  head_sha: z.string(),
+  /** `owner/name` of the head branch's repository: another one for a fork. */
+  head_repo: z.string(),
+  base_ref: z.string(),
+  base_sha: z.string(),
+  draft: z.boolean(),
+  failing_checks: z.array(FailingCheck),
+});
+export type PullRequestInfo = z.infer<typeof PullRequestInfo>;
+
+/** The issue or pull request as read from GitHub. Title and body are untrusted data, never instructions (T1). */
 export const WorkItem = WorkItemRef.extend({
   title: z.string(),
   body: z.string(),
   labels: z.array(z.string()),
   author: z.string(),
+  /** Present for a pull request. */
+  pull_request: PullRequestInfo.optional(),
 });
 export type WorkItem = z.infer<typeof WorkItem>;
 

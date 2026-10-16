@@ -6,6 +6,7 @@ import type { TaskOutcome } from "@navarch/agent-runtime";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import {
   newId,
+  parseReviewDraft,
   redact,
   VerificationReport,
   type Actor,
@@ -16,7 +17,7 @@ import {
   type SandboxHandle,
   type WorkItem,
 } from "@navarch/contracts";
-import { changedFiles, commitAll, concludeMerge, createWorktree, mergeBranch, worktreeFileDiff, worktreeStatus } from "@navarch/runner";
+import { changedFiles, commitAll, concludeMerge, createWorktree, diffRightLines, fullPullRequestDiff, mergeBranch, worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { matchesPath, verify } from "@navarch/verification";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
@@ -35,6 +36,8 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
   return new Map([
     ["verification.run", verifyNode(deps)],
     ["pr.create", openPrNode(deps)],
+    ["pr.review", reviewPrNode(deps)],
+    ["pr.comment", commentPrNode(deps)],
     ["team.integrate", integrateNode(deps)],
     ["compete.compare", compareNode(deps)],
     ["compete.adopt", adoptNode(deps)],
@@ -254,6 +257,7 @@ function openPrNode(deps: Deps): ActionExecutor {
     describe: (run) => {
       const item = workItem(deps.store, run);
       const branch = implementTask(deps.store, run).branch;
+      if (item.pull_request) return `Commit what the agent left uncommitted, push ${branch} and open a draft PR on ${item.repo} into ${item.pull_request.head_ref}, the branch of pull request #${item.number}: "${prTitle(item)}".`;
       return `Commit what the agent left uncommitted, push ${branch} and open a draft PR on ${item.repo} for issue #${item.number}: "${prTitle(item)}".`;
     },
     async execute({ run, task, signal }) {
@@ -271,6 +275,8 @@ function openPrNode(deps: Deps): ActionExecutor {
         const pr = await deps.github.openDraftPr({
           repo: item.repo,
           head: sandbox.branch,
+          // A ci-fix PR goes into the pull request's own branch (ADR 0032).
+          ...(item.pull_request ? { base: item.pull_request.head_ref } : {}),
           title: prTitle(item),
           body: redact(
             prBody({
@@ -304,6 +310,100 @@ function openPrNode(deps: Deps): ActionExecutor {
       }
     },
   };
+}
+
+/** The hidden line that tells a retried post its earlier review or comment (ADR 0032). */
+const marker = (runId: string) => `<!-- navarch:${runId} -->`;
+
+/** What `pr.review` would post: the review's text, the inline comments, and the count of all comments. */
+function reviewToPost(store: EventStore, run: RunRecord, anchorable?: Map<string, Set<number>>): { body: string; comments: { path: string; line: number; body: string }[]; total: number } {
+  const text = latestSummary(store, run.id, "pr-reviewer") ?? "";
+  const parsed = parseReviewDraft(text);
+  const verdicts = { comment: "Comments", approve: "Looks good to merge (the reviewer's opinion; a human decides)", request_changes: "Changes suggested" };
+  if (!parsed.ok) return { body: [text.trim() || "_The reviewer gave no summary._", "", footer(run, "review")].join("\n"), comments: [], total: 0 };
+  const { review } = parsed;
+  const inline = review.comments.filter((c) => !anchorable || anchorable.get(c.path)?.has(c.line));
+  const others = review.comments.filter((c) => !inline.includes(c));
+  const body = [
+    review.summary,
+    "",
+    `**Verdict:** ${verdicts[review.verdict]}`,
+    ...(others.length ? ["", "### Other notes", "", ...others.map((c) => `- \`${c.path}:${c.line}\`: ${c.body.replace(/\n/g, " ")}`)] : []),
+    "",
+    footer(run, "review"),
+  ].join("\n");
+  return { body, comments: inline, total: review.comments.length };
+}
+
+function footer(run: RunRecord, what: "review" | "diagnosis"): string {
+  return `_${what === "review" ? "Review" : "Diagnosis"} drafted by Navarch run \`${run.id}\` and posted as a comment; a human decides._\n${marker(run.id)}`;
+}
+
+/**
+ * Posts the `pr-reviewer`'s draft as one COMMENT review on the reviewed head commit (ADR 0032):
+ * inline comments on lines the diff shows, the rest in the text. Never approves or requests changes.
+ */
+function reviewPrNode(deps: Deps): ActionExecutor {
+  return {
+    action: "github.pr.review",
+    describe: (run) => {
+      const item = workItem(deps.store, run);
+      const { body, total } = reviewToPost(deps.store, run);
+      return `Post this review on ${item.repo}#${item.number} as a comment (never an approval), with ${total} line comment(s); those on lines outside the diff go into the text:\n\n${body}${total ? `\n\n--- line comments ---\n${listComments(deps.store, run)}` : ""}`;
+    },
+    async execute({ run, task }) {
+      const started = Date.now();
+      const item = workItem(deps.store, run);
+      const pr = item.pull_request;
+      if (!pr) return failed("fatal", "pr.review needs a run on a pull request", started);
+      try {
+        const lines = diffRightLines(await fullPullRequestDiff(run.repo_path, pr.base_sha, pr.head_sha));
+        const { body, comments } = reviewToPost(deps.store, run, lines);
+        const posted = await deps.github.postReview({ repo: item.repo, number: item.number, commit_id: pr.head_sha, body: redact(body), comments: comments.map((c) => ({ ...c, body: redact(c.body) })), marker: marker(run.id) });
+        publish(deps.store, run.id, task.id, github, "github.review.posted", { repo: item.repo, number: item.number, url: posted.url, commit: pr.head_sha, comments: comments.length, existing: posted.existing });
+        return { status: "succeeded", summary: `Review posted: ${posted.url}`, artifacts: [], claims: [], usage: [], outputs: { url: posted.url }, cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        return githubFailure(err, started);
+      }
+    },
+  };
+}
+
+function listComments(store: EventStore, run: RunRecord): string {
+  const parsed = parseReviewDraft(latestSummary(store, run.id, "pr-reviewer") ?? "");
+  return parsed.ok ? parsed.review.comments.map((c) => `${c.path}:${c.line}: ${c.body}`).join("\n") : "";
+}
+
+/** Posts the `ci-fixer`'s diagnosis on the pull request as one comment, changing no code (ADR 0032). */
+function commentPrNode(deps: Deps): ActionExecutor {
+  const text = (run: RunRecord) => {
+    const diagnosis = (latestSummary(deps.store, run.id, "ci-fixer") ?? "").replace(/```navarch-outputs[\s\S]*?```/g, "").trim();
+    return [diagnosis || "_The diagnosis is empty._", "", footer(run, "diagnosis")].join("\n");
+  };
+  return {
+    action: "github.pr.comment",
+    describe: (run) => {
+      const item = workItem(deps.store, run);
+      return `Post this comment on ${item.repo}#${item.number}; no code changes:\n\n${text(run)}`;
+    },
+    async execute({ run, task }) {
+      const started = Date.now();
+      const item = workItem(deps.store, run);
+      try {
+        const posted = await deps.github.postComment({ repo: item.repo, number: item.number, body: redact(text(run)), marker: marker(run.id) });
+        publish(deps.store, run.id, task.id, github, "github.comment.posted", { repo: item.repo, number: item.number, url: posted.url, existing: posted.existing });
+        return { status: "succeeded", summary: `Comment posted: ${posted.url}`, artifacts: [], claims: [], usage: [], outputs: { url: posted.url }, cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        return githubFailure(err, started);
+      }
+    },
+  };
+}
+
+/** Network and 5xx failures can succeed on retry; a refused token or a denied write cannot. */
+function githubFailure(err: unknown, started: number): TaskOutcome {
+  const message = redact(err instanceof Error ? err.message : String(err));
+  return failed(/fetch failed|ECONNRESET|ETIMEDOUT|returned 5\d\d/.test(message) ? "transient" : "fatal", message, started);
 }
 
 /**

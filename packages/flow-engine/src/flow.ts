@@ -1,4 +1,4 @@
-import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type TeamTaskRef } from "@navarch/contracts";
+import { FlowDefinition, PHASE_2_NODE_TYPES, type BodyNode, type CompeteTaskRef, type FlowNode, type RunStatus, type SubflowNode, type TeamTaskRef } from "@navarch/contracts";
 import { parse } from "yaml";
 import { evaluate, exprPaths, isExpression, parseExpr, truthy, type Scope } from "./expr.ts";
 import { competeOutputs, competeStep, competitorCount } from "./compete.ts";
@@ -9,7 +9,7 @@ export class FlowError extends Error {}
 /** Operations an `action` or `github` node may name; the daemon registers an executor for each. */
 export const KNOWN_USES: Record<"action" | "github", readonly string[]> = {
   action: ["verification.run"],
-  github: ["pr.create"],
+  github: ["pr.create", "pr.review", "pr.comment"],
 };
 
 /** Parses and validates a Flow YAML document (spec §9.4, ADR 0011). */
@@ -106,6 +106,32 @@ function expressionsOf(n: FlowNode | BodyNode): string[] {
   if (n.type === "compete") {
     for (const v of [n.competitors, n.max_fix_iterations, n.approve_pick]) if (typeof v === "string") out.push(v);
   }
+  if (n.type === "subflow") {
+    out.push(...[...Object.values(n.with ?? {}), ...Object.values(n.inputs ?? {})].filter((v): v is string => typeof v === "string" && isExpression(v)));
+  }
+  return out;
+}
+
+/** Node types a subflow's child may not hold: one level, and no composite nodes (ADR 0032). */
+const NOT_IN_SUBFLOW = ["team", "compete", "subflow"];
+
+/**
+ * The Flows a flow's `subflow` nodes run, by name, checked against the loaded Flows: each must
+ * exist, take the params `with` names, and hold no `team`, `compete` or `subflow` (ADR 0032).
+ */
+export function subflowsOf(flow: FlowDefinition, flows: ReadonlyMap<string, FlowDefinition>, source = `flows/${flow.metadata.name}`): Record<string, FlowDefinition> {
+  const out: Record<string, FlowDefinition> = {};
+  for (const node of flow.nodes) {
+    if (node.type !== "subflow") continue;
+    const child = flows.get(node.flow);
+    if (!child) throw new FlowError(`${source}: node "${node.id}": unknown flow "${node.flow}" (known: ${[...flows.keys()].join(", ")})`);
+    const nested = child.nodes.find((n) => NOT_IN_SUBFLOW.includes(n.type));
+    if (nested) throw new FlowError(`${source}: node "${node.id}": flow "${node.flow}" cannot hold team, compete or subflow nodes, and has ${nested.type} "${nested.id}"`);
+    for (const name of Object.keys(node.with ?? {})) {
+      if (!(name in child.params)) throw new FlowError(`${source}: node "${node.id}": flow "${node.flow}" has no param "${name}"`);
+    }
+    out[node.flow] = child;
+  }
   return out;
 }
 
@@ -132,6 +158,8 @@ export type RunContext = {
   tasks: TaskState[];
   /** Nodes already recorded as skipped. */
   skipped: string[];
+  /** The run's copies of the Flows its `subflow` nodes run (ADR 0032). */
+  subflows?: Record<string, FlowDefinition>;
 };
 
 export type NodeToStart = {
@@ -195,6 +223,11 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
       if (step) return step;
       continue;
     }
+    if (node.type === "subflow") {
+      const step = subflowStep(node, ctx, scope);
+      if (step) return step;
+      continue;
+    }
     const latest = latestTask(ctx, node.id);
     if (!latest) {
       if (node.when && !truthy(evaluate(parseExpr(node.when), scope))) {
@@ -207,14 +240,76 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
     if (latest.outputs?.passed === false) return { kind: "fail", reason: `node ${node.id} reported a failed result` };
   }
   const last = chain(flow).at(-1);
-  const prOpened = flow.nodes.some((n) => n.type === "github" && n.uses === "pr.create" && latestTask(ctx, n.id)?.status === "succeeded");
+  const opened = (f: FlowDefinition, prefix: string) => f.nodes.some((n) => n.type === "github" && n.uses === "pr.create" && latestTask(ctx, prefix + n.id)?.status === "succeeded");
+  const prOpened = opened(flow, "") || flow.nodes.some((n) => n.type === "subflow" && !!ctx.subflows?.[n.flow] && opened(ctx.subflows[n.flow]!, `${n.id}.`));
   return last ? { kind: "done", prOpened } : { kind: "fail", reason: "empty flow" };
+}
+
+/**
+ * A subflow node's step (ADR 0032): the child's own `next()` over the child's tasks, with its node
+ * ids prefixed by the node's id. Undefined once the child is done.
+ */
+function subflowStep(node: SubflowNode, ctx: RunContext, scope: Scope): Step | undefined {
+  const prefix = `${node.id}.`;
+  const started = ctx.tasks.some((t) => t.node_id.startsWith(prefix)) || ctx.skipped.some((s) => s.startsWith(prefix));
+  if (!started && node.when && !truthy(evaluate(parseExpr(node.when), scope))) {
+    return { kind: "skip", nodeId: node.id, reason: `when ${node.when.replace(/^\$\{\{\s*|\s*\}\}$/g, "")} is false` };
+  }
+  const child = ctx.subflows?.[node.flow];
+  if (!child) return { kind: "fail", reason: `subflow ${node.id}: the run has no copy of flow "${node.flow}"` };
+  const step = next(child, childContext(node, child, ctx, scope));
+  switch (step.kind) {
+    case "done":
+      return undefined;
+    case "wait":
+      return step;
+    case "fail":
+      return { kind: "fail", reason: `subflow ${node.id}: ${step.reason}` };
+    case "skip":
+      return { kind: "skip", nodeId: prefix + step.nodeId, reason: step.reason };
+    case "start": {
+      const start = step.start;
+      const extra: Record<string, unknown> = {};
+      if (start.node.type === "agent") {
+        for (const [name, value] of Object.entries(node.inputs ?? {})) extra[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;
+      }
+      return { kind: "start", start: { ...start, node: { ...start.node, id: prefix + start.node.id }, inputs: { ...extra, ...start.inputs } } };
+    }
+  }
+}
+
+/** What the child sees: only its own tasks and skips, unprefixed, and its params from `with`. */
+function childContext(node: SubflowNode, child: FlowDefinition, ctx: RunContext, scope: Scope): RunContext {
+  const prefix = `${node.id}.`;
+  const given: Record<string, number | string | boolean> = {};
+  for (const [name, value] of Object.entries(node.with ?? {})) {
+    if (typeof value !== "string" || !isExpression(value)) {
+      given[name] = value;
+      continue;
+    }
+    const v = evaluate(parseExpr(value), scope);
+    if (typeof v === "number" || typeof v === "string" || typeof v === "boolean") given[name] = v;
+  }
+  return {
+    params: resolveParams(child, given),
+    project: ctx.project,
+    tasks: ctx.tasks.filter((t) => t.node_id.startsWith(prefix)).map((t) => ({ ...t, node_id: t.node_id.slice(prefix.length) })),
+    skipped: ctx.skipped.filter((s) => s.startsWith(prefix)).map((s) => s.slice(prefix.length)),
+  };
+}
+
+/** A subflow node's outputs: those of its child's last succeeded agent task. */
+function subflowOutputs(node: SubflowNode, ctx: RunContext): Record<string, unknown> | undefined {
+  const child = ctx.subflows?.[node.flow];
+  if (!child) return undefined;
+  const agents = new Set(child.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? n.body : [n])).filter((n) => n.type === "agent").map((n) => `${node.id}.${n.id}`));
+  return ctx.tasks.filter((t) => agents.has(t.node_id) && t.status === "succeeded").at(-1)?.outputs ?? undefined;
 }
 
 /**
  * Step progress of a run (slice 10): Flow nodes the engine has passed, in chain order, over all
  * nodes but the trigger. A loop counts its body nodes, and only those finished in its current
- * iteration, so a fix iteration counts once; a team counts once, when it is done.
+ * iteration, so a fix iteration counts once; a team, a compete node or a subflow counts once, when it is done.
  */
 export function progress(flow: FlowDefinition, ctx: RunContext): { done: number; total: number } {
   const steps = chain(flow).filter((n) => n.type !== "trigger");
@@ -238,8 +333,8 @@ export function progress(flow: FlowDefinition, ctx: RunContext): { done: number;
       done += node.body.filter((b) => ctx.tasks.some((t) => t.node_id === b.id && t.iteration === current && t.status === "succeeded" && t.outputs?.passed !== false)).length;
       break;
     }
-    if (node.type === "team" || node.type === "compete") {
-      const step = () => (node.type === "team" ? teamStep(node, ctx, scope) : competeStep(node, ctx, scope));
+    if (node.type === "team" || node.type === "compete" || node.type === "subflow") {
+      const step = () => (node.type === "team" ? teamStep(node, ctx, scope) : node.type === "compete" ? competeStep(node, ctx, scope) : subflowStep(node, ctx, scope));
       if (!ctx.tasks.some((t) => t.node_id.startsWith(`${node.id}.`)) || safely(step) !== undefined) break;
       done++;
       continue;
@@ -311,10 +406,16 @@ function scopeOf(ctx: RunContext, flow?: FlowDefinition): Scope {
     const outputs = competeOutputs(n.id, count, ctx.tasks);
     if (outputs) nodes[n.id] = { outputs, status: "succeeded", iteration: 1 };
   }
+  // A subflow's output is its child's last succeeded agent task's (ADR 0032).
+  for (const n of flow?.nodes ?? []) {
+    if (n.type !== "subflow") continue;
+    const outputs = subflowOutputs(n, ctx);
+    if (outputs) nodes[n.id] = { outputs, status: "succeeded", iteration: 1 };
+  }
   return { nodes, params: ctx.params, project: ctx.project };
 }
 
-function toStart(node: Exclude<FlowNode, { type: "team" | "compete" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
+function toStart(node: Exclude<FlowNode, { type: "team" | "compete" | "subflow" }> | BodyNode, iteration: number, scope: Scope): NodeToStart {
   const inputs: Record<string, unknown> = {};
   if (node.type === "agent") {
     for (const [name, value] of Object.entries(node.inputs ?? {})) inputs[name] = isExpression(value) ? evaluate(parseExpr(value), scope) : value;
@@ -333,7 +434,7 @@ export function stageOf(node: NodeToStart["node"]): RunStatus {
     case "github":
       return "ready_for_pr";
     case "agent":
-      return ["triager", "planner", "explorer"].includes(node.profile) ? "planning" : ["reviewer", "judge"].includes(node.profile) ? "reviewing" : "executing";
+      return ["triager", "planner", "explorer", "ci-fixer"].includes(node.profile) ? "planning" : ["reviewer", "judge", "pr-reviewer"].includes(node.profile) ? "reviewing" : "executing";
     default:
       return "executing";
   }

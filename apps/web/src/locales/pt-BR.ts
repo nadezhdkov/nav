@@ -74,6 +74,7 @@ export const ptBR: Messages = {
     routing: "Roteamento",
     noTask: "Ainda não começou.",
     close: "Fechar",
+    steps: "Etapas do subfluxo",
     kind: {
       trigger: "Gatilho",
       agent: "Agente",
@@ -83,6 +84,7 @@ export const ptBR: Messages = {
       loop: "Loop",
       team: "Equipe",
       compete: "Competição",
+      subflow: "Subfluxo",
     },
   },
   fleet: {

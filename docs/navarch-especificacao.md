@@ -1426,7 +1426,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 
 ### Fase 2 — Flow Studio e orquestração avançada (4–6 semanas)
 
-> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031).
+> **Em andamento:** slice 1, membros de equipe em paralelo com worktree própria e integração (ADR 0029); slice 2, Modo Compete com nó `compete`, juiz e escolha humana do vencedor (ADR 0031); slice 3, nó `subflow`, Runs sobre pull requests e os fluxos `review-pr` e `ci-fix` (ADR 0032; a correção de CI abre PR de `navarch/<run>/ci-fix` para o branch do PR e só comenta, sem alterar código, quando a falha é instável ou de infraestrutura).
 
 **Escopo**
 - Editor visual com validação, simulação, versionamento.

@@ -72,6 +72,7 @@ export const en = {
     routing: "Routing",
     noTask: "Not started yet.",
     close: "Close",
+    steps: "Steps of the subflow",
     kind: {
       trigger: "Trigger",
       agent: "Agent",
@@ -81,6 +82,7 @@ export const en = {
       loop: "Loop",
       team: "Team",
       compete: "Compete",
+      subflow: "Subflow",
     },
   },
   fleet: {

@@ -83,6 +83,35 @@ export async function cloneRepo(spec: { repo: string; dest: string; token: strin
   await git(spec.dest, ["remote", "set-url", "origin", `https://github.com/${spec.repo}.git`]);
 }
 
+/** Where a run on a pull request keeps its head and base in the clone (ADR 0032). */
+export const pullRequestRefs = (number: number) => ({ head: `refs/navarch/pr/${number}/head`, base: `refs/navarch/pr/${number}/base` });
+
+/**
+ * Fetches a pull request's head (`refs/pull/<N>/head`, which works for forks too) and its base
+ * branch into `refs/navarch/pr/<N>/*` of the clone, and returns both commits. Branches and tags are
+ * left alone; the token reaches git for this one command, and no hook runs.
+ */
+export async function fetchPullRequest(spec: { repoPath: string; repo: string; number: number; baseRef: string; token: string; gitUrl?: string }): Promise<{ head: string; base: string }> {
+  if (!Number.isInteger(spec.number) || spec.number < 1) throw new Error(`invalid pull request number ${spec.number}`);
+  await git(spec.repoPath, ["check-ref-format", `refs/heads/${spec.baseRef}`]).catch(() => {
+    throw new Error(`invalid base branch ${JSON.stringify(spec.baseRef)}`);
+  });
+  const remote = remoteFor(spec.repo, spec.gitUrl);
+  const refs = pullRequestRefs(spec.number);
+  try {
+    await git(
+      spec.repoPath,
+      ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote.url, `+refs/pull/${spec.number}/head:${refs.head}`, `+refs/heads/${spec.baseRef}:${refs.base}`],
+      remote.auth(spec.token),
+    );
+  } catch (err) {
+    throw remote.failure(`fetch of ${spec.repo}#${spec.number} failed`, err, spec.token);
+  }
+  const head = (await git(spec.repoPath, ["rev-parse", "--verify", `${refs.head}^{commit}`])).trim();
+  const base = (await git(spec.repoPath, ["rev-parse", "--verify", `${refs.base}^{commit}`])).trim();
+  return { head, base };
+}
+
 /**
  * The URL a repository is reached at (from the repository name, never from `origin`, so the
  * operator's SSH keys and credential helpers are never used) and the `GIT_CONFIG_*` environment that

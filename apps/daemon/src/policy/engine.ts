@@ -75,6 +75,16 @@ export const defaultRules: PolicyRule[] = [
     reason: "opening a PR requires approval below autonomy level 3",
   },
   {
+    match: (r) => (r.action === "github.pr.review" || r.action === "github.pr.comment") && r.context.autonomyLevel >= 3,
+    effect: "allow",
+    reason: "autonomy level 3+ posts reviews and comments on pull requests (ADR 0032)",
+  },
+  {
+    match: (r) => r.action === "github.pr.review" || r.action === "github.pr.comment",
+    effect: "require_approval",
+    reason: "posting on a pull request requires approval below autonomy level 3",
+  },
+  {
     match: (r) => r.action === "verification.run" && r.context.autonomyLevel >= 2,
     effect: "allow",
     reason: "autonomy level 2+ runs local verification",

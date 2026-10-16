@@ -1,0 +1,48 @@
+# Fix a pull request's failing CI (UC-08, spec §7.3, ADR 0032). A read-only ci-fixer classifies
+# the failure. A code failure is fixed by the `task` flow (implement ⇄ verify) on the pull
+# request's code, reviewed, and opened as a draft PR to the pull request's branch; a flaky test or
+# an infrastructure failure gets a comment with the evidence instead, and no code changes.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: ci-fix
+  description: Diagnose a pull request's failing checks; fix a code failure in a draft PR to its branch, or comment with the evidence.
+params:
+  max_fix_iterations: { type: int, default: 2 }
+
+nodes:
+  - id: diagnose
+    type: agent
+    profile: ci-fixer
+
+  - id: fix
+    type: subflow
+    flow: task
+    when: ${{ nodes.diagnose.outputs.kind == 'code' }}
+    with:
+      max_fix_iterations: ${{ params.max_fix_iterations }}
+    inputs:
+      task: Fix the failing checks of this pull request. Change only what the diagnosis points at.
+      diagnosis: ${{ nodes.diagnose.outputs.summary }}
+
+  - id: review
+    type: agent
+    profile: reviewer
+    when: ${{ nodes.diagnose.outputs.kind == 'code' }}
+    inputs:
+      diagnosis: ${{ nodes.diagnose.outputs.summary }}
+      implementation: ${{ nodes.fix.outputs.summary }}
+
+  - id: open_pr
+    type: github
+    uses: pr.create
+    when: ${{ nodes.diagnose.outputs.kind == 'code' }}
+    with: { draft: true }
+
+  - id: comment
+    type: github
+    uses: pr.comment
+    when: ${{ nodes.diagnose.outputs.kind != 'code' }}
+
+edges:
+  - diagnose -> fix -> review -> open_pr -> comment

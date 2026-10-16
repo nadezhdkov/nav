@@ -84,7 +84,7 @@ function runSummary(run: RunView) {
     flow: run.flow,
     repo: run.repo_path,
     task: clip(run.prompt, 120),
-    ...(run.work_item ? { issue: `${run.work_item.repo}#${run.work_item.number}` } : {}),
+    ...(run.work_item ? { [run.work_item.kind === "pull_request" ? "pull_request" : "issue"]: `${run.work_item.repo}#${run.work_item.number}` } : {}),
     cost: run.cost_total,
     created_at: run.created_at,
     ...(run.pr_url ? { pr: run.pr_url } : {}),
@@ -235,14 +235,15 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
     {
       name: "start_run",
       description:
-        "Propose starting a run. Give `prompt` for a task in plain words, or `issue` (owner/repo#N) to implement a GitHub issue. The repository defaults to the operator's current directory. Leave adapter and model out unless the operator named them.",
+        "Propose starting a run. Give `prompt` for a task in plain words, `issue` (owner/repo#N) to implement a GitHub issue, or `pull_request` (owner/repo#N) to review a pull request or fix its CI. The repository defaults to the operator's current directory. Leave adapter and model out unless the operator named them.",
       parameters: obj({
         prompt: str("What the agents should do."),
         issue: str("owner/repo#N, to implement a GitHub issue."),
+        pull_request: str("owner/repo#N of a pull request, to review it (flow review-pr, the default) or fix its failing CI (flow ci-fix)."),
         repo_path: str("Local clone to work in; defaults to the operator's current directory."),
         adapter: str("Pin every agent to this adapter (claude-code, copilot, codex, gemini-cli, antigravity, opencode, grok, native)."),
         model: str("Pin the model, e.g. openrouter/<id> with the native adapter."),
-        flow: str("Flow name: fix-issue (default for issues), task (default for prompts), team (a lead agent that delegates parts to other agents) or compete (several agents implement the same task and a judge picks the best; needs a budget)."),
+        flow: str("Flow name: fix-issue (default for issues), task (default for prompts), review-pr (default for pull requests), ci-fix (fix a pull request's failing checks), team (a lead agent that delegates parts to other agents) or compete (several agents implement the same task and a judge picks the best; needs a budget)."),
         budget: { type: "number", description: "Run budget in USD for billed use. Required for compete; otherwise only when the operator named one." },
         competitors: { type: "integer", description: "For compete: how many agents compete, 2 to 5 (default 3)." },
         attach: {
@@ -253,11 +254,11 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
       }),
       kind: "act",
       summarize: (args) => {
-        const flow = optionalText(args, "flow") ?? (optionalText(args, "issue") ? "fix-issue" : "task");
+        const flow = optionalText(args, "flow") ?? (optionalText(args, "pull_request") ? "review-pr" : optionalText(args, "issue") ? "fix-issue" : "task");
         const repo = optionalText(args, "repo_path") ?? deps.cwd ?? "(no repository)";
         const agent = [optionalText(args, "adapter"), optionalText(args, "model")].filter(Boolean).join(" ");
         // The whole prompt: the operator confirms exactly what the agents will be told.
-        const what = [optionalText(args, "issue"), optionalText(args, "prompt") && `"${optionalText(args, "prompt")}"`].filter(Boolean).join(" with ");
+        const what = [optionalText(args, "issue"), optionalText(args, "pull_request") && `pull request ${optionalText(args, "pull_request")}`, optionalText(args, "prompt") && `"${optionalText(args, "prompt")}"`].filter(Boolean).join(" with ");
         const attach = textList(args, "attach");
         const budget = typeof args.budget === "number" ? `, budget $${args.budget}` : "";
         const competitors = typeof args.competitors === "number" ? `, ${args.competitors} competitors` : "";
@@ -271,6 +272,7 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
           repo_path: repoPath,
           prompt: optionalText(args, "prompt"),
           issue: optionalText(args, "issue"),
+          pull_request: optionalText(args, "pull_request"),
           adapter: optionalText(args, "adapter"),
           model: optionalText(args, "model"),
           flow: optionalText(args, "flow"),

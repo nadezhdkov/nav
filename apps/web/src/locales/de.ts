@@ -74,6 +74,7 @@ export const de: Messages = {
     routing: "Routing",
     noTask: "Noch nicht gestartet.",
     close: "Schließen",
+    steps: "Schritte des Teilablaufs",
     kind: {
       trigger: "Auslöser",
       agent: "Agent",
@@ -83,6 +84,7 @@ export const de: Messages = {
       loop: "Schleife",
       team: "Team",
       compete: "Wettbewerb",
+      subflow: "Teilablauf",
     },
   },
   fleet: {

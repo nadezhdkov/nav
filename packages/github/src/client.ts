@@ -1,4 +1,4 @@
-import type { GitHubRepoView, WorkItem } from "@navarch/contracts";
+import { redact, type FailingCheck, type GitHubRepoView, type PullRequestInfo, type WorkItem } from "@navarch/contracts";
 
 /** Returns the GitHub token when a request needs it (ADR 0007: the Vault, or a GitHub App later). */
 export type TokenProvider = () => Promise<string>;
@@ -141,6 +141,90 @@ export class GitHubClient {
     return { number: created.number, url: created.html_url };
   }
 
+  /** A pull request with its head and base (ADR 0032). Title and body are untrusted data. */
+  async getPullRequest(repo: string, number: number): Promise<PullRequestDetails> {
+    const pr = await this.request<{
+      html_url: string;
+      title: string;
+      body: string | null;
+      labels: { name?: string }[];
+      user: { login: string } | null;
+      state: string;
+      draft?: boolean;
+      head: { ref: string; sha: string; repo: { full_name: string } | null };
+      base: { ref: string; sha: string };
+    }>("GET", `/repos/${repo}/pulls/${number}`, undefined, `${repo}#${number}`);
+    return {
+      source: "github",
+      kind: "pull_request",
+      repo,
+      number,
+      url: pr.html_url,
+      title: pr.title,
+      body: pr.body ?? "",
+      labels: pr.labels.map((l) => l.name ?? "").filter(Boolean),
+      author: pr.user?.login ?? "ghost",
+      state: pr.state === "open" ? "open" : "closed",
+      draft: pr.draft ?? false,
+      head_ref: pr.head.ref,
+      head_sha: pr.head.sha,
+      // A fork that was deleted has no repository left; it is not this one.
+      head_repo: pr.head.repo?.full_name ?? "(deleted fork)",
+      base_ref: pr.base.ref,
+      base_sha: pr.base.sha,
+    };
+  }
+
+  /**
+   * The failing check runs of a commit (`failure` or `timed_out`), at most `max`, each with the tail
+   * of its log: a GitHub Actions job's own log, else the check's output (ADR 0032). Untrusted text.
+   */
+  async failingChecks(repo: string, sha: string, options: { max?: number; tailChars?: number } = {}): Promise<FailingCheck[]> {
+    const { max = 5, tailChars = 6_000 } = options;
+    const listing = await this.request<{
+      check_runs: { id: number; name: string; conclusion: string | null; html_url: string; app?: { slug?: string } | null; output?: { title?: string | null; summary?: string | null; text?: string | null } }[];
+    }>("GET", `/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`, undefined, `checks of ${repo}@${sha.slice(0, 7)}`);
+    const failing = listing.check_runs.filter((c) => c.conclusion === "failure" || c.conclusion === "timed_out").slice(0, max);
+    const out: FailingCheck[] = [];
+    for (const c of failing) {
+      let log = "";
+      if (c.app?.slug === "github-actions") {
+        // The logs URL redirects to a signed download; fetch drops the token on that other host.
+        const res = await this.send("GET", `/repos/${repo}/actions/jobs/${c.id}/logs`, undefined);
+        if (res.ok) log = await res.text();
+        else await res.body?.cancel();
+      }
+      if (!log) log = [c.output?.title, c.output?.summary, c.output?.text].filter(Boolean).join("\n\n");
+      out.push({ name: c.name, conclusion: c.conclusion ?? "unknown", url: c.html_url, log_tail: redact(log.slice(-tailChars)) });
+    }
+    return out;
+  }
+
+  /** Reviews of a pull request, for finding one already posted (first page of 100). */
+  async listReviews(repo: string, number: number): Promise<{ id: number; body: string; url: string }[]> {
+    const rows = await this.request<{ id: number; body: string | null; html_url: string }[]>("GET", `/repos/${repo}/pulls/${number}/reviews?per_page=100`, undefined, `reviews of ${repo}#${number}`);
+    return rows.map((r) => ({ id: r.id, body: r.body ?? "", url: r.html_url }));
+  }
+
+  /** Posts a review. Navarch only ever posts `COMMENT` reviews (ADR 0032). */
+  async createReview(review: { repo: string; number: number; commit_id: string; body: string; comments: { path: string; line: number; body: string }[] }): Promise<{ id: number; url: string }> {
+    const { repo, number, ...rest } = review;
+    const body = { ...rest, event: "COMMENT", comments: rest.comments.map((c) => ({ ...c, side: "RIGHT" })) };
+    const created = await this.request<{ id: number; html_url: string }>("POST", `/repos/${repo}/pulls/${number}/reviews`, body, `a review on ${repo}#${number}`);
+    return { id: created.id, url: created.html_url };
+  }
+
+  /** Comments of an issue or pull request (first page of 100). */
+  async listComments(repo: string, number: number): Promise<{ id: number; body: string; url: string }[]> {
+    const rows = await this.request<{ id: number; body: string | null; html_url: string }[]>("GET", `/repos/${repo}/issues/${number}/comments?per_page=100`, undefined, `comments of ${repo}#${number}`);
+    return rows.map((r) => ({ id: r.id, body: r.body ?? "", url: r.html_url }));
+  }
+
+  async createComment(repo: string, number: number, body: string): Promise<{ id: number; url: string }> {
+    const created = await this.request<{ id: number; html_url: string }>("POST", `/repos/${repo}/issues/${number}/comments`, { body }, `a comment on ${repo}#${number}`);
+    return { id: created.id, url: created.html_url };
+  }
+
   /** The PR whose head is `branch` in the same repository, open or closed (makes opening a PR idempotent). */
   async findPullRequest(repo: string, branch: string): Promise<{ number: number; url: string } | undefined> {
     const owner = repo.split("/")[0]!;
@@ -173,6 +257,9 @@ export class GitHubClient {
     });
   }
 }
+
+/** A pull request as read from GitHub, before the run fetches it and lists its checks. */
+export type PullRequestDetails = WorkItem & Omit<PullRequestInfo, "failing_checks"> & { state: "open" | "closed" };
 
 /** A repository as GitHub lists it, before Navarch adds what it knows locally. */
 export type GitHubRepo = Omit<GitHubRepoView, "project_id" | "path">;

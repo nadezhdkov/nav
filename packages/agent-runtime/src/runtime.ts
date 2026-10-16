@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   newId,
+  parseDeclaredOutputs,
   redact,
   type Actor,
   type AgentAdapter,
@@ -177,7 +178,8 @@ export class AgentRuntime {
       }
       const cost = result.usage.reduce((sum, u) => sum + u.cost, 0);
       const summary = redact(result.summary);
-      return { ...result, summary, outputs: { ...result.outputs, summary }, artifacts, cost, durationMs: Date.now() - started };
+      // Outputs the agent declared in a `navarch-outputs` block, for later nodes and `when` (ADR 0032).
+      return { ...result, summary, outputs: { ...result.outputs, ...parseDeclaredOutputs(summary), summary }, artifacts, cost, durationMs: Date.now() - started };
     } finally {
       spec.signal?.removeEventListener("abort", stopAgent);
       await new Promise<void>((resolve) => log.end(resolve));

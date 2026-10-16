@@ -46,6 +46,10 @@ Usage:
   navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
                                          flow \`fix-issue\`: triage, plan (approved below level 3), implement,
                                          verify and fix, review, then open a draft PR
+  navarch run --pr <owner/repo#N> [--flow review-pr|ci-fix] [--repo <clone>] [same options] [--follow] [extra instructions...]
+                                         flow \`review-pr\`: review the pull request and post it as comments;
+                                         \`--flow ci-fix\`: fix its failing checks in a draft PR to its branch,
+                                         or comment the diagnosis of a flaky or CI failure
   navarch run list
   navarch run show <run-id>
   navarch run resume <run-id> [--follow]   continue a paused run, or retry the failed task of a failed run
@@ -114,6 +118,7 @@ async function main(argv: string[]): Promise<number> {
       follow: { type: "boolean", short: "f", default: false },
       raw: { type: "boolean", default: false },
       issue: { type: "string" },
+      pr: { type: "string" },
       flow: { type: "string" },
       reason: { type: "string" },
       all: { type: "boolean", default: false },
@@ -178,7 +183,8 @@ async function main(argv: string[]): Promise<number> {
         return values.follow ? follow(api, run.id, json) : EXIT.ok;
       }
       const prompt = rest.join(" ").trim();
-      if (!prompt && !values.issue) throw new CliError("missing prompt (or --issue owner/repo#N)", EXIT.usage);
+      if (!prompt && !values.issue && !values.pr) throw new CliError("missing prompt (or --issue owner/repo#N, or --pr owner/repo#N)", EXIT.usage);
+      if (values.issue && values.pr) throw new CliError("give --issue or --pr, not both", EXIT.usage);
       const budget = values.budget !== undefined ? Number(values.budget) : undefined;
       if (budget !== undefined && !(budget > 0)) throw new CliError("--budget must be a positive number", EXIT.usage);
       const api = new ApiClient(home);
@@ -186,6 +192,7 @@ async function main(argv: string[]): Promise<number> {
         repo_path: values.repo ?? process.cwd(),
         ...(prompt ? { prompt } : {}),
         ...(values.issue ? { issue: values.issue } : {}),
+        ...(values.pr ? { pull_request: values.pr } : {}),
         ...(budget !== undefined ? { budget } : {}),
         ...(values.allow?.length ? { allow_commands: values.allow } : {}),
         ...(values.setup?.length ? { setup_commands: values.setup } : {}),
