@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Hand, House, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff } from "@lucide/vue";
+import { Hand, House, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair, reachable } from "./api/client.ts";
@@ -58,7 +58,9 @@ const items = computed(() => {
   const inboxItem = { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: inbox.open.length, tone: "info" };
   // Usage is a desktop tab too; phones reach it from Home's cost card.
   const usageItem = { to: "/usage", label: t("nav.usage"), icon: Wallet, badge: 0, tone: "neutral" };
-  return [home, inboxItem, approvalsItem, runsItem, fleetItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
+  // Flow Studio is desktop only (ADR 0033).
+  const flowsItem = { to: "/flows", label: t("nav.flows"), icon: Workflow, badge: 0, tone: "neutral" };
+  return [home, inboxItem, approvalsItem, runsItem, fleetItem, flowsItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
 });
 </script>
 

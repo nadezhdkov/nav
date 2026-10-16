@@ -108,6 +108,12 @@ async function act(kind: "cancel" | "resume" | "pause") {
       <template v-if="run">
         <h1 class="min-w-0 flex-1 truncate text-lg font-semibold max-md:order-first max-md:basis-full" :title="run.prompt">{{ runTitle(run) }}</h1>
         <StatusBadge :look="runLook[run.status]" :status="run.status" size="md" />
+        <RouterLink
+          v-if="run.flow_definition?.source === 'studio'"
+          :to="{ path: `/flows/${run.flow_definition.definition.metadata.name}`, query: { v: run.flow_definition.version } }"
+          class="rounded-full border border-line px-2 py-0.5 font-mono text-xs text-muted hover:text-fg"
+          :title="t('run.studioFlow')"
+        >{{ run.flow_definition.definition.metadata.name }} · v{{ run.flow_definition.version }}</RouterLink>
         <span class="font-mono text-sm" :title="t('run.cost')">{{ money(run.cost_total) }} <span class="text-muted">{{ t("run.budget", { budget: money(run.budget) }) }}</span></span>
         <a v-if="run.pr_url" :href="run.pr_url" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-sm text-accent hover:underline">
           {{ t("run.pr") }}<ExternalLink :size="13" aria-hidden="true" />

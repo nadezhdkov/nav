@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { DevicePairing, DeviceSession, FlowDetail, FlowSummary, RunDetail, RunView, SimulationResult, ValidateFlowResponse } from "@navarch/contracts";
+import type { DevicePairing, FlowCatalogView, DeviceSession, FlowDetail, FlowSummary, RunDetail, RunView, SimulationResult, ValidateFlowResponse } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -106,6 +106,11 @@ describe("Flow Studio API (ADR 0033)", () => {
 
   it("validates and simulates documents", async () => {
     const { api } = await start();
+    const catalog = (await api<FlowCatalogView>("GET", "/api/v1/flows/catalog")).body;
+    expect(catalog.profiles).toContainEqual({ id: "implementer", edits: true });
+    expect(catalog.uses.github).toContain("pr.create");
+    expect(catalog.flows.map((f) => f.name)).toContain("task");
+    expect(catalog.flows.map((f) => f.name)).not.toContain("team");
     const problems = (await api<ValidateFlowResponse>("POST", "/api/v1/flows/validate", { yaml: myTask(), name: "not-mine" })).body.problems;
     expect(problems[0]).toMatchObject({ severity: "error", message: expect.stringMatching(/metadata.name is "my-task"/) });
     expect((await api<ValidateFlowResponse>("POST", "/api/v1/flows/validate", { yaml: myTask(), name: "my-task" })).body.problems).toEqual([]);

@@ -55,6 +55,16 @@ export const FlowDetail = FlowSummary.extend({
 });
 export type FlowDetail = z.infer<typeof FlowDetail>;
 
+/** What the Studio's forms offer: the daemon's profiles, adapters, operations and runnable Flows. */
+export const FlowCatalogView = z.object({
+  profiles: z.array(z.object({ id: z.string(), edits: z.boolean() })),
+  adapters: z.array(z.string()),
+  uses: z.object({ action: z.array(z.string()), github: z.array(z.string()) }),
+  /** Flows a `subflow` node may run, with their params. */
+  flows: z.array(z.object({ name: z.string(), params: z.record(z.string(), z.object({ type: z.string(), default: z.union([z.number(), z.string(), z.boolean()]) })) })),
+});
+export type FlowCatalogView = z.infer<typeof FlowCatalogView>;
+
 export const SaveFlowDraftRequest = z.object({
   yaml: z.string(),
   /** The draft revision the editor loaded; null when there is no draft yet. */

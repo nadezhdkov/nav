@@ -290,6 +290,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   // Flow Studio (ADR 0033): desktop only, never in DEVICE_ROUTES.
   app.get("/api/v1/flows", async () => daemon.flows.list());
+  app.get("/api/v1/flows/catalog", async () => daemon.flows.catalog());
 
   app.post("/api/v1/flows/validate", async (req, reply) => {
     const parsed = ValidateFlowRequest.safeParse(req.body);

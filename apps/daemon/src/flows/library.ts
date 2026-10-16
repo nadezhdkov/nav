@@ -6,6 +6,7 @@ import {
   FLOW_YAML_MAX_BYTES,
   SimulationRequest,
   type Actor,
+  type FlowCatalogView,
   type FlowDefinition,
   type FlowDetail,
   type FlowProblem,
@@ -13,7 +14,7 @@ import {
   type SaveFlowDraftRequest,
   type SimulationResult,
 } from "@navarch/contracts";
-import { checkFlow, parseFlow, simulateFlow, subflowsOf, type FlowCheck } from "@navarch/flow-engine";
+import { checkFlow, KNOWN_USES, NOT_IN_SUBFLOW, parseFlow, simulateFlow, subflowsOf, type FlowCheck } from "@navarch/flow-engine";
 import { parseDocument } from "yaml";
 import type { EventStore, StudioFlowRecord } from "../events/store.ts";
 import { FLOWS_DIR, type FlowLookup, type ResolvedFlow } from "../orchestrator/orchestrator.ts";
@@ -119,6 +120,16 @@ export class FlowLibrary implements FlowLookup {
     const found = this.deps.store.flowVersions(name, version)[0];
     if (!found) throw new FlowStudioError("not_found", `flow "${name}" has no version ${version}`);
     return found.yaml;
+  }
+
+  catalog(): FlowCatalogView {
+    return {
+      profiles: [...PROFILES.values()].map((p) => ({ id: p.id, edits: p.edits })),
+      adapters: [...this.deps.adapters],
+      uses: { action: [...KNOWN_USES.action], github: [...KNOWN_USES.github] },
+      // A subflow's child holds no composite node (ADR 0032).
+      flows: [...this.all()].filter(([, f]) => !f.nodes.some((n) => NOT_IN_SUBFLOW.includes(n.type))).map(([name, f]) => ({ name, params: f.params })),
+    };
   }
 
   // --- validation and simulation ---

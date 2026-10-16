@@ -1,12 +1,13 @@
 <script setup lang="ts">
-import { ATTACHMENT_LIMITS, type GitHubRepoView, type RunAttachment } from "@navarch/contracts";
+import { ATTACHMENT_LIMITS, type FlowSummary, type GitHubRepoView, type RunAttachment } from "@navarch/contracts";
 import { FileText, Paperclip, Play, X } from "@lucide/vue";
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { api } from "../api/client.ts";
 import { isDevice } from "../api/session.ts";
 import RepoPicker from "../components/RepoPicker.vue";
+import { readDraft, type DraftParam } from "../lib/flowDoc.ts";
 import { repoOptions, type RepoOption } from "../lib/repos.ts";
 
 /**
@@ -29,12 +30,45 @@ const prompt = ref("");
  * How the agents work: one agent (`task`), a team with a lead (ADR 0022), or several competing
  * on the same task (ADR 0031). Phones keep the daemon's defaults (ADR 0020).
  */
-const mode = ref<"task" | "team" | "compete">("task");
+const mode = ref<string>("task");
 const flow = computed(() => (isDevice.value ? "task" : mode.value));
 /** Compete needs a budget the user chose: N agents cost about N times one. */
 const competitors = ref(3);
 const budget = ref<number | null>(null);
-const competeReady = computed(() => flow.value !== "compete" || (budget.value !== null && budget.value > 0 && competitors.value >= 2 && competitors.value <= 5));
+
+/** Flows the user published in Flow Studio (ADR 0033), with the params of the picked one. */
+const studioFlows = ref<FlowSummary[]>([]);
+const studioParams = ref<Record<string, DraftParam>>({});
+const studioValues = ref<Record<string, string>>({});
+const studioCompetes = ref(false);
+const studio = computed(() => studioFlows.value.some((f) => f.name === mode.value));
+watch(mode, async (name) => {
+  studioParams.value = {};
+  studioValues.value = {};
+  studioCompetes.value = false;
+  if (!studioFlows.value.some((f) => f.name === name)) return;
+  try {
+    const view = readDraft((await api.flow(name)).published_yaml ?? "");
+    studioParams.value = view?.params ?? {};
+    studioCompetes.value = !!view?.nodes.some((n) => n.type === "compete");
+  } catch (err) {
+    error.value = (err as Error).message;
+  }
+});
+/** The picked Studio Flow's params, typed as declared; empty fields keep their defaults. */
+const studioGiven = computed(() => {
+  const out: Record<string, number | string | boolean> = {};
+  for (const [name, p] of Object.entries(studioParams.value)) {
+    const v = studioValues.value[name]?.trim();
+    if (!v) continue;
+    out[name] = p.type === "int" || p.type === "money" ? Number(v) : p.type === "bool" ? v === "true" : v;
+  }
+  return out;
+});
+const needsBudget = computed(() => flow.value === "compete" || (studio.value && studioCompetes.value));
+const competeReady = computed(
+  () => !needsBudget.value || (budget.value !== null && budget.value > 0 && (flow.value !== "compete" || (competitors.value >= 2 && competitors.value <= 5))),
+);
 const busy = ref(false);
 const error = ref<string | null>(null);
 const loaded = ref(false);
@@ -98,6 +132,10 @@ onMounted(async () => {
   loaded.value = true;
   // Phones keep to registered projects (ADR 0020); a missing token only hides the GitHub list.
   if (isDevice.value) return;
+  api.flows().then(
+    (all) => (studioFlows.value = all.filter((f) => f.source === "studio" && f.published_version && !f.shadowed)),
+    () => {},
+  );
   try {
     remote.value = (await api.githubRepos()).filter((r) => !r.path);
     options.value = repoOptions(projects, earlier, remote.value);
@@ -123,6 +161,8 @@ async function start() {
       prompt: prompt.value.trim(),
       ...(flow.value !== "task" ? { flow: flow.value } : {}),
       ...(flow.value === "compete" ? { budget: budget.value!, params: { competitors: competitors.value } } : {}),
+      ...(studio.value && needsBudget.value ? { budget: budget.value! } : {}),
+      ...(studio.value && Object.keys(studioGiven.value).length ? { params: studioGiven.value } : {}),
       ...(attachments.value.length ? { attachments: attachments.value.map(({ name, content }) => ({ name, content })) } : {}),
     });
     // The run page shows them: the run starts either way, but issue runs there cannot open PRs.
@@ -201,6 +241,26 @@ async function start() {
           </label>
           <p class="w-full text-xs text-muted">{{ t("newRun.budgetHint", { n: competitors }) }}</p>
         </div>
+        <template v-if="studioFlows.length">
+          <p class="pt-2 text-xs font-semibold tracking-wide text-muted uppercase">{{ t("newRun.yourFlows") }}</p>
+          <label v-for="f in studioFlows" :key="f.name" class="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border px-3 py-2" :class="mode === f.name ? 'border-accent' : 'border-line'">
+            <input v-model="mode" type="radio" name="mode" :value="f.name" class="mt-1 size-4 shrink-0" />
+            <span>
+              <span class="block text-sm font-medium"><span class="font-mono">{{ f.name }}</span> <span class="text-xs text-muted">v{{ f.published_version }}</span></span>
+              <span class="block text-xs text-muted">{{ f.description || t("flows.noDescription") }}</span>
+            </span>
+          </label>
+          <div v-if="studio && (Object.keys(studioParams).length || needsBudget)" class="flex flex-wrap gap-3 rounded-lg border border-line px-3 py-2">
+            <label v-for="(p, name) in studioParams" :key="name" class="flex flex-col gap-1 text-sm">
+              <span class="font-mono font-medium">{{ name }}</span>
+              <input v-model="studioValues[name]" :placeholder="String(p.default)" class="min-h-11 w-32 rounded-md border border-line bg-bg px-3" />
+            </label>
+            <label v-if="needsBudget" class="flex flex-col gap-1 text-sm">
+              <span class="font-medium">{{ t("newRun.budget") }}</span>
+              <input v-model.number="budget" type="number" min="0.01" step="0.5" required :placeholder="t('newRun.budgetPlaceholder')" class="min-h-11 w-32 rounded-md border border-line bg-bg px-3" />
+            </label>
+          </div>
+        </template>
       </fieldset>
       <p class="text-xs text-muted">{{ flow === "compete" ? t("newRun.noteCompete") : t("newRun.note", { flow }) }}</p>
       <button type="submit" :disabled="busy || !prompt.trim() || !repo || !competeReady" class="inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 font-semibold text-bg disabled:opacity-60">
