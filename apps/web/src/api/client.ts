@@ -1,4 +1,5 @@
 import type {
+  RunAttachment,
   GitHubRepoView,
   ApprovalStatus,
   ApprovalView,
@@ -164,7 +165,7 @@ export const api = {
     request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}) }),
   pause: (id: string) => request<RunView>("POST", `/api/v1/runs/${encodeURIComponent(id)}/pause`),
   stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
-  startRun: (body: { repo_path: string; prompt: string }) => request<RunView>("POST", "/api/v1/runs", body),
+  startRun: (body: { repo_path: string; prompt: string; flow?: string; attachments?: RunAttachment[] }) => request<RunView>("POST", "/api/v1/runs", body),
   repos: () => request<RepoView[]>("GET", "/api/v1/repos"),
   remote: () => request<RemoteStatus>("GET", "/api/v1/remote"),
   devices: () => request<DeviceView[]>("GET", "/api/v1/devices"),

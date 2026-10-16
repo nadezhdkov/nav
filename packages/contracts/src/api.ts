@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AttachmentInfo, RunAttachments } from "./attachments.ts";
 import { EventType } from "./events.ts";
 import { FlowDefinition } from "./flow.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
@@ -29,6 +30,8 @@ export const CreateRunRequest = z
     model: z.string().optional(),
     /** A Flow by name; defaults to `fix-issue` for issue runs and `task` for prompt runs. */
     flow: z.string().regex(/^[a-z][a-z0-9-]*$/).optional(),
+    /** Small text documents (a spec, notes) every agent of the run reads after its task. */
+    attachments: RunAttachments.optional(),
   })
   .refine((r) => r.prompt || r.issue, { message: "a run needs a prompt or an issue" });
 export type CreateRunRequest = z.infer<typeof CreateRunRequest>;
@@ -134,6 +137,8 @@ export const RunDetail = RunView.extend({
   ),
   /** Set for runs whose Flow has a `team` node (ADR 0022). */
   team: TeamView.nullable(),
+  /** Documents attached to the run, by name and size; their text is in `run.created`. */
+  attachments: z.array(AttachmentInfo),
 });
 export type RunDetail = z.infer<typeof RunDetail>;
 

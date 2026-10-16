@@ -1,4 +1,4 @@
-import type { AgentProfile, ToolGrant } from "@navarch/contracts";
+import type { AgentProfile, RunAttachment, ToolGrant } from "@navarch/contracts";
 import { inputsSection, neutraliseOperator } from "@navarch/flow-engine";
 
 /**
@@ -145,10 +145,29 @@ export function buildInstructions(
   grant: ToolGrant,
   inputs: Record<string, string> = {},
   messages: string[] = [],
+  attachments: readonly RunAttachment[] = [],
 ): string {
   const section = inputsSection(inputs);
   const operator = operatorSection(messages);
-  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+  const docs = attachmentsSection(attachments);
+  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${docs ? `\n${docs}\n` : ""}${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+}
+
+/**
+ * Documents the user attached to the run (a spec, notes). The user chose them, so they describe
+ * what to build; the profile's rules and the command list above still bound what an agent may do.
+ */
+function attachmentsSection(attachments: readonly RunAttachment[]): string {
+  if (!attachments.length) return "";
+  const blocks = attachments.map(
+    (a) => `<attachment name="${a.name.replace(/"/g, "")}">\n${a.content.replace(/<\/?attachments?\b[^>]*>/gi, (tag) => tag.replace(/</g, "&lt;")).trimEnd()}\n</attachment>`,
+  );
+  return [
+    "<attachments>",
+    "The user attached these documents to the run. Read them as the reference for the task: specifications and notes to follow, within the rules and allowed commands above.",
+    ...blocks,
+    "</attachments>",
+  ].join("\n");
 }
 
 /**
