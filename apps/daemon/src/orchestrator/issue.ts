@@ -48,6 +48,8 @@ export type PrBodyInput = {
   /** The approved plan and the reviewer's verdict, when the Flow has those nodes. */
   plan?: string;
   review?: string;
+  /** Who planned, implemented and reviewed: the adapter, and the model when one was reported. */
+  agents?: { planner?: string; implementer?: string; reviewer?: string };
   /** Implementation attempts the fix loop needed. */
   iterations?: number;
   changedFiles: string[];
@@ -61,7 +63,13 @@ export type PrBodyInput = {
 export function prBody(input: PrBodyInput): string {
   const { item, report } = input;
   const out: string[] = [`Fixes #${item.number}`, "", "## Summary", "", input.summary.trim() || "_The agent gave no summary._", ""];
-  if (input.plan?.trim()) out.push("## Plan", "", "<details><summary>Plan the implementation followed</summary>", "", input.plan.trim(), "", "</details>", "");
+  const by = (verb: string, agent: string | undefined) => (agent ? `_${verb} by ${agent}_` : undefined);
+  const implementer = by("Implemented", input.agents?.implementer);
+  if (implementer) out.splice(out.length - 1, 0, "", implementer);
+  if (input.plan?.trim()) {
+    const planner = input.agents?.planner ? ` · planned by ${input.agents.planner}` : "";
+    out.push("## Plan", "", `<details><summary>Plan the implementation followed${planner}</summary>`, "", input.plan.trim(), "", "</details>", "");
+  }
   out.push("## Changed files", "", ...(input.changedFiles.length ? input.changedFiles.map((f) => `- \`${f}\``) : ["_none_"]), "");
   out.push("## Verification", "");
   if (report?.checks.length) {
@@ -75,7 +83,7 @@ export function prBody(input: PrBodyInput): string {
   }
   if (input.iterations && input.iterations > 1) out.push("", `Verification passed after ${input.iterations} implementation attempts.`);
   out.push("");
-  if (input.review?.trim()) out.push("## Review", "", input.review.trim(), "");
+  if (input.review?.trim()) out.push("## Review", "", input.review.trim(), "", ...(input.agents?.reviewer ? [by("Reviewed", input.agents.reviewer)!, ""] : []));
   const red = [...(report?.warnings ?? ["unverified: no verification report"]), ...(input.review === undefined ? ["not reviewed by an agent"] : [])];
   if (red.length) out.push("## 🔴 Needs human attention", "", ...red.map((w) => `- ${w}`), "");
   const models = input.models.length ? input.models.join(", ") : "unknown";

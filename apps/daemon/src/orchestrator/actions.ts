@@ -126,6 +126,11 @@ function openPrNode(deps: Deps): ActionExecutor {
               summary: impl.summary ?? "",
               plan: latestSummary(deps.store, run.id, "planner"),
               review: latestSummary(deps.store, run.id, "reviewer"),
+              agents: {
+                planner: agentOf(deps.store, run.id, "planner"),
+                implementer: agentOf(deps.store, run.id, "implementer"),
+                reviewer: agentOf(deps.store, run.id, "reviewer"),
+              },
               iterations: impl.iteration,
               changedFiles: await changedFiles({ ...sandbox }),
               report: latestReport(deps.store, run.id),
@@ -159,6 +164,22 @@ function implementTask(store: EventStore, run: RunRecord): TaskRecord {
 function latestSummary(store: EventStore, runId: string, profile: string): string | undefined {
   const task = store.taskRecordsOfRun(runId).filter((t) => t.profile === profile && t.status === "succeeded").at(-1);
   return task?.summary ?? undefined;
+}
+
+/**
+ * "adapter · model" of the agent whose work the PR carries for a profile (its last succeeded task),
+ * with the model the agent reported using when the task did not pin one.
+ */
+function agentOf(store: EventStore, runId: string, profile: string): string | undefined {
+  const task = store.taskRecordsOfRun(runId).filter((t) => t.profile === profile && t.status === "succeeded").at(-1);
+  if (!task) return undefined;
+  const reported = store
+    .events({ runId })
+    .filter((e) => e.type === "model.call.completed" && e.task_id === task.id)
+    .map((e) => String((e.payload as { model: string }).model))
+    .at(-1);
+  const model = task.model ?? reported;
+  return model && model !== task.adapter ? `${task.adapter} · ${model}` : task.adapter;
 }
 
 function implementSandbox(store: EventStore, run: RunRecord): SandboxHandle {
