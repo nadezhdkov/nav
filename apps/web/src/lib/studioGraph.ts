@@ -56,6 +56,8 @@ export function detailOf(n: DraftNode, params: DraftView["params"] = {}): string
       return `${r.competitors === undefined ? "?" : shown(r.competitors, params)} × · ${typeof r.judge?.profile === "string" ? r.judge.profile : "?"}`;
     case "subflow":
       return typeof r.flow === "string" ? r.flow : null;
+    case "parallel":
+      return isRecord(r.branches) ? `${Object.keys(r.branches).length} × · ${typeof r.join === "string" ? r.join : "all"}` : null;
     case "loop":
       return r.max_iterations !== undefined ? `≤ ${shown(r.max_iterations, params)}` : null;
     default:
@@ -64,21 +66,25 @@ export function detailOf(n: DraftNode, params: DraftView["params"] = {}): string
 }
 
 export function buildStudioGraph(view: DraftView, problems: readonly FlowProblem[] = [], sim: SimulationResult | null = null) {
+  // A branch node is drawn as its parallel node: its problems and simulated steps light that one.
+  const owners = branchOwners(view);
   const counts = new Map<string, { errors: number; warnings: number }>();
   for (const p of problems) {
     if (!p.node) continue;
-    const c = counts.get(p.node) ?? { errors: 0, warnings: 0 };
+    const id = owners.get(p.node) ?? p.node;
+    const c = counts.get(id) ?? { errors: 0, warnings: 0 };
     if (p.severity === "error") c.errors++;
     else c.warnings++;
-    counts.set(p.node, c);
+    counts.set(id, c);
   }
   const simOf = new Map<string, { state: SimState; runs: number }>();
   for (const step of sim?.steps ?? []) {
-    // Steps of a subflow's child (`<id>.<node>`) light the subflow node.
-    const id = step.node.split(".")[0]!;
+    // Steps of a subflow's child (`<id>.<node>`) light the subflow node, a branch's its parallel node.
+    const first = step.node.split(".")[0]!;
+    const id = owners.get(first) ?? first;
     const prev = simOf.get(id);
     if (step.kind === "skip") simOf.set(id, { state: "skipped", runs: prev?.runs ?? 0 });
-    else simOf.set(id, { state: step.status === "failed" ? "failed" : "succeeded", runs: (prev?.runs ?? 0) + (step.node === id ? 1 : 0) });
+    else if (step.status !== "cancelled" || !prev) simOf.set(id, { state: step.status === "failed" ? "failed" : "succeeded", runs: (prev?.runs ?? 0) + (step.node === id ? 1 : 0) });
   }
 
   const byId = new Map(view.nodes.map((n) => [n.id, n]));
@@ -178,4 +184,18 @@ export function findDraftNode(view: DraftView, id: string | null): DraftNode | n
     if (b) return b;
   }
   return null;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** Branch node ids of the view's parallel nodes (ADR 0036), each to its parallel node. */
+export function branchOwners(view: DraftView): Map<string, string> {
+  const owners = new Map<string, string>();
+  for (const n of view.nodes) {
+    if (n.type !== "parallel" || !isRecord(n.raw.branches)) continue;
+    for (const list of Object.values(n.raw.branches)) {
+      for (const b of Array.isArray(list) ? list : []) if (isRecord(b) && typeof b.id === "string") owners.set(b.id, n.id);
+    }
+  }
+  return owners;
 }

@@ -23,6 +23,8 @@ export type GraphNode = {
   maxIterations: number | string | null;
   /** The loop a body node belongs to. */
   parent: string | null;
+  /** For a parallel node (ADR 0036): the branch of each of its nodes. */
+  branchOf?: Record<string, string>;
   /** Relative to the parent for body nodes. */
   position: { x: number; y: number };
   width: number;
@@ -58,8 +60,10 @@ export function buildGraph(
     // A team node (ADR 0022) stands for its lead's turns, members, checks and approval; a compete
     // node (ADR 0031) for its competitors, their checks, the judge, the pick and the adoption; a
     // subflow (ADR 0032) for its child Flow's tasks.
-    const composite = node.type === "team" || node.type === "compete" || node.type === "subflow";
-    const own = composite ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
+    // A parallel node (ADR 0036) stands for its branches' nodes, which keep their own ids.
+    const branchOf = node.type === "parallel" ? Object.fromEntries(Object.entries(node.branches).flatMap(([key, list]) => list.map((b) => [b.id, key]))) : undefined;
+    const composite = node.type === "team" || node.type === "compete" || node.type === "subflow" || node.type === "parallel";
+    const own = branchOf ? tasks.filter((t) => t.node_id in branchOf) : composite ? tasks.filter((t) => t.node_id.startsWith(`${node.id}.`)) : (byNode.get(node.id) ?? []);
     const latest = composite ? (own.find((t) => TEAM_ACTIVE.has(t.status)) ?? latestTask(own)) : latestTask(own);
     let state: NodeState = latest?.status ?? "not_started";
     if (!latest && skippedSet.has(node.id)) state = "skipped";
@@ -68,13 +72,14 @@ export function buildGraph(
       id: node.id,
       kind: node.type,
       label: node.name ?? node.id,
-      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : node.type === "compete" ? competeDetail(node, params) : node.type === "subflow" ? node.flow : "uses" in node ? node.uses : null,
+      detail: node.type === "agent" ? node.profile : node.type === "team" ? node.lead.profile : node.type === "compete" ? competeDetail(node, params) : node.type === "subflow" ? node.flow : node.type === "parallel" ? `${Object.keys(node.branches).length} × · ${node.join}` : "uses" in node ? node.uses : null,
       state,
       task: latest,
       tasks: own,
       iteration: parent && latest ? latest.iteration : null,
       maxIterations: null,
       parent,
+      ...(branchOf ? { branchOf } : {}),
       position,
       width: NODE_WIDTH,
       height: NODE_HEIGHT,

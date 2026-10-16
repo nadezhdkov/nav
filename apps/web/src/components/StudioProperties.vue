@@ -179,6 +179,25 @@ const label = "mb-1 block text-xs font-medium text-muted";
           <label class="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" class="size-4" :checked="raw.approve_pick === true" @change="set(['approve_pick'], checked($event) || undefined)" />{{ t("studio.props.approvePick") }}</label>
         </template>
 
+        <template v-if="node.type === 'parallel'">
+          <label class="block">
+            <span :class="label">{{ t("studio.props.join") }}</span>
+            <input :class="mono" :value="str(raw.join ?? 'all')" list="join-modes" @change="set(['join'], value($event).trim() || undefined)" />
+            <datalist id="join-modes"><option value="all" /><option value="any" /><option value="quorum:2" /></datalist>
+            <span class="mt-1 block text-xs text-muted">{{ t("studio.props.joinHelp") }}</span>
+          </label>
+          <div>
+            <span :class="label">{{ t("studio.props.branches") }}</span>
+            <ul class="space-y-1 text-sm">
+              <li v-for="(list, key) in (raw.branches as Record<string, { id?: string; profile?: string; uses?: string }[]> | undefined) ?? {}" :key="key">
+                <span class="font-medium">{{ key }}</span>
+                <span class="font-mono text-xs text-muted"> · {{ (Array.isArray(list) ? list : []).map((b) => `${b.id ?? "?"}${b.profile ? ` (${b.profile})` : b.uses ? ` (${b.uses})` : ""}`).join(" → ") }}</span>
+              </li>
+            </ul>
+            <span class="mt-1 block text-xs text-muted">{{ t("studio.props.branchesHelp") }}</span>
+          </div>
+        </template>
+
         <label v-if="node.type === 'subflow'" class="block">
           <span :class="label">{{ t("studio.props.flow") }}</span>
           <select :class="input" :value="str(raw.flow)" @change="set(['flow'], value($event))">

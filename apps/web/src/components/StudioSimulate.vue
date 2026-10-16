@@ -58,7 +58,7 @@ function run() {
   emit("run", { autonomy_level: autonomy.value, outcomes, ...(Object.keys(given).length ? { params: given } : {}) });
 }
 
-const stepIcon = { succeeded: CircleCheck, failed: CircleX };
+const stepIcon = { succeeded: CircleCheck, failed: CircleX, cancelled: CircleSlash };
 const input = "min-h-9 rounded-md border border-line bg-bg px-2 text-sm focus:border-accent focus:outline-none";
 </script>
 
@@ -121,11 +121,12 @@ const input = "min-h-9 rounded-md border border-line bg-bg px-2 text-sm focus:bo
           <li v-for="(s, i) in result.steps" :key="i" class="flex items-center gap-2">
             <span class="w-6 text-right font-mono text-xs text-muted">{{ i + 1 }}</span>
             <template v-if="s.kind === 'start'">
-              <component :is="stepIcon[s.status]" :size="14" :class="s.status === 'failed' ? 'tone-danger' : 'tone-success'" style="color: var(--tone)" aria-hidden="true" />
+              <component :is="stepIcon[s.status]" :size="14" :class="s.status === 'failed' ? 'tone-danger' : s.status === 'cancelled' ? 'tone-neutral' : 'tone-success'" style="color: var(--tone)" aria-hidden="true" />
               <span class="font-mono">{{ s.node }}</span>
               <span v-if="s.iteration > 1" class="text-xs text-muted">×{{ s.iteration }}</span>
               <span class="text-xs text-muted">{{ t(`status.${s.stage}`) }}</span>
               <span v-if="s.status === 'failed'" class="text-xs" style="color: var(--tone-danger)">{{ t("studio.sim.state.failed") }}</span>
+              <span v-else-if="s.status === 'cancelled'" class="text-xs text-muted">{{ t("studio.sim.state.cancelled") }}</span>
             </template>
             <template v-else>
               <CircleSlash :size="14" class="text-muted" aria-hidden="true" />

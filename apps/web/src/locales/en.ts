@@ -74,6 +74,7 @@ export const en = {
     noTask: "Not started yet.",
     close: "Close",
     steps: "Steps of the subflow",
+    branches: "Branches",
     kind: {
       trigger: "Trigger",
       agent: "Agent",
@@ -84,6 +85,7 @@ export const en = {
       team: "Team",
       compete: "Compete",
       subflow: "Subflow",
+      parallel: "Parallel",
     },
   },
   fleet: {
@@ -594,6 +596,7 @@ export const en = {
         loop: "Repeats its steps until a condition or a limit.",
         github: "Opens a draft PR, reviews or comments.",
         subflow: "Runs another Flow inside this one.",
+        parallel: "Runs read-only branches at once and joins them.",
         team: "A lead agent that delegates to others.",
         compete: "Several agents on the same task; a judge picks.",
         trigger: "Where the Flow starts.",
@@ -619,6 +622,10 @@ export const en = {
       maxFixIterations: "Fix iterations per competitor",
       approvePick: "A human confirms the winner",
       flow: "Flow to run",
+      join: "Join",
+      joinHelp: "all: every branch must succeed · any: the first one wins · quorum:N: the first N win. Branches no longer needed are stopped.",
+      branches: "Branches",
+      branchesHelp: "Branches run read-only agents and checks. Edit them in the YAML view.",
       with: "Params of that Flow",
       inputs: "Inputs for its agents",
       key: "Name",
@@ -668,6 +675,7 @@ export const en = {
       state: {
         succeeded: "ran",
         failed: "fails",
+        cancelled: "stopped",
         skipped: "skipped",
       },
     },

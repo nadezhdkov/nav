@@ -76,6 +76,7 @@ export const de: Messages = {
     noTask: "Noch nicht gestartet.",
     close: "Schließen",
     steps: "Schritte des Teilablaufs",
+    branches: "Zweige",
     kind: {
       trigger: "Auslöser",
       agent: "Agent",
@@ -86,6 +87,7 @@ export const de: Messages = {
       team: "Team",
       compete: "Wettbewerb",
       subflow: "Teilablauf",
+      parallel: "Parallel",
     },
   },
   fleet: {
@@ -596,6 +598,7 @@ export const de: Messages = {
         loop: "Wiederholt seine Schritte bis zu einer Bedingung oder Grenze.",
         github: "Öffnet einen Entwurfs-PR, prüft oder kommentiert.",
         subflow: "Führt einen anderen Flow darin aus.",
+        parallel: "Führt schreibgeschützte Zweige gleichzeitig aus und führt sie zusammen.",
         team: "Ein leitender Agent, der an andere delegiert.",
         compete: "Mehrere Agenten an derselben Aufgabe; ein Richter wählt.",
         trigger: "Wo der Flow beginnt.",
@@ -621,6 +624,10 @@ export const de: Messages = {
       maxFixIterations: "Korrekturrunden je Teilnehmer",
       approvePick: "Ein Mensch bestätigt den Gewinner",
       flow: "Auszuführender Flow",
+      join: "Zusammenführung",
+      joinHelp: "all: jeder Zweig muss gelingen · any: der erste gewinnt · quorum:N: die ersten N gewinnen. Nicht mehr benötigte Zweige werden gestoppt.",
+      branches: "Zweige",
+      branchesHelp: "Zweige führen schreibgeschützte Agenten und Prüfungen aus. Bearbeite sie in der YAML-Ansicht.",
       with: "Params dieses Flows",
       inputs: "Eingaben für seine Agenten",
       key: "Name",
@@ -670,6 +677,7 @@ export const de: Messages = {
       state: {
         succeeded: "gelaufen",
         failed: "scheitert",
+        cancelled: "gestoppt",
         skipped: "übersprungen",
       },
     },

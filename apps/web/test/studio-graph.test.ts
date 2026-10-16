@@ -65,3 +65,32 @@ describe("Flow Studio canvas", () => {
     expect(walkOrder(view)).toEqual(["plan", "fix", "implement", "verify", "orphan"]);
   });
 });
+
+describe("parallel nodes on the Studio canvas (ADR 0036)", () => {
+  const yaml = `apiVersion: navarch/v1
+kind: Flow
+metadata: { name: reviews }
+nodes:
+  - id: reviews
+    type: parallel
+    join: quorum:2
+    branches:
+      a: [{ id: one, type: agent, profile: reviewer }]
+      b: [{ id: two, type: agent, profile: reviewer }]
+      c: [{ id: three, type: agent, profile: reviewer }]
+edges: [reviews]
+`;
+  it("lights the parallel node with its branches' problems and simulated steps", () => {
+    const { nodes } = buildStudioGraph(readDraft(yaml)!, [{ severity: "error", message: "x", node: "two" }], {
+      problems: [],
+      steps: [
+        { kind: "start", node: "one", type: "agent", iteration: 1, stage: "reviewing", status: "succeeded", outputs: {} },
+        { kind: "start", node: "two", type: "agent", iteration: 1, stage: "reviewing", status: "succeeded", outputs: {} },
+        { kind: "start", node: "three", type: "agent", iteration: 1, stage: "reviewing", status: "cancelled", outputs: {} },
+      ],
+      end: { kind: "done", pr_opened: false },
+    });
+    expect(nodes.map((n) => n.id)).toEqual(["reviews"]);
+    expect(nodes[0]).toMatchObject({ detail: "3 × · quorum:2", errors: 1, sim: "succeeded" });
+  });
+});

@@ -26,6 +26,7 @@ import {
   type QuotaView,
   type VerifyCommand,
   type ContainerIsolation,
+  type ParallelTaskRef,
   type WorkItemTriage,
   attachmentInfo,
   type RunAttachment,
@@ -65,7 +66,7 @@ export class EventStore {
     // Projections are derived data: when a column was added, rebuild them from the log.
     const has = (table: string, column: string) =>
       (this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
-    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice") || !has("runs", "isolation")) {
+    if (!has("tasks", "not_before") || !has("runs", "protected_paths") || !has("tasks", "outputs") || !has("runs", "autonomy_level") || !has("tasks", "model_id") || !has("tasks", "instruction_interrupts") || !has("runs", "work_item_id") || !has("tasks", "team") || !has("tasks", "plan_cost") || !has("runs", "name") || !has("tasks", "compete") || !has("approvals", "choice") || !has("runs", "isolation") || !has("tasks", "parallel")) {
       this.rebuildProjections();
     }
     // After the rebuild: an older runs table has no name column to index until then.
@@ -759,6 +760,8 @@ export type TaskRecord = TaskView & {
   prefer: string | null;
   /** The compete node this task is part of (ADR 0031). */
   compete: CompeteTaskRef | null;
+  /** The parallel node and branch this task is part of (ADR 0036). */
+  parallel: ParallelTaskRef | null;
   /** For approvals that pick among options, the default first. */
   choices: string[] | null;
 };
@@ -871,6 +874,7 @@ function toTaskRecord(row: Row): TaskRecord {
     team: row.team ? (JSON.parse(String(row.team)) as TeamTaskRef) : null,
     prefer: (row.prefer as string | null) ?? null,
     compete: row.compete ? (JSON.parse(String(row.compete)) as CompeteTaskRef) : null,
+    parallel: row.parallel ? (JSON.parse(String(row.parallel)) as ParallelTaskRef) : null,
     choices: row.choices ? (JSON.parse(String(row.choices)) as string[]) : null,
   };
 }

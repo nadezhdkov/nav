@@ -1,4 +1,4 @@
-import { Bot, Flag, GitPullRequestDraft, Hand, Repeat, Swords, Users, Workflow, Zap } from "@lucide/vue";
+import { Bot, Flag, GitPullRequestDraft, Hand, Repeat, Split, Swords, Users, Workflow, Zap } from "@lucide/vue";
 import type { Component } from "vue";
 
 /** Icon and accent per node type (spec §15.4: accents by kind, never colour alone). */
@@ -12,6 +12,7 @@ export const kindIcon: Record<string, Component> = {
   team: Users,
   compete: Swords,
   subflow: Workflow,
+  parallel: Split,
 };
 
 export const kindTone: Record<string, string> = {
@@ -24,4 +25,5 @@ export const kindTone: Record<string, string> = {
   team: "info",
   compete: "info",
   subflow: "neutral",
+  parallel: "info",
 };

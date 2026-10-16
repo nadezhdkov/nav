@@ -140,7 +140,8 @@ export class FlowLibrary implements FlowLookup {
       return { flow: null, problems: [{ severity: "error", message: `a flow is at most ${FLOW_YAML_MAX_BYTES / 1024} KiB` }] };
     }
     const drafts = this.deps.store.studioFlows().filter((r) => !r.published_version).map((r) => r.name);
-    const result = checkFlow(yaml, { profiles: [...PROFILES.keys()], adapters: this.deps.adapters, flows: this.all(), drafts });
+    const editing = [...PROFILES.values()].filter((p) => p.edits).map((p) => p.id);
+    const result = checkFlow(yaml, { profiles: [...PROFILES.keys()], adapters: this.deps.adapters, flows: this.all(), drafts, editing });
     const declared = declaredName(yaml);
     if (name && declared !== undefined && declared !== name) {
       result.problems.unshift({ severity: "error", message: `metadata.name is "${declared}", but this is flow "${name}"; to rename a flow, duplicate it`, path: ["metadata", "name"] });

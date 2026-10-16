@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FlowDefinition } from "./flow.ts";
+import { FlowDefinition, ParallelTaskRef } from "./flow.ts";
 import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { CompeteTaskRef } from "./compete.ts";
@@ -152,6 +152,8 @@ export const EventPayloads = {
     prefer: z.string().optional(),
     /** The compete node this task is part of (ADR 0031). */
     compete: CompeteTaskRef.optional(),
+    /** The parallel node and branch this task is part of (ADR 0036). */
+    parallel: ParallelTaskRef.optional(),
     /** For approval nodes that pick among options: what the approver may choose, the default first. */
     choices: z.array(z.string()).min(1).optional(),
   }),

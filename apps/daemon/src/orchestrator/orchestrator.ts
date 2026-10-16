@@ -90,6 +90,8 @@ export class Orchestrator {
   private readonly github: GitHubIntegration | undefined;
   private readonly flows: FlowLookup;
   private readonly policy: PolicyEngine;
+  /** Stops a running task without cancelling its run (set by the daemon to the Scheduler's). */
+  stopRunning: (taskId: string, reason: string) => void = () => {};
 
   constructor(
     store: EventStore,
@@ -269,6 +271,22 @@ export class Orchestrator {
       switch (step.kind) {
         case "wait":
           return;
+        case "cancel": {
+          // Branches a join no longer needs (ADR 0036); running ones end through the Scheduler,
+          // which advances the run again once they have stopped.
+          const events: NewEvent[] = [];
+          for (const nodeId of step.nodeIds) {
+            const task = tasks.filter((t) => t.node_id === nodeId).sort((a, b) => a.iteration - b.iteration).at(-1);
+            if (!task || isTerminalTask(task.status) || task.status === "cancelled") continue;
+            if (task.status === "running") this.stopRunning(task.id, step.reason);
+            else events.push(taskStatus(runId, task.id, task.status, "cancelled", task.attempt, step.reason));
+          }
+          if (events.length) {
+            this.store.append(events);
+            continue;
+          }
+          return;
+        }
         case "skip":
           this.store.append([{ type: "flow.node.skipped", run_id: runId, task_id: null, actor: system("orchestrator"), payload: { node_id: step.nodeId, reason: step.reason } }]);
           continue;
@@ -296,6 +314,11 @@ export class Orchestrator {
           const profile = agent ? node.profile : node.type;
           if (agent && !PROFILES.has(node.profile)) {
             this.store.append([runStatus(runId, run.status, "failed", `flow node ${node.id}: unknown profile ${node.profile}`)]);
+            return;
+          }
+          // Branches share the run's worktree, so they only read it (ADR 0036).
+          if (agent && step.start.parallel && PROFILES.get(node.profile)!.edits) {
+            this.store.append([runStatus(runId, run.status, "failed", `flow node ${node.id}: profile ${node.profile} edits, and parallel branches run read-only agents`)]);
             return;
           }
           const adapter = agent ? (node.adapter ?? run.adapter) : node.type === "github" ? "github" : node.type === "approval" ? "human" : "runner";
@@ -332,6 +355,7 @@ export class Orchestrator {
                 ...(team ? { team } : {}),
                 ...(step.start.prefer ? { prefer: step.start.prefer } : {}),
                 ...(compete ? { compete } : {}),
+                ...(step.start.parallel ? { parallel: step.start.parallel } : {}),
                 ...(step.start.choices?.length ? { choices: step.start.choices } : {}),
               },
             },

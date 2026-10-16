@@ -112,7 +112,8 @@ export const SimulatedStep = z.discriminatedUnion("kind", [
     type: z.string(),
     iteration: z.number().int().positive(),
     stage: RunStatus,
-    status: z.enum(["succeeded", "failed"]),
+    /** `cancelled`: a parallel branch its join no longer needed (ADR 0036). */
+    status: z.enum(["succeeded", "failed", "cancelled"]),
     outputs: z.record(z.string(), z.unknown()),
   }),
   z.object({ kind: z.literal("skip"), node: z.string(), reason: z.string() }),

@@ -115,6 +115,27 @@ describe("Flow Studio (ADR 0033)", () => {
     page.unmount();
   });
 
+  it("adds a parallel node from the library and edits its join in the properties panel (ADR 0036)", async () => {
+    api.flow.mockResolvedValue(detail());
+    const { page } = await open();
+    await button(page, "Parallel").trigger("click");
+    expect(page.text()).toContain("Parallel node");
+    expect(page.text()).toContain("security");
+    expect(page.text()).toContain("security_review (reviewer)");
+    expect(page.text()).toContain("Edit them in the YAML view");
+    const join = page.findAll("input").find((i) => i.attributes("list") === "join-modes")!;
+    expect((join.element as HTMLInputElement).value).toBe("all");
+    await join.setValue("any");
+    await join.trigger("change");
+    api.saveFlowDraft.mockImplementation(async (_n: string, yaml: string) => detail({ draft_yaml: yaml, draft: { revision: 2, saved_at: "t" } }));
+    await button(page, "Save draft").trigger("click");
+    await flushPromises();
+    const view = readDraft(api.saveFlowDraft.mock.calls[0]![1])!;
+    expect(view.chain).toEqual(["implement", "reviews"]);
+    expect(view.nodes.find((n) => n.id === "reviews")!.raw).toMatchObject({ type: "parallel", join: "any" });
+    page.unmount();
+  });
+
   it("shows the daemon's problems on the toolbar and keeps Publish disabled while there are errors", async () => {
     api.flow.mockResolvedValue(detail());
     api.validateFlow.mockResolvedValue({ problems: [{ severity: "error", message: 'node "implement": unknown agent profile "x"', node: "implement", line: 7 }] });

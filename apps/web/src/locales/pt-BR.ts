@@ -76,6 +76,7 @@ export const ptBR: Messages = {
     noTask: "Ainda não começou.",
     close: "Fechar",
     steps: "Etapas do subfluxo",
+    branches: "Ramos",
     kind: {
       trigger: "Gatilho",
       agent: "Agente",
@@ -86,6 +87,7 @@ export const ptBR: Messages = {
       team: "Equipe",
       compete: "Competição",
       subflow: "Subfluxo",
+      parallel: "Paralelo",
     },
   },
   fleet: {
@@ -596,6 +598,7 @@ export const ptBR: Messages = {
         loop: "Repete seus passos até uma condição ou um limite.",
         github: "Abre um PR em rascunho, revisa ou comenta.",
         subflow: "Roda outro Flow dentro deste.",
+        parallel: "Roda ramos só-leitura ao mesmo tempo e os junta.",
         team: "Um agente líder que delega a outros.",
         compete: "Vários agentes na mesma tarefa; um juiz escolhe.",
         trigger: "Onde o Flow começa.",
@@ -621,6 +624,10 @@ export const ptBR: Messages = {
       maxFixIterations: "Iterações de correção por competidor",
       approvePick: "Uma pessoa confirma o vencedor",
       flow: "Flow a rodar",
+      join: "Junção",
+      joinHelp: "all: todos os ramos precisam ter sucesso · any: o primeiro vence · quorum:N: os N primeiros vencem. Ramos que não são mais necessários são parados.",
+      branches: "Ramos",
+      branchesHelp: "Os ramos rodam agentes e checks só-leitura. Edite-os na visão YAML.",
       with: "Params desse Flow",
       inputs: "Entradas para os agentes dele",
       key: "Nome",
@@ -670,6 +677,7 @@ export const ptBR: Messages = {
       state: {
         succeeded: "rodou",
         failed: "falha",
+        cancelled: "parado",
         skipped: "pulado",
       },
     },

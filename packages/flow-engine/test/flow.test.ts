@@ -36,9 +36,10 @@ describe("parseFlow", () => {
     expect(parseFlow(builtin("task")).metadata.name).toBe("task");
   });
 
-  it("refuses Phase 2 node types, unknown references, broken chains and unknown operations", () => {
+  it("refuses node types not built yet, unknown references, broken chains and unknown operations", () => {
     const cases: [string, RegExp][] = [
-      [`nodes:\n  - { id: a, type: parallel }\nedges: [a]`, /not supported until Phase 2/],
+      [`nodes:\n  - { id: a, type: switch }\nedges: [a]`, /"switch" is not supported yet/],
+      [`nodes:\n  - { id: a, type: join }\nedges: [a]`, /a parallel node's `join` field/],
       [`nodes:\n  - { id: a, type: agent, profile: planner, when: "\${{ nodes.zz.outputs }}" }\nedges: [a]`, /unknown node "zz"/],
       [`nodes:\n  - { id: a, type: agent, profile: planner }\n  - { id: b, type: agent, profile: planner }\nedges: [a]`, /"b" is not in edges/],
       [`nodes:\n  - { id: a, type: agent, profile: planner }\nedges: ["a -> a2"]`, /unknown top-level node "a2"/],
