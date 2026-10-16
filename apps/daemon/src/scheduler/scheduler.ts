@@ -268,7 +268,7 @@ export class Scheduler {
         adapter: task.adapter,
         ...(sandboxSlug ? { sandboxSlug } : {}),
         profile: profile!,
-        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts),
+        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id)),
         ...(task.model ? { model: task.model } : {}),
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.

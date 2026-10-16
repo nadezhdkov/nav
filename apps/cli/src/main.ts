@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdirSync, openSync } from "node:fs";
-import { join, resolve as resolvePath } from "node:path";
+import { mkdirSync, openSync, readFileSync } from "node:fs";
+import { basename, join, resolve as resolvePath } from "node:path";
 import { checkoutRoot, installProblem, readTail, startFailureHint } from "./deps.ts";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -39,7 +39,7 @@ Usage:
   navarch ask <question...>                one question to the concierge; proposals are shown, not run
   navarch web [--print]                    open the Web UI (runs, live graph, approvals) in the browser
   navarch daemon start|stop|status
-  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--flow <name>] [--follow] <prompt...>
+  navarch run [--repo <path>] [--adapter <id>] [--model <id>] [--budget <usd>] [--allow <cmd>]... [--setup <cmd>]... [--attach <file>]... [--flow <name>] [--follow] <prompt...>
                                          flow \`task\`: implement, then verify and fix until the checks pass
   navarch run --issue <owner/repo#N> [--repo <clone>] [same options] [--follow] [extra instructions...]
                                          flow \`fix-issue\`: triage, plan (approved below level 3), implement,
@@ -103,6 +103,7 @@ async function main(argv: string[]): Promise<number> {
       budget: { type: "string" },
       allow: { type: "string", multiple: true },
       setup: { type: "string", multiple: true },
+      attach: { type: "string", multiple: true },
       model: { type: "string" },
       adapter: { type: "string", short: "a" },
       follow: { type: "boolean", short: "f", default: false },
@@ -186,6 +187,7 @@ async function main(argv: string[]): Promise<number> {
         ...(values.model ? { model: values.model } : {}),
         ...(values.adapter ? { adapter: values.adapter } : {}),
         ...(values.flow ? { flow: values.flow } : {}),
+        ...(values.attach?.length ? { attachments: values.attach.map(readAttachment) } : {}),
       });
       if (json && !values.follow) return print(run, json);
       if (!json) console.log(`run ${run.name} (${run.id}) created (${run.status})`);
@@ -558,3 +560,12 @@ main(process.argv.slice(2)).then(
     process.exit(EXIT.error);
   },
 );
+
+/** A `--attach` file for a run: its name and text (the daemon checks size and type). */
+function readAttachment(path: string): { name: string; content: string } {
+  try {
+    return { name: basename(path), content: readFileSync(path, "utf8") };
+  } catch (err) {
+    throw new CliError(`cannot read ${path}: ${(err as Error).message}`, EXIT.usage);
+  }
+}
