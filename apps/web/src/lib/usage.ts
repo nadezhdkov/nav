@@ -1,7 +1,7 @@
 import type { BudgetView, ModelMetricsView } from "@navarch/contracts";
 
 /** Columns of the models table that sort; text columns sort by name, the others by value. */
-export const SORT_KEYS = ["id", "tasks", "success_rate", "error_rate_24h", "tokens", "median_tokens_per_success", "median_cost_per_success", "cost", "plan_cost", "p50_duration_ms"] as const;
+export const SORT_KEYS = ["id", "tasks", "success_rate", "error_rate_24h", "rate_limited", "tokens", "median_tokens_per_success", "median_cost_per_success", "cost", "plan_cost", "p50_duration_ms"] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 
 function value(m: ModelMetricsView, key: SortKey): number | string | null {

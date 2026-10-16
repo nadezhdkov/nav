@@ -78,6 +78,11 @@ const Routing = z
     quota_reserve: z.number().min(0).max(1).default(0.9),
     /** A candidate with at least 4 tasks in 24 h failing at this rate or more goes after the others. */
     degraded_error_rate: z.number().min(0).max(1).default(0.5),
+    /**
+     * After a rate limit with no reset time (Grok's free limit), the agent is treated as exhausted
+     * for this long, so routing skips it instead of trying it first on every task.
+     */
+    rate_limit_cooldown_minutes: z.number().positive().default(30),
   })
   .prefault({});
 export type RoutingConfig = z.infer<typeof Routing>;

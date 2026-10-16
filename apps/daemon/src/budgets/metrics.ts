@@ -66,6 +66,7 @@ function metricsOf(id: string, rows: AttemptRecord[], now: number, profile: stri
     succeeded: ok.length,
     success_rate: finished.length ? round(ok.length / finished.length, 3) : null,
     error_rate_24h: recent.total >= 4 ? round(recent.failed / recent.total, 3) : null,
+    rate_limited: rows.filter((a) => a.error_kind === "rate_limited").length,
     tokens_in: sum((a) => a.tokens_in),
     tokens_out: sum((a) => a.tokens_out),
     cached_tokens: sum((a) => a.cached_tokens),

@@ -47,6 +47,7 @@ const columns: { key: SortKey; label: string; numeric: boolean }[] = [
   { key: "tasks", label: "tasks", numeric: true },
   { key: "success_rate", label: "success", numeric: true },
   { key: "error_rate_24h", label: "errors24h", numeric: true },
+  { key: "rate_limited", label: "rateLimited", numeric: true },
   { key: "tokens", label: "tokens", numeric: true },
   { key: "median_tokens_per_success", label: "tokensPerSuccess", numeric: true },
   { key: "median_cost_per_success", label: "costPerSuccess", numeric: true },
@@ -237,6 +238,7 @@ async function save() {
               <td class="px-3 py-2 text-right">{{ m.succeeded }}/{{ m.tasks }}</td>
               <td class="px-3 py-2 text-right">{{ pct(m.success_rate) }}</td>
               <td class="px-3 py-2 text-right" :title="m.error_rate_24h === null ? t('usage.noHistory') : undefined">{{ pct(m.error_rate_24h) }}</td>
+              <td class="px-3 py-2 text-right" :title="t('usage.rateLimitedHint')">{{ m.rate_limited }}</td>
               <td class="px-3 py-2 text-right whitespace-nowrap">{{ compactTokens(m.tokens_in) }} / {{ compactTokens(m.tokens_out) }}</td>
               <td class="px-3 py-2 text-right">{{ m.median_tokens_per_success === null ? "—" : compactTokens(m.median_tokens_per_success) }}</td>
               <td class="px-3 py-2 text-right">{{ m.median_cost_per_success === null ? "—" : money(m.median_cost_per_success) }}</td>
