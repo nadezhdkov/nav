@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "../src/format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatHits, formatRepoMap, formatSymbols } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -300,5 +300,22 @@ describe("formatAway", () => {
   it("says it is off, and why the approver cannot work when it is on without a model", () => {
     expect(formatAway({ active: false, since: null, settings: null, counts: { approved: 0, revised: 0, escalated: 0 }, unavailable: null, reviews: [] })).toBe("Away mode is off. Approvals wait for you.");
     expect(formatAway({ active: true, since: "2026-10-17T08:00:00.000Z", settings, counts, unavailable: "no API model", reviews: [] })).toContain("Not working now: no API model");
+  });
+});
+
+describe("exploration output (ADR 0042)", () => {
+  it("prints symbols and hits as file:line, and says when nothing matched", () => {
+    const symbol = { name: "greet", kind: "function" as const, lang: "typescript", file: "app.ts", line: 1, exported: true };
+    expect(formatSymbols([symbol])).toContain("app.ts:1");
+    expect(formatSymbols([])).toBe("no symbols found");
+    expect(formatHits([{ file: "app.ts", line: 2, text: "hi" }])).toBe("app.ts:2: hi");
+    expect(formatHits([])).toBe("no matches");
+  });
+
+  it("prints the map sections", () => {
+    const text = formatRepoMap({ languages: [{ lang: "typescript", files: 2, lines: 10 }], frameworks: ["vue"], entry_points: [], manifests: ["package.json"], directories: [{ path: "src", files: 2 }], files: 3 });
+    expect(text).toContain("3 files");
+    expect(text).toContain("Frameworks and tools: vue");
+    expect(text).toContain("Entry points: none found");
   });
 });

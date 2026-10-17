@@ -19,7 +19,10 @@ import {
   type StopResult,
   type InboxItemDetail,
   type InboxView,
+  type CodeSymbol,
   type ProjectView,
+  type RepoMap,
+  type SearchHit,
   type AddProjectResult,
   type StartInboxResult,
   type SyncInboxResult,
@@ -37,7 +40,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -82,6 +85,9 @@ Usage:
   navarch project clone <owner/name>       clone a GitHub repository the token reaches into the Navarch home and add it
   navarch project list | remove <project-id>
   navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
+  navarch map | symbols <name> | where <text> [--project <project-id>]
+                                         explore the project of the current directory: languages and entry points,
+                                         where a symbol is defined, where a text appears
   navarch sync [--project <project-id>]    read new and changed issues now (also polled every 15 min)
   navarch inbox [--all] [--project <project-id>]
                                          triaged issues: kind, complexity, area, duplicate, action, estimate
@@ -368,6 +374,24 @@ async function main(argv: string[]): Promise<number> {
       const metrics = await new ApiClient(home).request<MetricsView>("GET", `/api/v1/metrics${values.days ? `?days=${encodeURIComponent(values.days)}` : ""}`);
       return print(json ? metrics : formatMetrics(metrics), json);
     }
+    case "map":
+    case "symbols":
+    case "where": {
+      const api = new ApiClient(home);
+      const project = await exploredProject(api, values.project);
+      const base = `/api/v1/projects/${encodeURIComponent(project)}`;
+      if (command === "map") {
+        const map = await api.request<RepoMap>("GET", `${base}/map`);
+        return print(json ? map : formatRepoMap(map), json);
+      }
+      const query = required(rest.join(" ") || undefined, command === "symbols" ? "a symbol name" : "a text to search");
+      if (command === "symbols") {
+        const symbols = await api.request<CodeSymbol[]>("GET", `${base}/symbols?q=${encodeURIComponent(query)}`);
+        return print(json ? symbols : formatSymbols(symbols), json);
+      }
+      const hits = await api.request<SearchHit[]>("GET", `${base}/search?q=${encodeURIComponent(query)}`);
+      return print(json ? hits : formatHits(hits), json);
+    }
     case "sync": {
       const result = await new ApiClient(home).request<SyncInboxResult>("POST", "/api/v1/inbox/sync", values.project ? { project_id: values.project } : {});
       print(json ? result : formatSync(result.results), json);
@@ -522,6 +546,18 @@ function budgetRequest(values: { monthly?: string; project?: string; daily?: str
   if (values.monthly !== undefined) return { scope: "global_monthly", usd: amount(values.monthly, "--monthly", true) };
   if (values.project !== undefined) return { scope: "project_daily", target: values.project, usd: amount(values.daily, "--daily", true) };
   return { scope: "run", target: values.run!, usd: amount(rest[0], "the run's new budget", false) };
+}
+
+/** The project named by `--project`, else the one whose clone holds the current directory. */
+async function exploredProject(api: ApiClient, id: string | undefined): Promise<string> {
+  if (id) return id;
+  const cwd = process.cwd();
+  const projects = await api.request<ProjectView[]>("GET", "/api/v1/projects");
+  const here = projects
+    .filter((p) => cwd === p.path || cwd.startsWith(p.path + "/"))
+    .sort((a, b) => b.path.length - a.path.length)[0];
+  if (!here) throw new CliError("no registered project contains this directory; pass --project <id> (see `navarch project list`)", EXIT.usage);
+  return here.id;
 }
 
 function required(value: string | undefined, what: string): string {

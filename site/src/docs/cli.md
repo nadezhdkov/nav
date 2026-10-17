@@ -57,6 +57,7 @@ Run options:
 | `navarch project clone <owner/name>` | clone a repository the token reaches and register it |
 | `navarch project list \| remove <id>` | registered projects |
 | `navarch repos [--refresh]` | GitHub repositories the token reaches |
+| `navarch map`, `navarch symbols <name>`, `navarch where <text>` `[--project <id>]` | explore the project of the current directory: languages, frameworks and entry points; where a symbol is defined (file and line); where a text appears. Read-only |
 | `navarch sync [--project <id>]` | read new and changed issues now |
 | `navarch inbox [--all] [--project <id>]` | triaged issues with estimates |
 | `navarch inbox start <item>... [--flow <name>] [--budget <usd>]` | start one run per item |

@@ -27,6 +27,7 @@
     "@navarch/agent-runtime": "workspace:*",
     "@navarch/concierge": "workspace:*",
     "@navarch/contracts": "workspace:*",
+    "@navarch/explorer": "workspace:*",
     "@navarch/flow-engine": "workspace:*",
     "@navarch/github": "workspace:*",
     "@navarch/runner": "workspace:*",

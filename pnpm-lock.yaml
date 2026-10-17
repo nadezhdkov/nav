@@ -232,6 +232,9 @@ importers:
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@navarch/explorer':
+        specifier: workspace:*
+        version: link:../../packages/explorer
       '@navarch/flow-engine':
         specifier: workspace:*
         version: link:../../packages/flow-engine
@@ -428,6 +431,12 @@ importers:
       zod:
         specifier: ^4.6.7
         version: 4.6.7
+
+  packages/explorer:
+    dependencies:
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/flow-engine:
     dependencies:

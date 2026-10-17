@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -387,4 +387,33 @@ export function formatProblems(file: string, problems: FlowProblem[]): string {
   const lines = problems.map((p) => `${file}${p.line ? `:${p.line}` : ""}: ${p.severity}: ${p.message}`);
   const errors = problems.filter((p) => p.severity === "error").length;
   return [...lines, `${errors} error(s), ${problems.length - errors} warning(s)`].join("\n");
+}
+
+/** `navarch map` (ADR 0042). Everything printed comes from the repository. */
+export function formatRepoMap(map: RepoMap): string {
+  const list = (items: string[]) => (items.length ? items.join(", ") : "none found");
+  return [
+    `${map.files} files`,
+    "",
+    "Languages",
+    table(["LANGUAGE", "FILES", "LINES"], map.languages.map((l) => [l.lang, String(l.files), String(l.lines)])),
+    "",
+    `Frameworks and tools: ${list(map.frameworks)}`,
+    `Entry points: ${list(map.entry_points)}`,
+    `Manifests: ${list(map.manifests)}`,
+    "",
+    "Directories",
+    table(["PATH", "FILES"], map.directories.map((d) => [d.path, String(d.files)])),
+  ].join("\n");
+}
+
+/** `navarch symbols` (ADR 0042). */
+export function formatSymbols(symbols: CodeSymbol[]): string {
+  if (!symbols.length) return "no symbols found";
+  return table(["SYMBOL", "KIND", "LOCATION", "EXPORTED"], symbols.map((s) => [s.name, s.kind, `${s.file}:${s.line}`, s.exported ? "yes" : "no"]));
+}
+
+/** `navarch where` (ADR 0042). */
+export function formatHits(hits: SearchHit[]): string {
+  return hits.length ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") : "no matches";
 }
