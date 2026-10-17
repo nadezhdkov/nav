@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
+import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -17,14 +17,18 @@ export async function listFiles(root: string): Promise<string[]> {
 
 /** The file's text, or undefined when it is missing, too large or binary. */
 export async function readText(root: string, rel: string): Promise<string | undefined> {
+  let handle;
   try {
-    const path = join(root, rel);
-    const info = await stat(path);
+    // Stat and read the same descriptor, so the file cannot change between the check and the read.
+    handle = await open(join(root, rel), "r");
+    const info = await handle.stat();
     if (!info.isFile() || info.size > MAX_FILE_BYTES) return undefined;
-    const text = await readFile(path, "utf8");
+    const text = await handle.readFile("utf8");
     return text.includes("\0") ? undefined : text;
   } catch {
     return undefined;
+  } finally {
+    await handle?.close();
   }
 }
 
