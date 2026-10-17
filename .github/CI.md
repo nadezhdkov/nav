@@ -4,7 +4,8 @@ Every job calls a `Makefile` target, so `make ci` locally runs the same gates (i
 
 | Workflow | Job | Runs | When |
 |---|---|---|---|
-| `ci.yml` | `verify` | `make typecheck`, `make test` on Node 22.18.0 (the `engines` floor) and Node 24 | every push and pull request |
+| `ci.yml` | `verify` | `make typecheck`, `make test`, `make web-build`, `make site-build` on Node 22.18.0 (the `engines` floor) and Node 24 | every push and pull request |
+| `pages.yml` | `build`, `deploy` | `make site-build` with `SITE_BASE=/nav/`, then GitHub Pages | push to `main` touching `site/`, or by hand |
 | `ci.yml` | `lint-workflows` | `make lint-workflows` (actionlint) | every push and pull request |
 | `security.yml` | `audit` | `make audit` (`pnpm audit --audit-level high`) | push, pull request, weekly on Monday |
 | `security.yml` | `secrets` | `make secrets` (gitleaks over the full history) | push, pull request, weekly on Monday |
@@ -16,4 +17,4 @@ Rules:
 - Third-party actions are pinned by commit SHA with the version in a comment; Dependabot updates both. Downloaded tools (actionlint, gitleaks) are pinned by version and SHA-256.
 - Tests never call a real agent CLI or model (fake CLIs and a fake model server), so CI needs no secrets.
 - The repository is public: CodeQL and dependency review are free for it but not set up yet. Pull requests from forks run with the same read-only permissions and no secrets.
-- Merging stays manual (AGENTS.md › Merge policy): CI reports, it never merges or deploys.
+- Merging stays manual (AGENTS.md › Merge policy): CI reports, it never merges. The one deployment is the public site (`pages.yml`, ADR 0038), which publishes `site/` after a human has merged to `main`. Its `deploy` job alone gets `pages: write` and `id-token: write`.

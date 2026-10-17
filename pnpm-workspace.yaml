@@ -2,6 +2,7 @@ packages:
   - apps/*
   - packages/*
   - packages/adapters/*
+  - site
 allowBuilds:
   # Its postinstall only switches between Vue 2 and 3 builds; the shipped files already target Vue 3.
   vue-demi: false

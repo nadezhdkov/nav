@@ -1,0 +1,269 @@
+@import "tailwindcss";
+
+/*
+ * The site shares the Web UI's palette (apps/web/src/style.css): graphite surfaces and the cyan
+ * accent of the logo. Dark by default, light when the system asks for it. Status always pairs a
+ * colour with an icon and a word.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --surface: #13161b;
+  --surface-2: #1b1f26;
+  --border: #262b33;
+  --edge: #3b424d;
+  --dot: rgb(161 168 181 / 0.13);
+  --text: #e7e9ed;
+  --text-muted: #a3aab6;
+  --accent: #22d3ee;
+  --accent-ink: #04161a;
+  --glow: rgb(34 211 238 / 0.16);
+  --tone-success: #34d399;
+  --tone-warning: #f59e0b;
+  --tone-danger: #fb7185;
+  --tone-info: #38bdf8;
+  --tone-violet: #a78bfa;
+  --shadow: 0 1px 0 rgb(255 255 255 / 0.04) inset, 0 24px 60px -30px rgb(0 0 0 / 0.8);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #eef0f3;
+    --border: #d9dce2;
+    --edge: #a3aab6;
+    --dot: rgb(17 19 24 / 0.1);
+    --text: #12141a;
+    --text-muted: #4a505c;
+    --accent: #0e7490;
+    --accent-ink: #ffffff;
+    --glow: rgb(14 116 144 / 0.12);
+    --tone-success: #047857;
+    --tone-warning: #a14a07;
+    --tone-danger: #be123c;
+    --tone-info: #0369a1;
+    --tone-violet: #6d28d9;
+    --shadow: 0 1px 2px rgb(17 19 24 / 0.06), 0 24px 60px -36px rgb(17 19 24 / 0.25);
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-edge: var(--edge);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-success: var(--tone-success);
+  --color-warning: var(--tone-warning);
+  --color-danger: var(--tone-danger);
+  --color-info: var(--tone-info);
+  --color-violet: var(--tone-violet);
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Dotted field with a soft glow, as behind the hero. */
+.dot-field {
+  background-image: radial-gradient(var(--dot) 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 40%, transparent 100%);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+/* Elements fade up the first time they scroll into view (see lib/reveal.ts). */
+.reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s ease,
+    transform 0.7s cubic-bezier(0.2, 0.7, 0.2, 1);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Docs prose, rendered from Markdown. */
+.prose {
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.75;
+}
+.prose h1 {
+  font-size: 2.25rem;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+  margin: 0 0 1rem;
+}
+.prose h2 {
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+  font-weight: 650;
+  margin: 2.6rem 0 0.8rem;
+  padding-top: 0.4rem;
+  scroll-margin-top: 88px;
+}
+.prose h3 {
+  font-size: 1.15rem;
+  font-weight: 650;
+  margin: 1.8rem 0 0.5rem;
+  scroll-margin-top: 88px;
+}
+.prose p,
+.prose ul,
+.prose ol,
+.prose table,
+.prose pre,
+.prose blockquote {
+  margin: 0 0 1.1rem;
+}
+.prose ul,
+.prose ol {
+  padding-left: 1.3rem;
+}
+.prose ul {
+  list-style: disc;
+}
+.prose ol {
+  list-style: decimal;
+}
+.prose li {
+  margin: 0.3rem 0;
+}
+.prose li::marker {
+  color: var(--text-muted);
+}
+.prose a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-underline-offset: 3px;
+}
+.prose a:hover {
+  text-decoration-color: var(--accent);
+}
+.prose strong {
+  font-weight: 650;
+}
+.prose code {
+  font-family: var(--font-mono);
+  font-size: 0.86em;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.1em 0.35em;
+}
+.prose pre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem;
+  overflow-x: auto;
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+.prose pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+.prose blockquote {
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+  border-radius: 0 10px 10px 0;
+  padding: 0.7rem 1rem;
+  color: var(--text);
+}
+.prose blockquote p:last-child {
+  margin: 0;
+}
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  display: block;
+  overflow-x: auto;
+}
+.prose th,
+.prose td {
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  padding: 0.55rem 0.8rem 0.55rem 0;
+  vertical-align: top;
+}
+.prose th {
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2rem 0;
+}
+.prose td:first-child code {
+  white-space: nowrap;
+}
