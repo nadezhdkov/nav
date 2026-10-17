@@ -241,6 +241,14 @@ export const en = {
       budget_exceeded: "{run} reached its budget",
       paused: "{run} is paused",
     },
+    ci: {
+      title: "CI failures",
+      line: "{repo}#{number} failed {checks}",
+      fix: "Fix it",
+      dismiss: "Dismiss",
+      open: "Open the pull request",
+      starting: "Starting…",
+    },
   },
   kill: {
     button: "Stop everything",

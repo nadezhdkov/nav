@@ -27,6 +27,12 @@ Navarch notices failing checks on open pull requests by polling, tells the user,
 
 - `ci_fix: { auto: false, daily_runs: 3 }` in the config. When `auto` is on, each new failure is started by the daemon through the same path, if the Policy Engine allows `ci.auto_fix` (daemon actor, fewer than `daily_runs` automatic starts today in the PC's local time). A denied or failed start leaves the failure open and notifies the user.
 
+### Web UI
+
+- Home shows a **CI failures** card while any failure is open: for each, the pull request's title, `repo#N failed <checks>` (three names, then `+N`) and a link to the pull request. On the desktop it has **Fix it** (starts the run and opens it) and **Dismiss**; a paired phone sees the list and the link only.
+- Titles and check names are untrusted: plain text on one line. Only `https://` links are opened.
+- The card refetches when a `ci.failure.*` event arrives.
+
 ### Notifications
 
 - A new failure sends a push, "CI failed on #N" (a notice `ci_failure`, deep link `/home`), in the device's locale. An automatic start sends the run's usual notices.
@@ -40,5 +46,5 @@ Navarch notices failing checks on open pull requests by polling, tells the user,
 
 ## Not in this slice
 
-- Web UI (Home alert and buttons) and the concierge's `list_ci_failures` / `fix_ci`.
+- The concierge's `list_ci_failures` / `fix_ci`.
 - Webhooks (they need the relay).

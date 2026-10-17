@@ -11,7 +11,7 @@ The sign-in code is used once, so your API token never ends up in a URL or in yo
 
 ## Screens
 
-- **Home**: what needs you (approvals, alerts), today's cost, agent quota windows, the Inbox and active runs.
+- **Home**: what needs you (approvals, alerts, failing checks on your pull requests), today's cost, agent quota windows, the Inbox and active runs.
 - **Runs**: every run with its status, Flow, repository and cost against budget.
 - **Run detail**: the live **task graph** of the run's Flow. Each node shows its status as an icon and a word, plus its agent and model, loop iterations and the fix loop. Amber gates mark where a human decides. Select a node to see its output, cost and artifacts. The **timeline** is the run's full event log, and **logs** stream the agent's output.
 - **Fleet**: every agent of every active run, as a **tree** (project → run → agents) or as cards. Team runs show the lead above the members it delegated to. Each card shows step progress, cost, adapter and model, branch and what the agent is doing now.

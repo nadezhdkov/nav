@@ -243,6 +243,14 @@ export const zhCN: Messages = {
       budget_exceeded: "{run} 已达预算",
       paused: "{run} 已暂停",
     },
+    ci: {
+      title: "CI 失败",
+      line: "{repo}#{number} 的 {checks} 失败",
+      fix: "修复",
+      dismiss: "忽略",
+      open: "打开拉取请求",
+      starting: "正在启动…",
+    },
   },
   kill: {
     button: "全部停止",
