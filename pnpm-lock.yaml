@@ -429,6 +429,12 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
 
+  packages/explorer:
+    dependencies:
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/flow-engine:
     dependencies:
       '@navarch/contracts':
