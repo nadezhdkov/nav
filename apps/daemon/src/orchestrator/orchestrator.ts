@@ -428,7 +428,7 @@ export class Orchestrator {
    * queue, where the Scheduler sees the approval and dispatches it; rejecting cancels the task and
    * the run.
    */
-  decideApproval(id: string, decision: "approve" | "reject", reason: string | undefined, actor: Actor, choice?: string): ApprovalView {
+  decideApproval(id: string, decision: "approve" | "reject", reason: string | undefined, actor: Actor, choice?: string, revise = false): ApprovalView {
     const approval = this.store.getApproval(id);
     if (!approval) throw new OrchestratorError("not_found", `approval ${id} not found`);
     if (approval.status !== "pending") throw new OrchestratorError("conflict", `approval ${id} is already ${approval.status}`);
@@ -439,6 +439,10 @@ export class Orchestrator {
         throw new OrchestratorError("invalid_request", approval.choices.length ? `choice must be one of: ${approval.choices.join(", ")}` : `approval ${id} has no choices`);
       }
     }
+    // Sending a plan back (ADR 0039) is an approval that carries the feedback for the next attempt.
+    if (revise && (decision !== "approve" || !reason || choice !== undefined)) {
+      throw new OrchestratorError("invalid_request", "a revision is an approval with feedback and no choice");
+    }
     const task = this.store.getTask(approval.task_id)!;
     const run = this.store.getRun(approval.run_id)!;
     const decided: NewEvent = {
@@ -446,7 +450,7 @@ export class Orchestrator {
       run_id: run.id,
       task_id: task.id,
       actor,
-      payload: { approval_id: id, decision: decision === "approve" ? "approved" : "rejected", ...(reason ? { reason } : {}), ...(choice !== undefined ? { choice } : {}) },
+      payload: { approval_id: id, decision: decision === "approve" ? "approved" : "rejected", ...(reason ? { reason } : {}), ...(choice !== undefined ? { choice } : {}), ...(revise ? { revise: true as const } : {}) },
     };
     if (decision === "approve") {
       this.store.append([decided, taskStatus(run.id, task.id, "waiting_approval", "ready", task.attempt, "approved", undefined)]);

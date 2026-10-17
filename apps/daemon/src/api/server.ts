@@ -36,6 +36,7 @@ import {
   DismissItemRequest,
   StartInboxRequest,
   SyncInboxRequest,
+  SetAwayRequest,
   SetBudgetRequest,
   WorkItemStatus,
   type SyncInboxResult,
@@ -51,6 +52,7 @@ import { ConciergeError } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
 import { isRunName } from "../orchestrator/names.ts";
+import { AwayError } from "../away/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
@@ -286,6 +288,21 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const days = q.days === undefined ? 30 : Number(q.days);
     if (!Number.isInteger(days) || days < 1 || days > 365) return badRequest(reply, "days must be a whole number from 1 to 365");
     return daemon.metrics({ days });
+  });
+
+  // Away mode (ADR 0039): paired phones may read it, to show the banner; only the desktop and the CLI change it.
+  app.get("/api/v1/away", async () => daemon.away.view());
+
+  app.put("/api/v1/away", async (req, reply) => {
+    if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot change Away mode");
+    const parsed = SetAwayRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    try {
+      return daemon.away.set(parsed.data, actorOf(req));
+    } catch (err) {
+      if (err instanceof AwayError) return err.code === "forbidden" ? forbidden(reply, err.message) : badRequest(reply, err.message);
+      throw err;
+    }
   });
 
   app.get("/api/v1/budgets", async () => daemon.budgets.views());
@@ -624,6 +641,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/usage",
   "GET /api/v1/metrics",
   "GET /api/v1/budgets",
+  "GET /api/v1/away",
   "POST /api/v1/stop",
   "GET /api/v1/devices/me",
   "DELETE /api/v1/devices/:id",

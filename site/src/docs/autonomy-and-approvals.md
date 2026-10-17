@@ -55,3 +55,23 @@ navarch stop --all                                       # pause every active ru
 ```
 
 Instructions never widen what an agent is allowed to do.
+
+## Away mode
+
+When you are busy on something else, runs can wait for you for hours. **Away mode** hands some approvals to an **approver agent** for a while, so the run keeps going until the draft PR. It is off by default and only you can turn it on, from the desktop Web UI (`/away`) or the CLI:
+
+```sh
+navarch away on --for 4h --delegate plan,pr --max-complexity 3
+navarch away          # what it decided, and why
+navarch away off
+```
+
+You choose what to hand over (the plan, opening the draft PR, starting agents), for how long, how complex a run may be, and how many times it may send a plan back. Turning it on shows a warning and needs an explicit yes. A banner stays on every screen while it is on.
+
+For each approval it was handed, the approver reads the plan (or the finished change) and answers:
+
+- **approve**: the run goes on, and the decision is recorded as the approver's.
+- **send back**: the planner redoes the plan with the approver's feedback, then the new plan is judged.
+- **leave to you**: the approval waits as usual and your phone is notified.
+
+It is an AI model, so it can be wrong; what it approves still ends as a draft PR that you review and merge. It never merges, never raises a budget and never decides anything you did not hand over. Runs above your complexity limit, and PRs whose checks failed, always wait for you.

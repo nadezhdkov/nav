@@ -66,6 +66,9 @@ Run options:
 
 | Command | What it does |
 |---|---|
+| `navarch away [status]` | whether the approver is deciding for you, and what it did |
+| `navarch away on [--for 4h] [--delegate plan,pr,start] [--max-complexity 1-5\|none] [--max-revisions 0-3] [--yes]` | hand approvals to the approver for a while |
+| `navarch away off` | turn Away mode off |
 | `navarch budget [show]` | billed use against each limit |
 | `navarch budget set --monthly <usd\|none>` | the global monthly limit |
 | `navarch budget set --project <id> --daily <usd\|none>` | a project's daily limit |

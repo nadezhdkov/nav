@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "../src/format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -274,5 +274,31 @@ describe("flow formatting (ADR 0033)", () => {
       { severity: "error", message: 'node "a" is not in edges', node: "a", line: 7 },
       { severity: "warning", message: "no agent" },
     ])).toBe('f.yaml:7: error: node "a" is not in edges\nf.yaml: warning: no agent\n1 error(s), 1 warning(s)');
+  });
+});
+
+describe("formatAway", () => {
+  const settings = { delegate: ["plan" as const, "pr" as const], until: "2026-10-17T12:00:00.000Z", max_complexity: 3, max_revisions: 2 };
+  const counts = { approved: 2, revised: 1, escalated: 1 };
+
+  it("says clearly when Away mode is on, what was handed over, and what the approver did", () => {
+    const text = formatAway({
+      active: true,
+      since: "2026-10-17T08:00:00.000Z",
+      settings,
+      counts,
+      unavailable: null,
+      reviews: [{ approval_id: "apr_1", run_id: "run_1", run_name: "brave-frigate", subject: "plan", verdict: "revise", reason: "No tests are named.", model: "fake/approver", at: "2026-10-17T08:05:00.000Z" }],
+    });
+    expect(text).toContain("AWAY MODE IS ON");
+    expect(text).toContain("plan, pr");
+    expect(text).toContain("2 approved, 1 sent back, 1 left to you");
+    expect(text).toContain("brave-frigate");
+    expect(text).toContain("navarch away off");
+  });
+
+  it("says it is off, and why the approver cannot work when it is on without a model", () => {
+    expect(formatAway({ active: false, since: null, settings: null, counts: { approved: 0, revised: 0, escalated: 0 }, unavailable: null, reviews: [] })).toBe("Away mode is off. Approvals wait for you.");
+    expect(formatAway({ active: true, since: "2026-10-17T08:00:00.000Z", settings, counts, unavailable: "no API model", reviews: [] })).toContain("Not working now: no API model");
   });
 });

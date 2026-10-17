@@ -1,4 +1,6 @@
 import type {
+  AwayView,
+  SetAwayRequest,
   RunAttachment,
   GitHubRepoView,
   ApprovalStatus,
@@ -200,6 +202,8 @@ export const api = {
   metrics: (days = 30) => request<MetricsView>("GET", `/api/v1/metrics?days=${days}`),
   usage: (days = 30, profile?: string) =>
     request<UsageView>("GET", `/api/v1/usage?days=${days}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
+  away: () => request<AwayView>("GET", "/api/v1/away"),
+  setAway: (body: SetAwayRequest) => request<AwayView>("PUT", "/api/v1/away", body),
   setBudget: (body: SetBudgetRequest) => request<BudgetView[]>("PUT", "/api/v1/budgets", body),
   // Flow Studio (ADR 0033)
   flows: () => request<FlowSummary[]>("GET", "/api/v1/flows"),

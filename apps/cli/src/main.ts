@@ -3,6 +3,7 @@ import { mkdirSync, openSync, readFileSync } from "node:fs";
 import { basename, join, resolve as resolvePath } from "node:path";
 import { checkoutRoot, installProblem, readTail, startFailureHint } from "./deps.ts";
 import { fileURLToPath } from "node:url";
+import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
 import {
   isTerminalRun,
@@ -22,6 +23,8 @@ import {
   type AddProjectResult,
   type StartInboxResult,
   type SyncInboxResult,
+  type AwayView,
+  SetAwayRequest,
   type BudgetView,
   type SetBudgetRequest,
   type UsageView,
@@ -33,7 +36,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -84,6 +87,9 @@ Usage:
   navarch inbox start <item-id>... [--flow <name>] [--budget <usd>]
                                          start one issue run per item in its project's clone
   navarch inbox dismiss <item-id> [--reason <text>] | restore <item-id>
+  navarch away [status]                    Away mode: whether an approver agent decides approvals for you, and what it did
+  navarch away on [--for <4h|90m|none>] [--delegate plan,pr,start] [--max-complexity <1-5|none>] [--max-revisions <0-3>] [--yes]
+  navarch away off
   navarch budget [show]                    billed use against the run, project-day and monthly limits
   navarch budget set --monthly <usd|none> | --project <id> --daily <usd|none> | --run <id> <usd>
                                          change a limit; raising one releases tasks waiting on it
@@ -145,6 +151,11 @@ async function main(argv: string[]): Promise<number> {
       version: { type: "string" },
       draft: { type: "boolean", default: false },
       profile: { type: "string" },
+      for: { type: "string" },
+      delegate: { type: "string" },
+      "max-complexity": { type: "string" },
+      "max-revisions": { type: "string" },
+      yes: { type: "boolean", default: false },
     },
   });
   const [command, ...rest] = positionals;
@@ -287,6 +298,26 @@ async function main(argv: string[]): Promise<number> {
       const repos = await api.request<GitHubRepoView[]>("GET", `/api/v1/github/repos${values.refresh ? "?refresh=1" : ""}`);
       return print(json ? repos : formatGitHubRepos(repos), json);
     }
+    case "away": {
+      const api = new ApiClient(home);
+      if (rest[0] === "off") {
+        const view = await api.request<AwayView>("PUT", "/api/v1/away", { enabled: false });
+        return print(json ? view : formatAway(view), json);
+      }
+      if (rest[0] === "on") {
+        const body = awayRequest(values);
+        if (!values.yes) {
+          process.stderr.write(`${AWAY_WARNING}\n`);
+          if (!process.stdin.isTTY) throw new CliError("Away mode needs your explicit yes: rerun with --yes after reading the warning above", EXIT.usage);
+          if (!(await confirm("Turn Away mode on? [y/N] "))) return EXIT.error;
+        }
+        const view = await api.request<AwayView>("PUT", "/api/v1/away", body);
+        return print(json ? view : formatAway(view), json);
+      }
+      if (rest[0] !== "status" && rest[0] !== undefined) throw new CliError("usage: navarch away [status] | on [...] | off", EXIT.usage);
+      const view = await api.request<AwayView>("GET", "/api/v1/away");
+      return print(json ? view : formatAway(view), json);
+    }
     case "budget": {
       const api = new ApiClient(home);
       if (rest[0] === "set") {
@@ -413,6 +444,45 @@ async function main(argv: string[]): Promise<number> {
     }
     default:
       throw new CliError(`unknown command: ${command}\n\n${USAGE}`, EXIT.usage);
+  }
+}
+
+const AWAY_WARNING = `Away mode: an approver agent (an AI model) will approve for you what you hand over.
+  - It reads each plan, and the finished change before a draft PR, and approves, sends the plan back, or leaves it to you.
+  - It can be wrong. Plans it approves become code, and its draft PRs wait for your review.
+  - It never merges, never raises a budget and never decides anything you did not hand over.
+  - Every decision is recorded; \`navarch away\` lists them.`;
+
+/** `navarch away on`: durations such as 4h, 90m or "none" (no time limit). */
+function awayRequest(values: { for?: string; delegate?: string; "max-complexity"?: string; "max-revisions"?: string }): SetAwayRequest {
+  const span = values.for ?? "4h";
+  let minutes: number | null;
+  if (span === "none") minutes = null;
+  else {
+    const m = /^(\d+)(m|h|d)$/.exec(span);
+    if (!m) throw new CliError("--for takes a duration such as 90m, 4h or 2d, or none", EXIT.usage);
+    minutes = Number(m[1]) * { m: 1, h: 60, d: 1440 }[m[2] as "m" | "h" | "d"];
+  }
+  const delegate = (values.delegate ?? "plan,pr").split(",").map((d) => d.trim()).filter(Boolean);
+  for (const d of delegate) if (!["plan", "pr", "start"].includes(d)) throw new CliError(`--delegate takes plan, pr or start, not "${d}"`, EXIT.usage);
+  const complexity = values["max-complexity"];
+  const revisions = values["max-revisions"];
+  return SetAwayRequest.parse({
+    enabled: true,
+    confirm: true,
+    delegate,
+    minutes,
+    ...(complexity !== undefined ? { max_complexity: complexity === "none" ? null : Number(complexity) } : {}),
+    ...(revisions !== undefined ? { max_revisions: Number(revisions) } : {}),
+  });
+}
+
+async function confirm(question: string): Promise<boolean> {
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  try {
+    return /^y(es)?$/i.test((await rl.question(question)).trim());
+  } finally {
+    rl.close();
   }
 }
 

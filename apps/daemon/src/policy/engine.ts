@@ -21,6 +21,8 @@ export type PolicyContext = {
   /** For `inbox.triage`: today's triage so far and the daily caps (ADR 0021). */
   usage?: { items: number; usd: number };
   cap?: { items: number; usd: number };
+  /** For `approval.delegate`: Away mode is on and the user handed this kind of approval to the approver (ADR 0039). */
+  away?: { active: boolean; delegated: boolean };
 };
 
 export type PolicyRequest = {
@@ -178,6 +180,18 @@ export const defaultRules: PolicyRule[] = [
     reason: "Inbox triage within the daily limits (ADR 0021)",
   },
   { match: (r) => r.action === "inbox.triage", effect: "deny", reason: "only the daemon triages the Inbox" },
+  {
+    match: (r) => r.action === "away.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user turns Away mode on and off, from the desktop or the CLI (ADR 0039)",
+  },
+  { match: (r) => r.action === "away.set", effect: "deny", reason: "only the user turns Away mode on or off, and not from a paired phone" },
+  {
+    match: (r) => r.action === "approval.delegate" && r.actor.kind === "agent" && r.actor.profile === "approver" && r.context.away?.active === true && r.context.away.delegated === true,
+    effect: "allow",
+    reason: "Away mode is on and the user handed this kind of approval to the approver (ADR 0039)",
+  },
+  { match: (r) => r.action === "approval.delegate", effect: "deny", reason: "an approval is decided by the approver only in Away mode, for what the user handed over" },
   {
     match: (r) => r.action === "flow.approval",
     effect: "require_approval",

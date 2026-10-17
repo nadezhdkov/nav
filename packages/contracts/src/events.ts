@@ -4,6 +4,7 @@ import { WorkItemTriage } from "./inbox.ts";
 import { RunStatus, TaskStatus } from "./status.ts";
 import { CompeteTaskRef } from "./compete.ts";
 import { TeamTaskRef } from "./team.ts";
+import { AwayDelegate, AwaySettings, AwayVerdict } from "./away.ts";
 import { ContainerIsolation, VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
 /** Who caused an event (spec §9.2 `actor`). */
@@ -329,6 +330,21 @@ export const EventPayloads = {
     reason: z.string().optional(),
     /** One of the request's choices, picked when approving. */
     choice: z.string().optional(),
+    /** Approved with the plan sent back: `reason` is the feedback for the next attempt (ADR 0039). */
+    revise: z.literal(true).optional(),
+  }),
+  /** The user turned Away mode on, after confirming its warning (ADR 0039). */
+  "away.enabled": AwaySettings,
+  /** Away mode ended: the user turned it off, or its time ran out. */
+  "away.disabled": z.object({ reason: z.enum(["user", "expired"]) }),
+  /** The approver read one approval and decided it, or left it to the user. */
+  "away.reviewed": z.object({
+    approval_id: z.string(),
+    subject: AwayDelegate,
+    verdict: AwayVerdict,
+    reason: z.string(),
+    model: z.string(),
+    cost_usd: z.number().nonnegative(),
   }),
   /** A node whose `when` was false; the flow continues with the next one. */
   "flow.node.skipped": z.object({ node_id: z.string(), reason: z.string() }),
