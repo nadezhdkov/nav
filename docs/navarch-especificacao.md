@@ -1448,6 +1448,7 @@ Cada fase tem um **critério go/no-go** que precisa ser cumprido antes de avanç
 **Go/no-go**
 - Criar um Flow novo só pela UI e executá-lo sem editar YAML.
 - Modo Compete escolhendo, segundo o próprio usuário, a melhor implementação em ≥ 70% dos casos de teste.
+  - *Dispensado em 2026-10-17 por decisão do usuário (ADR 0040): a campanha parou em 2 de 10 casos por custo e o Modo Compete ficou parkeado. A Fase 2 fechou com o primeiro critério.*
 
 ### Fase 3 — Knowledge Engine e Explorer (6–8 semanas)
 
