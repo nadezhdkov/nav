@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -221,6 +221,19 @@ export function formatSync(results: ProjectSyncResult[]): string {
           : `${r.project_id}: ${r.new} new, ${r.changed} changed, ${r.closed} closed`,
     )
     .join("\n");
+}
+
+/** `navarch ci`: one line per failure; titles and check names are untrusted text, kept on one line. */
+export function formatCiFailures(failures: CiFailureView[]): string {
+  if (!failures.length) return "no CI failures; they are noticed when navarchd syncs (navarch sync)";
+  return [
+    table(
+      ["FAILURE", "PULL REQUEST", "STATUS", "FAILED CHECKS", "TITLE"],
+      failures.map((f) => [f.id, `${f.repo}#${f.number}`, f.status, truncate(oneLine(f.checks.map((c) => c.name).join(", ")), 40), truncate(oneLine(f.title), 50)]),
+    ),
+    "",
+    "fix it: navarch ci fix <failure> · dismiss: navarch ci dismiss <failure>",
+  ].join("\n");
 }
 
 /** `navarch inbox`: one line per item; titles are untrusted text, kept on one line. */

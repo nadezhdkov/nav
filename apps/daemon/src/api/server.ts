@@ -34,6 +34,8 @@ import {
   CloneRepoRequest,
   CreateProjectRequest,
   DismissItemRequest,
+  FixCiFailureRequest,
+  CiFailureStatus,
   StartInboxRequest,
   SyncInboxRequest,
   SetAwayRequest,
@@ -54,6 +56,7 @@ import { InboxError } from "../inbox/service.ts";
 import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
+import { CiError } from "../github/ci.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
@@ -95,6 +98,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
       return reply.code(status).send({ error: err.code, message: err.message, ...(err.problems.length ? { problems: err.problems } : {}) });
     }
+    if (err instanceof CiError) return reply.code(err.code === "not_found" ? 404 : 409).send({ error: err.code, message: err.message });
     if (err instanceof BudgetError) return reply.code(404).send({ error: err.code, message: err.message });
     if (err instanceof InboxError) {
       const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : err.code === "github_error" ? 502 : 400;
@@ -250,8 +254,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/inbox/sync", async (req, reply) => {
     const parsed = SyncInboxRequest.safeParse(req.body ?? {});
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
-    // A sync also reads what became of Navarch's open pull requests (ADR 0037).
-    const [results] = await Promise.all([daemon.inbox.sync(parsed.data.project_id, actorOf(req)), daemon.prs.check()]);
+    // A sync also reads what became of Navarch's open pull requests (ADR 0037) and their failing checks (ADR 0041).
+    const [results] = await Promise.all([daemon.inbox.sync(parsed.data.project_id, actorOf(req)), daemon.prs.check(), daemon.ci.check()]);
     const result: SyncInboxResult = { results };
     return result;
   });
@@ -271,6 +275,22 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
+
+  // CI failures noticed on open pull requests (ADR 0041). A phone may read them; starting a fix is desktop only.
+  app.get("/api/v1/ci/failures", async (req, reply) => {
+    const status = (req.query as { status?: string }).status;
+    const parsed = status ? CiFailureStatus.safeParse(status) : undefined;
+    if (parsed && !parsed.success) return badRequest(reply, "status must be open, started, dismissed or resolved");
+    return daemon.ci.list(parsed?.data ?? (status === undefined ? "open" : undefined));
+  });
+
+  app.post("/api/v1/ci/failures/:id/fix", async (req, reply) => {
+    const parsed = FixCiFailureRequest.safeParse(req.body ?? {});
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.ci.fix((req.params as { id: string }).id, parsed.data, actorOf(req));
+  });
+
+  app.post("/api/v1/ci/failures/:id/dismiss", async (req) => daemon.ci.dismiss((req.params as { id: string }).id, actorOf(req)));
 
   app.get("/api/v1/quotas", async () => daemon.store.quotas());
 
@@ -632,6 +652,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/repos",
   "GET /api/v1/projects",
   "GET /api/v1/inbox",
+  "GET /api/v1/ci/failures",
   "GET /api/v1/inbox/:id",
   "POST /api/v1/inbox/sync",
   "POST /api/v1/inbox/start",

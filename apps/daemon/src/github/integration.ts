@@ -1,5 +1,5 @@
 import { parseIssueRef, type Actor, type WorkItem } from "@navarch/contracts";
-import { checkPush, cloneRepo, fetchPullRequest, GitHubClient, pushBranch, repoFromRemote, type GitHubRepo } from "@navarch/github";
+import { checkPush, cloneRepo, fetchPullRequest, GitHubClient, pushBranch, repoFromRemote, type CheckStatus, type GitHubRepo, type OpenPullRequest } from "@navarch/github";
 import { remoteUrl } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
@@ -77,6 +77,16 @@ export class GitHubIntegration {
       commits_after = commit === pr.head_sha ? 0 : await this.client.commitsAhead(repo, commit, pr.head_sha).catch(() => null);
     }
     return { merged: pr.merged, closed_at: pr.closed_at ?? new Date().toISOString(), head_sha: pr.head_sha, commits_after };
+  }
+
+  /** The open pull requests of a repository, for the CI watcher (ADR 0041). Reads only. */
+  listOpenPullRequests(repo: string): Promise<OpenPullRequest[]> {
+    return this.client.listOpenPullRequests(repo);
+  }
+
+  /** How a commit's check runs stand, without their logs (ADR 0041). Reads only. */
+  checkStatus(repo: string, sha: string): Promise<CheckStatus> {
+    return this.client.checkStatus(repo, sha);
   }
 
   /** Posts a COMMENT review, or returns the one this run already posted (its body holds `marker`). */

@@ -143,13 +143,15 @@ describe("Inbox sync and triage", () => {
     // The second sync is the first incremental one (`since`); the third repeats it and gets 304.
     expect(await sync()).toEqual([expect.objectContaining({ not_modified: false, new: 0, changed: 0 })]);
     expect(await sync()).toEqual([expect.objectContaining({ not_modified: true, new: 0 })]);
-    expect(gh.requests.at(-1)).toMatchObject({ status: 304 });
+    // A sync also reads the pull requests' checks (ADR 0041), so the issue listing is not always the last request.
+    const lastListing = () => gh.requests.filter((r) => r.path.endsWith("/issues")).at(-1);
+    expect(lastListing()).toMatchObject({ status: 304 });
     const issues = gh.repos.get("acme/widgets")!.issues;
     Object.assign(issues.get(1)!, { body: "a, edited", updated_at: "2026-10-03T00:00:00Z" });
     Object.assign(issues.get(2)!, { state: "closed", updated_at: "2026-10-04T00:00:00Z" });
     issues.set(5, { title: "Five", body: "", labels: [], author: "e", updated_at: "2026-10-05T00:00:00Z" });
     expect(await sync()).toEqual([expect.objectContaining({ new: 1, changed: 1, closed: 1 })]);
-    expect(gh.requests.at(-1)?.query).toContain("since=2026-10-02T00%3A00%3A00Z");
+    expect(lastListing()?.query).toContain("since=2026-10-02T00%3A00%3A00Z");
     const view = await inbox("?status=new,triaged,closed");
     expect(view.items.map((i) => [i.number, i.status]).sort()).toEqual([
       [1, "triaged"],

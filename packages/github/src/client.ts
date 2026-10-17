@@ -200,6 +200,42 @@ export class GitHubClient {
     return out;
   }
 
+  /** The open pull requests of a repository, newest first (first page of 100; ADR 0041). */
+  async listOpenPullRequests(repo: string): Promise<OpenPullRequest[]> {
+    const rows = await this.request<
+      { number: number; html_url: string; title: string; draft?: boolean; user?: { login?: string } | null; head: { ref: string; sha: string; repo: { full_name: string } | null } }[]
+    >("GET", `/repos/${repo}/pulls?state=open&sort=created&direction=desc&per_page=100`, undefined, `open pull requests of ${repo}`);
+    return rows.map((r) => ({
+      number: r.number,
+      url: r.html_url,
+      title: r.title,
+      author: r.user?.login ?? "ghost",
+      draft: r.draft ?? false,
+      head_ref: r.head.ref,
+      head_sha: r.head.sha,
+      // A deleted fork has no repository left; it is not this one.
+      head_repo: r.head.repo?.full_name ?? "(deleted fork)",
+    }));
+  }
+
+  /**
+   * How a commit's check runs stand (ADR 0041): how many have not finished, and the ones that
+   * concluded `failure` or `timed_out`. Reads the listing only, never the logs.
+   */
+  async checkStatus(repo: string, sha: string): Promise<CheckStatus> {
+    const listing = await this.request<{ check_runs: { name: string; status: string; conclusion: string | null; html_url: string }[] }>(
+      "GET",
+      `/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`,
+      undefined,
+      `checks of ${repo}@${sha.slice(0, 7)}`,
+    );
+    const pending = listing.check_runs.filter((c) => c.status !== "completed").length;
+    const failing = listing.check_runs
+      .filter((c) => c.conclusion === "failure" || c.conclusion === "timed_out")
+      .map((c) => ({ name: c.name, conclusion: c.conclusion!, url: c.html_url }));
+    return { pending, failing };
+  }
+
   /** Reviews of a pull request, for finding one already posted (first page of 100). */
   async listReviews(repo: string, number: number): Promise<{ id: number; body: string; url: string }[]> {
     const rows = await this.request<{ id: number; body: string | null; html_url: string }[]>("GET", `/repos/${repo}/pulls/${number}/reviews?per_page=100`, undefined, `reviews of ${repo}#${number}`);
@@ -279,6 +315,12 @@ export class GitHubClient {
     });
   }
 }
+
+/** An open pull request as `GET /pulls?state=open` lists it (ADR 0041). */
+export type OpenPullRequest = { number: number; url: string; title: string; author: string; draft: boolean; head_ref: string; head_sha: string; head_repo: string };
+
+/** The check runs of a commit that have not finished, and the failed ones, without logs (ADR 0041). */
+export type CheckStatus = { pending: number; failing: { name: string; conclusion: string; url: string }[] };
 
 /** A pull request as read from GitHub, before the run fetches it and lists its checks. */
 export type PullRequestDetails = WorkItem & Omit<PullRequestInfo, "failing_checks"> & { state: "open" | "closed" };

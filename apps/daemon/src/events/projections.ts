@@ -336,6 +336,30 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       );
       return;
     }
+    case "ci.failure.detected": {
+      const p = (event as NavarchEvent<"ci.failure.detected">).payload;
+      // A newer head of the same pull request makes the earlier failure moot.
+      db.prepare("UPDATE ci_failures SET status = 'resolved', resolved_reason = 'moved' WHERE repo = ? AND number = ? AND status = 'open' AND head_sha != ?").run(p.repo, p.number, p.head_sha);
+      db.prepare(
+        "INSERT OR IGNORE INTO ci_failures (id, project_id, repo, number, title, author, url, head_ref, head_sha, checks, status, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?)",
+      ).run(p.failure_id, p.project_id, p.repo, p.number, p.title, p.author, p.url, p.head_ref, p.head_sha, JSON.stringify(p.checks), ts);
+      return;
+    }
+    case "ci.failure.resolved": {
+      const p = (event as NavarchEvent<"ci.failure.resolved">).payload;
+      db.prepare("UPDATE ci_failures SET status = 'resolved', resolved_reason = ? WHERE id = ? AND status = 'open'").run(p.reason, p.failure_id);
+      return;
+    }
+    case "ci.failure.started": {
+      const p = (event as NavarchEvent<"ci.failure.started">).payload;
+      db.prepare("UPDATE ci_failures SET status = 'started', run_id = ?, auto = ?, started_at = ? WHERE id = ?").run(p.run_id, p.auto ? 1 : 0, ts, p.failure_id);
+      return;
+    }
+    case "ci.failure.dismissed": {
+      const p = (event as NavarchEvent<"ci.failure.dismissed">).payload;
+      db.prepare("UPDATE ci_failures SET status = 'dismissed' WHERE id = ? AND status = 'open'").run(p.failure_id);
+      return;
+    }
     case "flow.node.skipped": {
       const p = (event as NavarchEvent<"flow.node.skipped">).payload;
       db.prepare("INSERT OR REPLACE INTO skipped_nodes (run_id, node_id, reason) VALUES (?, ?, ?)").run(event.run_id, p.node_id, p.reason);

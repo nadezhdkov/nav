@@ -307,6 +307,28 @@ export const EventPayloads = {
     head_sha: z.string(),
     commits_after: z.number().int().nonnegative().nullable(),
   }),
+  /**
+   * A pull request of a project has a head whose checks finished with a failure (ADR 0041). One per
+   * head commit; `failure_id` names it for `navarch ci fix|dismiss`.
+   */
+  "ci.failure.detected": z.object({
+    failure_id: z.string(),
+    project_id: z.string(),
+    repo: z.string(),
+    number: z.number().int().positive(),
+    title: z.string(),
+    author: z.string(),
+    url: z.string(),
+    head_ref: z.string(),
+    head_sha: z.string(),
+    checks: z.array(z.object({ name: z.string(), conclusion: z.string(), url: z.string() })),
+  }),
+  /** An open CI failure no longer needs a fix: its pull request closed, its head moved or its checks passed. */
+  "ci.failure.resolved": z.object({ failure_id: z.string(), reason: z.enum(["closed", "moved", "passed"]) }),
+  /** A `ci-fix` run was started for a CI failure, by the user or by `ci_fix.auto`. */
+  "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
+  /** The user dismissed a CI failure. */
+  "ci.failure.dismissed": z.object({ failure_id: z.string() }),
   /** A pull request Navarch opened can no longer be read (404 three polls in a row); it is no longer followed (ADR 0037). */
   "github.pr.lost": z.object({ repo: z.string(), number: z.number().int().positive(), reason: z.string() }),
   /** Navarch posted a COMMENT review on a pull request (ADR 0032); `existing` when a retry found its earlier one. */

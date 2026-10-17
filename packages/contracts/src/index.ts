@@ -14,3 +14,4 @@ export * from "./compete.ts";
 export * from "./pulls.ts";
 export * from "./studio.ts";
 export * from "./away.ts";
+export * from "./ci.ts";

@@ -59,6 +59,10 @@ inbox:
     daily_items: 50
     daily_usd: 0.5
 
+ci_fix:
+  auto: false               # true: start ci-fix on a newly failing pull request by itself
+  daily_runs: 3             # most automatic starts per local day
+
 concierge:
   model: ollama/qwen2.5:7b  # an API model with tool calling
 

@@ -24,6 +24,7 @@ import {
   type StartInboxResult,
   type SyncInboxResult,
   type AwayView,
+  type CiFailureView,
   SetAwayRequest,
   type BudgetView,
   type SetBudgetRequest,
@@ -36,7 +37,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -87,6 +88,10 @@ Usage:
   navarch inbox start <item-id>... [--flow <name>] [--budget <usd>]
                                          start one issue run per item in its project's clone
   navarch inbox dismiss <item-id> [--reason <text>] | restore <item-id>
+  navarch ci [--all]                       CI failures noticed on open pull requests (polled with the Inbox)
+  navarch ci fix <failure-id> [--budget <usd>]
+                                         start a ci-fix run on the pull request
+  navarch ci dismiss <failure-id>
   navarch away [status]                    Away mode: whether an approver agent decides approvals for you, and what it did
   navarch away on [--for <4h|90m|none>] [--delegate plan,pr,start] [--max-complexity <1-5|none>] [--max-revisions <0-3>] [--yes]
   navarch away off
@@ -398,6 +403,23 @@ async function main(argv: string[]): Promise<number> {
       if (values.project) query.set("project", values.project);
       const view = await api.request<InboxView>("GET", `/api/v1/inbox${query.size ? `?${query}` : ""}`);
       return print(json ? view : formatInbox(view), json);
+    }
+    case "ci": {
+      const api = new ApiClient(home);
+      if (rest[0] === "fix") {
+        const id = required(rest[1], "failure id");
+        const budget = values.budget === undefined ? undefined : Number(values.budget);
+        const result = await api.request<{ failure: CiFailureView; run: RunView }>("POST", `/api/v1/ci/failures/${encodeURIComponent(id)}/fix`, budget ? { budget } : {});
+        return print(json ? result : `${result.failure.repo}#${result.failure.number}: run ${result.run.name} (${result.run.id}) started; follow it with: navarch logs ${result.run.id} -f`, json);
+      }
+      if (rest[0] === "dismiss") {
+        const id = required(rest[1], "failure id");
+        const failure = await api.request<CiFailureView>("POST", `/api/v1/ci/failures/${encodeURIComponent(id)}/dismiss`, {});
+        return print(json ? failure : `${failure.id} ${failure.status}`, json);
+      }
+      if (rest[0] !== undefined) throw new CliError("usage: navarch ci [fix|dismiss] <failure-id>", EXIT.usage);
+      const failures = await api.request<CiFailureView[]>("GET", `/api/v1/ci/failures${values.all ? "?status=" : ""}`);
+      return print(json ? failures : formatCiFailures(failures), json);
     }
     case "say": {
       const id = required(rest[0], "run id");

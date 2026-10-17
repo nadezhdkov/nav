@@ -34,7 +34,7 @@ export type FakePull = {
 };
 
 /** A check run of a commit; `log` is a GitHub Actions job's log. */
-export type FakeCheck = { id: number; name: string; conclusion: string | null; actions?: boolean; log?: string; output?: { title?: string; summary?: string; text?: string } };
+export type FakeCheck = { id: number; name: string; conclusion: string | null; /** Defaults to completed. */ status?: string; actions?: boolean; log?: string; output?: { title?: string; summary?: string; text?: string } };
 
 /** A repository as `GET /user/repos` lists it. */
 export type FakeUserRepo = { full_name: string; private: boolean; description?: string | null; default_branch?: string; pushed_at?: string; push?: boolean };
@@ -191,7 +191,7 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
         const runs = (fake.checks.get(checkRuns[1]!) ?? []).map((c) => ({
           id: c.id,
           name: c.name,
-          status: "completed",
+          status: c.status ?? "completed",
           conclusion: c.conclusion,
           html_url: `${base}/runs/${c.id}`,
           app: { slug: c.actions ? "github-actions" : "other-ci" },
@@ -205,6 +205,20 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
         if (!check?.log) return send(410, { message: "Gone" });
         logged.status = 200;
         return void res.writeHead(200, { "content-type": "text/plain" }).end(check.log);
+      }
+      if (req.method === "GET" && rest === "/pulls" && query.get("state") === "open" && !query.get("head")) {
+        const open = [...fake.pullRequests].filter(([key, p]) => key.startsWith(`${name}#`) && (p.state ?? "open") === "open");
+        return send(
+          200,
+          open.map(([key, p]) => ({
+            number: Number(key.split("#")[1]),
+            html_url: `${base}/pull/${key.split("#")[1]}`,
+            title: p.title,
+            draft: p.draft ?? false,
+            user: { login: p.author },
+            head: { ref: p.head_ref, sha: p.head_sha, repo: { full_name: p.head_repo ?? name } },
+          })),
+        );
       }
       if (req.method === "GET" && rest === "/pulls") {
         const head = query.get("head")?.split(":")[1];

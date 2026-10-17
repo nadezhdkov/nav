@@ -182,6 +182,16 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
+   * CI failures noticed on open pull requests (ADR 0041). With `auto`, the daemon starts a `ci-fix`
+   * run itself, at most `daily_runs` a day in the PC's local time; otherwise the user starts it.
+   */
+  ci_fix: z
+    .object({
+      auto: z.boolean().default(false),
+      daily_runs: z.number().int().nonnegative().default(3),
+    })
+    .prefault({}),
+  /**
    * Away mode (ADR 0039): the approver reads approvals for the user while they are away. Without
    * `model`, profile `approver` is routed among the `native` entries of its tier.
    */
