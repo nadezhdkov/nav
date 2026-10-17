@@ -1,6 +1,6 @@
 # Phase 3, slice 1: code index and repository map
 
-Status: in progress · Branch: `feat/phase-3-01-code-index` · Spec: §6.9.1, §16 Phase 3 · ADR: 0042
+Status: implemented · Branch: `feat/phase-3-01-code-index` · Spec: §6.9.1, §16 Phase 3 · ADR: 0042
 
 The Explorer's always-available exploration: what a repository contains, where a symbol is defined, where a term appears. It is the base for the context compiler (slice 2).
 

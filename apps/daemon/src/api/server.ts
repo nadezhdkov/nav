@@ -10,6 +10,7 @@ import {
   SimulationRequest,
   ValidateFlowRequest,
   ApprovalStatus,
+  SymbolKind,
   ConciergeMessageRequest,
   CreateConversationRequest,
   CreateRunRequest,
@@ -43,6 +44,7 @@ import {
   WorkItemStatus,
   type SyncInboxResult,
 } from "@navarch/contracts";
+import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { FlowStudioError } from "../flows/library.ts";
 import { z } from "zod";
@@ -225,6 +227,25 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const parsed = CreateProjectRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     return reply.code(201).send(await daemon.inbox.addProject(parsed.data, actorOf(req)));
+  });
+
+  // Repository exploration (ADR 0042): read-only, from the project's clone.
+  const explore = async <T>(req: { params: unknown }, reply: FastifyReply, fn: (root: string) => Promise<T>) => {
+    const project = daemon.store.getProject((req.params as { id: string }).id);
+    return project ? fn(project.path) : notFound(reply, "project");
+  };
+  app.get("/api/v1/projects/:id/map", (req, reply) => explore(req, reply, (root) => repoMap(root)));
+  app.get("/api/v1/projects/:id/symbols", (req, reply) => {
+    const q = req.query as { q?: string; kind?: string };
+    const kind = q.kind === undefined ? undefined : SymbolKind.safeParse(q.kind);
+    if (!q.q) return badRequest(reply, "q is required");
+    if (kind && !kind.success) return badRequest(reply, `kind must be one of ${SymbolKind.options.join(", ")}`);
+    return explore(req, reply, async (root) => findSymbols(await indexSymbols(root), q.q!, kind?.data ? { kind: kind.data } : {}));
+  });
+  app.get("/api/v1/projects/:id/search", (req, reply) => {
+    const q = (req.query as { q?: string }).q;
+    if (!q) return badRequest(reply, "q is required");
+    return explore(req, reply, (root) => searchText(root, q));
   });
 
   // GitHub repositories for New run (ADR 0026): desktop only, never paired devices.
@@ -651,6 +672,9 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/stream",
   "GET /api/v1/repos",
   "GET /api/v1/projects",
+  "GET /api/v1/projects/:id/map",
+  "GET /api/v1/projects/:id/symbols",
+  "GET /api/v1/projects/:id/search",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/inbox/:id",

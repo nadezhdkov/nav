@@ -232,6 +232,9 @@ importers:
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@navarch/explorer':
+        specifier: workspace:*
+        version: link:../../packages/explorer
       '@navarch/flow-engine':
         specifier: workspace:*
         version: link:../../packages/flow-engine
