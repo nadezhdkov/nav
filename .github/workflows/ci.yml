@@ -32,6 +32,7 @@ jobs:
       - run: make typecheck
       - run: make test
       - run: make web-build
+      - run: make site-build
 
   lint-workflows:
     runs-on: ubuntu-latest

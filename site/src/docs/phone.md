@@ -1,0 +1,36 @@
+# On your phone
+
+The Web UI installs on your phone as an app (a PWA). Your phone reaches the daemon over **Tailscale**, and the daemon keeps listening on loopback only.
+
+## Set it up
+
+1. Install Tailscale on the computer that runs Navarch and on your phone, signed in to the same tailnet.
+2. On the computer, publish the daemon's port to your tailnet:
+
+   ```sh
+   tailscale serve --bg 7420
+   navarch remote status      # shows the HTTPS address your phone will use
+   ```
+
+3. In the Web UI on the computer, open **Settings → Devices** and create a pairing. Scan the QR code with your phone. The code works once, for five minutes.
+4. On the phone, add the page to your home screen.
+
+## What a phone can do
+
+A paired phone gets its own session: a 15-minute access token and a 30-day refresh token that rotates on every use. Reusing an old refresh token revokes the device.
+
+- See runs, the Fleet, the Inbox, usage and worktree diffs.
+- Approve or reject, pause and resume runs, and **stop everything**.
+- Start runs from the Inbox, or from a prompt in a registered project.
+- Get **push notifications**: an approval waiting, a failed or finished run, a budget stop, a quota pause, a new pull request, an agent with a question. Notifications only link to the screen where you decide.
+
+A phone never sees secrets, other devices, pairing or the concierge. Revoke it from **Settings → Devices** or with:
+
+```sh
+navarch devices
+navarch devices revoke <device-id>
+```
+
+## Quiet hours
+
+Set `notifications.quiet_hours` in `~/.navarch/config.yaml` to hold notifications at night. Bursts from the same run are grouped within 10 seconds.
