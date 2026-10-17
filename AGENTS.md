@@ -16,7 +16,7 @@ Instructions for AI agents working in this repository. Product source of truth: 
 | `gemini-cli` | `gemini --prompt` | `GEMINI_API_KEY` (AI Studio) in the environment or `~/.gemini/.env`; each task gets its own Gemini home that selects it (ADR 0006) | yes |
 | `antigravity` | `agy --print` | the `agy` CLI (Google account, including AI plans) | yes |
 | `codex` | `codex exec` | `codex login` (ChatGPT plan) | yes |
-| `copilot` | `copilot -p` | `copilot login` (Copilot plan; each prompt costs premium requests) | yes |
+| `copilot` | `copilot -p` | `copilot login` (Copilot plan; each prompt costs premium requests); a per-task plugin with a `permissionRequest` hook allows allowlisted commands of more than one word, which Copilot's `shell()` rules cannot match (ADR 0012) | yes |
 | `opencode` | `opencode run --standalone` | `opencode auth login` (OpenCode account; Zen's free models need no key). Set `adapters.opencode.command` if `~/.opencode/bin` is not on PATH | yes |
 | `kilo` | `kilo run --format json --pure` | none for the free models of Kilo's gateway (`kilo/kilo-auto/free`, ids ending in `:free`); found on PATH or in `~/.kilo/bin`. It is an OpenCode fork, so the adapter is the `opencode` one with Kilo's flags. In the catalog but in no routing tier by default, since free providers may log prompts (ADR 0034) | yes |
 | `grok` | `grok --prompt-file … --output-format streaming-messages-json` | `grok login` (grok.com account, free tier included); each task gets its own `HOME` and `GROK_HOME` linking only `~/.grok/auth.json`, and a `PreToolUse` guard hook checks every command against the grant (ADR 0024) | yes |

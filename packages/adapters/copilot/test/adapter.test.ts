@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -61,6 +61,24 @@ describe("CopilotAdapter (contract, fake CLI)", () => {
     const resetsAt = nextMonthlyReset();
     expect(result.error).toMatchObject({ kind: "rate_limited", retry_at: resetsAt });
     expect(events).toContainEqual({ kind: "quota", window: "premium_requests_monthly", resetsAt, exhausted: true });
+  });
+
+  it("loads a per-task permission hook that allows allowlisted commands of more than one word", async () => {
+    // Copilot matches `shell(make lint)` against the command name only, so it never allowed `make lint`.
+    const fake = fakeCli(script, "hook");
+    const ctx = taskContext({ tools: { editFiles: true, allowCommands: ["make lint"], denyCommands: [], denyPaths: [], network: false } });
+    const result = await new CopilotAdapter(fake.options).run(ctx, collect().io);
+    expect(result.status).toBe("succeeded");
+
+    const seen = JSON.parse(readFileSync(join(fake.stateDir, "hook.json"), "utf8"));
+    expect(fake.calls()[0]?.args).toEqual(expect.arrayContaining(["--plugin-dir", seen.dir]));
+    expect(seen.dir.startsWith(ctx.sandbox.path)).toBe(false);
+    expect(seen.manifest.name).toBe("navarch-permissions");
+    expect(seen.entry).toMatchObject({ type: "command", matcher: "bash" });
+    expect(seen.answers["make lint"]).toEqual({ status: 0, output: { behavior: "allow" } });
+    expect(seen.answers["make deploy"]).toEqual({ status: 0, output: {} });
+    // The plugin lives only as long as the attempt.
+    expect(existsSync(seen.dir)).toBe(false);
   });
 
   it("denies writes and URLs for a read-only grant", () => {

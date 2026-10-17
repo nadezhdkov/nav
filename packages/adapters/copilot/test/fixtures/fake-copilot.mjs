@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Stand-in for `copilot -p … --output-format json`, used by tests. Event shapes follow a real
 // Copilot CLI 1.0.98 run. Usage: fake-copilot.mjs <scenario> <state-dir> [copilot args...]
-import { appendFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const [scenario, stateDir, ...args] = process.argv.slice(2);
@@ -68,6 +69,22 @@ switch (scenario) {
       reviewer: "Verdict: approve. Standards: nothing to report. Spec: matches the plan.",
     };
     out("assistant.message", { content: answers[profile] ?? `no answer for ${profile}`, toolRequests: [] });
+    finish(0);
+    break;
+  }
+  case "hook": {
+    // Loads the --plugin-dir plugin as Copilot does and asks its permissionRequest hook about two commands.
+    const dir = value("--plugin-dir");
+    const manifest = JSON.parse(readFileSync(join(dir, "plugin.json"), "utf8"));
+    const [entry] = JSON.parse(readFileSync(join(dir, "hooks.json"), "utf8")).hooks.permissionRequest;
+    const ask = (command) => {
+      const event = { hookName: "permissionRequest", sessionId, cwd: process.cwd(), toolName: "bash", toolInput: { command }, permissionSuggestions: [] };
+      const r = spawnSync("sh", ["-c", entry.bash], { input: JSON.stringify(event), encoding: "utf8" });
+      return { status: r.status, output: JSON.parse(r.stdout || "{}") };
+    };
+    const answers = { "make lint": ask("make lint"), "make deploy": ask("make deploy") };
+    writeFileSync(join(stateDir, "hook.json"), JSON.stringify({ dir, manifest, entry, answers }));
+    out("assistant.message", { content: "Asked the hook.", toolRequests: [] });
     finish(0);
     break;
   }
