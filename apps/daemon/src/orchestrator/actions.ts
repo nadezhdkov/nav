@@ -58,6 +58,11 @@ function approvalNode(deps: Deps): ActionExecutor {
       return [`Continue the run past "${task.node_id}" after reviewing:`, ...shown.map(([path, text]) => `\n--- ${path} ---\n${text}`)].join("\n");
     },
     async execute({ task }) {
+      // An approver may send the plan back instead (ADR 0039): the Flow redoes the step before.
+      const feedback = deps.store.decidedRevision(task.id);
+      if (feedback !== undefined) {
+        return { status: "succeeded", summary: "sent back for a revision", artifacts: [], claims: [], usage: [], outputs: { approved: false, revise: true, feedback }, cost: 0, durationMs: 0 };
+      }
       const choice = task.choices?.length ? (deps.store.decidedChoice(task.id) ?? task.choices[0]) : undefined;
       const outputs = { approved: true, ...(choice !== undefined ? { choice } : {}) };
       return { status: "succeeded", summary: choice !== undefined ? `approved: ${choice}` : "approved", artifacts: [], claims: [], usage: [], outputs, cost: 0, durationMs: 0 };

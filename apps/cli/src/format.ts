@@ -1,4 +1,4 @@
-import type { ApprovalView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, BudgetView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -248,6 +248,26 @@ export function formatInbox(view: InboxView): string {
     ),
   );
   lines.push("", "start runs: navarch inbox start <item>... · dismiss: navarch inbox dismiss <item>");
+  return lines.join("\n");
+}
+
+/** `navarch away`: whether the approver is deciding, what was handed over, and what it did. */
+export function formatAway(view: AwayView): string {
+  const s = view.settings;
+  const lines: string[] = [];
+  if (!view.active) {
+    lines.push("Away mode is off. Approvals wait for you.");
+  } else if (s) {
+    lines.push(
+      `AWAY MODE IS ON since ${view.since!.slice(0, 16).replace("T", " ")}${s.until ? `, until ${s.until.slice(0, 16).replace("T", " ")}` : ", until you turn it off"}.`,
+      `An approver agent decides for you: ${s.delegate.join(", ")}. Runs rated above complexity ${s.max_complexity ?? "(no limit)"} wait for you. It may send a plan back up to ${s.max_revisions} time(s).`,
+    );
+    if (view.unavailable) lines.push(`Not working now: ${view.unavailable}`);
+  }
+  if (s) lines.push("", `Since it was turned on: ${view.counts.approved} approved, ${view.counts.revised} sent back, ${view.counts.escalated} left to you.`);
+  const rows = view.reviews.slice(0, 20).map((r) => [r.at.slice(11, 16), r.run_name ?? r.run_id ?? "-", r.subject, r.verdict, truncate(r.reason, 70)]);
+  if (rows.length) lines.push("", table(["TIME", "RUN", "WHAT", "VERDICT", "WHY"], rows));
+  if (view.active) lines.push("", "Turn it off with: navarch away off");
   return lines.join("\n");
 }
 

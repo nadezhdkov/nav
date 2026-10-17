@@ -75,7 +75,7 @@ const Routing = z
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
       .prefault({}),
-    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", lead: "expert", researcher: "fast", judge: "expert", "pr-reviewer": "standard", "ci-fixer": "standard" }),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", approver: "standard", lead: "expert", researcher: "fast", judge: "expert", "pr-reviewer": "standard", "ci-fixer": "standard" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
     different_provider: z.array(z.string()).default(["reviewer", "judge"]),
     /** A candidate whose quota window is at least this used goes after the others in its tier (ADR 0023). */
@@ -179,6 +179,16 @@ export const Config = z.object({
           daily_usd: z.number().nonnegative().default(0.5),
         })
         .prefault({}),
+    })
+    .prefault({}),
+  /**
+   * Away mode (ADR 0039): the approver reads approvals for the user while they are away. Without
+   * `model`, profile `approver` is routed among the `native` entries of its tier.
+   */
+  away: z
+    .object({
+      /** `<provider>/<model>` of a native provider. */
+      model: z.string().optional(),
     })
     .prefault({}),
   scheduler: z

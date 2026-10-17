@@ -131,7 +131,8 @@ const ACTIVE = new Set(["pending", "ready", "waiting_approval", "blocked", "runn
  */
 export function next(flow: FlowDefinition, ctx: RunContext): Step {
   const scope = scopeOf(ctx, flow);
-  for (const node of chain(flow)) {
+  const nodes = chain(flow);
+  for (const [index, node] of nodes.entries()) {
     if (node.type === "trigger" || ctx.skipped.includes(node.id)) continue;
     if (node.type === "loop") {
       const step = loopStep(node, ctx, scope);
@@ -176,12 +177,39 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
     }
     if (ACTIVE.has(latest.status)) return { kind: "wait" };
     if (latest.status !== "succeeded") return { kind: "fail", reason: `node ${node.id} ${latest.status}` };
+    if (node.type === "approval" && latest.outputs?.revise === true) {
+      const revision = reviseStep(node, nodes[index - 1], latest, ctx, scope);
+      if (revision) return revision;
+      continue;
+    }
     if (latest.outputs?.passed === false) return { kind: "fail", reason: `node ${node.id} reported a failed result` };
   }
   const last = chain(flow).at(-1);
   const opened = (f: FlowDefinition, prefix: string) => f.nodes.some((n) => n.type === "github" && n.uses === "pr.create" && latestTask(ctx, prefix + n.id)?.status === "succeeded");
   const prOpened = opened(flow, "") || flow.nodes.some((n) => n.type === "subflow" && !!ctx.subflows?.[n.flow] && opened(ctx.subflows[n.flow]!, `${n.id}.`));
   return last ? { kind: "done", prOpened } : { kind: "fail", reason: "empty flow" };
+}
+
+/** Most times a plan goes back through its approval gate: the original plus this many redone (ADR 0039). */
+const MAX_REVISIONS = 3;
+
+/**
+ * An approval the approver answered by sending the plan back (ADR 0039): the node before it runs
+ * again with the feedback, then the approval is asked again for the new plan. Undefined once the
+ * approval of the redone plan has been decided by someone.
+ */
+function reviseStep(node: FlowNode, previous: FlowNode | undefined, revised: TaskState, ctx: RunContext, scope: Scope): Step | undefined {
+  if (!previous || previous.type !== "agent") return { kind: "fail", reason: `node ${node.id} asked for a revision, but nothing before it can be redone` };
+  if (revised.iteration > MAX_REVISIONS) return { kind: "fail", reason: `the plan was sent back ${MAX_REVISIONS} times` };
+  const plan = latestTask(ctx, previous.id);
+  if (!plan) return { kind: "fail", reason: `node ${previous.id} has no task to redo` };
+  if (plan.iteration <= revised.iteration) {
+    const start = toStart(previous, revised.iteration + 1, scope);
+    const feedback = typeof revised.outputs?.feedback === "string" ? revised.outputs.feedback : "";
+    const before = typeof plan.outputs?.summary === "string" ? plan.outputs.summary : "";
+    return { kind: "start", start: { ...start, inputs: { ...start.inputs, revision_feedback: feedback, previous_plan: before } } };
+  }
+  return { kind: "start", start: toStart(node as Exclude<FlowNode, { type: "team" | "compete" | "subflow" | "parallel" }>, revised.iteration + 1, scope) };
 }
 
 /**

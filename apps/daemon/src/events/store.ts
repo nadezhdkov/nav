@@ -4,6 +4,8 @@ import {
   isTerminalTask,
   newId,
   parsePayload,
+  type AwaySettings,
+  type AwayView,
   type DeviceView,
   type FleetAgent,
   type CompeteTaskRef,
@@ -389,6 +391,57 @@ export class EventStore {
   decidedChoice(taskId: string): string | undefined {
     const row = this.db.prepare("SELECT choice FROM approvals WHERE task_id = ? AND status = 'approved' AND choice IS NOT NULL ORDER BY decided_at DESC LIMIT 1").get(taskId) as { choice: string } | undefined;
     return row?.choice;
+  }
+
+  /** The feedback an approver gave when it sent this task's plan back instead of approving it (ADR 0039). */
+  decidedRevision(taskId: string): string | undefined {
+    const row = this.db
+      .prepare("SELECT payload FROM events WHERE type = 'approval.decided' AND task_id = ? ORDER BY seq DESC LIMIT 1")
+      .get(taskId) as { payload: string } | undefined;
+    if (!row) return undefined;
+    const p = JSON.parse(row.payload) as { revise?: boolean; reason?: string };
+    return p.revise ? (p.reason ?? "") : undefined;
+  }
+
+  /**
+   * Away mode (ADR 0039), derived from its events: the latest time the user turned it on, whether
+   * it is still on, and what the approver decided since (newest first, at most 100).
+   */
+  awayView(unavailable: string | null = null): AwayView {
+    const on = this.db.prepare("SELECT seq, ts, payload FROM events WHERE type = 'away.enabled' ORDER BY seq DESC LIMIT 1").get() as { seq: number; ts: string; payload: string } | undefined;
+    if (!on) return { active: false, since: null, settings: null, reviews: [], counts: { approved: 0, revised: 0, escalated: 0 }, unavailable };
+    const off = this.db.prepare("SELECT 1 FROM events WHERE type = 'away.disabled' AND seq > ? LIMIT 1").get(on.seq);
+    const rows = this.db.prepare("SELECT * FROM events WHERE type = 'away.reviewed' AND seq > ? ORDER BY seq DESC").all(on.seq).map(rowToEvent) as NavarchEvent<"away.reviewed">[];
+    const counts = { approved: 0, revised: 0, escalated: 0 };
+    for (const e of rows) counts[e.payload.verdict === "approve" ? "approved" : e.payload.verdict === "revise" ? "revised" : "escalated"]++;
+    return {
+      active: !off,
+      since: on.ts,
+      settings: JSON.parse(on.payload) as AwaySettings,
+      reviews: rows.slice(0, 100).map((e) => ({
+        approval_id: e.payload.approval_id,
+        run_id: e.run_id,
+        run_name: e.run_id ? (this.getRun(e.run_id)?.name ?? null) : null,
+        subject: e.payload.subject,
+        verdict: e.payload.verdict,
+        reason: e.payload.reason,
+        model: e.payload.model,
+        at: e.ts,
+      })),
+      counts,
+      unavailable: off ? null : unavailable,
+    };
+  }
+
+  /** Whether the approver already looked at this approval (ADR 0039). */
+  awayReviewed(approvalId: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM events WHERE type = 'away.reviewed' AND json_extract(payload, '$.approval_id') = ? LIMIT 1").get(approvalId);
+  }
+
+  /** Times the approver sent a plan of this run back (ADR 0039). */
+  revisionsOf(runId: string): number {
+    const row = this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE type = 'away.reviewed' AND run_id = ? AND json_extract(payload, '$.verdict') = 'revise'").get(runId) as { n: number };
+    return row.n;
   }
 
   /** Instructions sent to a run (ADR 0019), oldest first. */

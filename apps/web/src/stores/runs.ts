@@ -1,4 +1,4 @@
-import type { ApprovalView, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -260,4 +260,31 @@ export const useUsageStore = defineStore("usage", () => {
   }
 
   return { view, days, profile, error, load, apply };
+});
+
+/** Away mode (ADR 0039): whether an approver agent decides approvals, and what it did. */
+export const useAwayStore = defineStore("away", () => {
+  const view = ref<AwayView | null>(null);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      view.value = await api.away();
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  async function set(body: SetAwayRequest) {
+    view.value = await api.setAway(body);
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (event.type.startsWith("away.")) refetch();
+  }
+
+  const active = computed(() => view.value?.active === true);
+  return { view, error, active, load, set, apply };
 });

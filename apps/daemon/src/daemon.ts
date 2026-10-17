@@ -14,6 +14,7 @@ import { AgentRuntime } from "@navarch/agent-runtime";
 import { Budgets, spends } from "./budgets/budgets.ts";
 import { modelMetrics } from "./budgets/metrics.ts";
 import { ConciergeService } from "./concierge/service.ts";
+import { AwayService } from "./away/service.ts";
 import { InboxService } from "./inbox/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
@@ -69,6 +70,7 @@ export class Daemon {
   readonly devices: DeviceService;
   readonly notifier: Notifier;
   readonly inbox: InboxService;
+  readonly away: AwayService;
   readonly prs: PrWatcher;
   readonly budgets: Budgets;
   readonly flows: FlowLibrary;
@@ -138,6 +140,7 @@ export class Daemon {
       metrics: () => this.metrics({ days: 30 }),
     });
     this.inbox = new InboxService({ home: this.home, config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
+    this.away = new AwayService({ config: this.config, store: this.store, policy, orchestrator: this.orchestrator, runtime, adapters });
     this.prs = new PrWatcher({ config: this.config, store: this.store, github });
   }
 
@@ -230,6 +233,7 @@ export class Daemon {
     this.orchestrator.recover();
     this.notifier.start();
     this.inbox.start();
+    this.away.start();
     this.prs.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
@@ -265,6 +269,7 @@ export class Daemon {
     await this.server?.close();
     await this.notifier.stop();
     await this.inbox.stop();
+    await this.away.stop();
     await this.prs.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));

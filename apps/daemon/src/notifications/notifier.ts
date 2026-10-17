@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Actor, NavarchEvent, RunView } from "@navarch/contracts";
+import { subjectOf as awaySubject } from "../away/service.ts";
 import type { Config } from "../config.ts";
 import type { DeviceService, DeviceSubscription } from "../devices/devices.ts";
 import type { EventStore } from "../events/store.ts";
@@ -64,9 +65,32 @@ export class Notifier {
   start(): void {
     if (!this.deps.config.notifications.web_push || this.off) return;
     this.off = this.deps.store.subscribe((event) => {
-      const notice = noticeFor(event);
+      const notice = this.noticeOf(event);
       if (notice) this.enqueue(notice);
     });
+  }
+
+  /**
+   * Away mode (ADR 0039): an approval the approver is about to read is not news. The user hears
+   * about it when the approver leaves it to them.
+   */
+  private noticeOf(event: NavarchEvent): Notice | undefined {
+    const { store } = this.deps;
+    if (event.type === "approval.requested") {
+      const approvalId = (event.payload as { approval_id: string }).approval_id;
+      const view = store.awayView();
+      const approval = store.getApproval(approvalId);
+      const task = approval ? store.getTask(approval.task_id) : undefined;
+      const subject = approval && task ? awaySubject(approval, task) : undefined;
+      if (view.active && subject && view.settings?.delegate.includes(subject)) return undefined;
+    }
+    if (event.type === "away.reviewed") {
+      const p = (event as NavarchEvent<"away.reviewed">).payload;
+      const approval = p.verdict === "escalate" ? store.getApproval(p.approval_id) : undefined;
+      if (!approval || approval.status !== "pending" || !event.run_id) return undefined;
+      return { kind: "approval", run_id: event.run_id, critical: false, url: `/approvals?focus=${approval.id}`, subject: subjectOf(approval.action) };
+    }
+    return noticeFor(event);
   }
 
   /** Stops listening and waits for sends in flight; folded notifications still pending are dropped. */
