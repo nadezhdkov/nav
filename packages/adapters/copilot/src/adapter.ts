@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   CliProcesses,
   cliOutcome,
@@ -22,12 +23,15 @@ import type {
   ToolGrant,
   UsageRecord,
 } from "@navarch/contracts";
+import type { PermissionPolicy } from "./permission.ts";
 import { parseCopilotLine, parseCopilotUsage } from "./stream.ts";
 
 /**
  * Runs GitHub Copilot CLI headless (`copilot -p … --output-format json`) in the sandbox. The
  * grant becomes `--allow-tool` / `--deny-tool` rules, which Copilot checks per command (a chained
- * `ls && printf > f` was denied with only `shell(ls)` allowed), and its path verification keeps
+ * `ls && printf > f` was denied with only `shell(ls)` allowed). Those rules match a command's name
+ * only, so a per-task plugin (`--plugin-dir`) adds a `permissionRequest` hook that allows the
+ * grant's commands of more than one word (`make lint`) exactly. Its path verification keeps
  * file access inside the worktree. Built-in MCP servers are off: they would reach GitHub with
  * the operator's credential, and only the GitHub Integration talks to GitHub (rule 5).
  * Decision: ADR 0012.
@@ -107,7 +111,7 @@ export class CopilotAdapter implements AgentAdapter {
     return this.processes.stopAll();
   }
 
-  buildArgs(ctx: TaskContext, session: { resume?: string; sessionId?: string }, usageFile: string): string[] {
+  buildArgs(ctx: TaskContext, session: { resume?: string; sessionId?: string }, usageFile: string, pluginDir: string): string[] {
     const rules = copilotRules(ctx.tools);
     return [
       ...this.options.commandArgs,
@@ -122,6 +126,8 @@ export class CopilotAdapter implements AgentAdapter {
       "--disallow-temp-dir",
       "--usage-output-file",
       usageFile,
+      "--plugin-dir",
+      pluginDir,
       ...(ctx.model ? ["--model", ctx.model] : []),
       ...rules.allow.map((r) => `--allow-tool=${r}`),
       ...rules.deny.map((r) => `--deny-tool=${r}`),
@@ -135,12 +141,13 @@ export class CopilotAdapter implements AgentAdapter {
     const commands = new Map<string, string>();
     const usageDir = mkdtempSync(join(tmpdir(), "navarch-copilot-"));
     const usageFile = join(usageDir, "usage.json");
+    const pluginDir = writePermissionPlugin(join(usageDir, "plugin"), ctx);
 
     try {
       const exit = await this.processes.run({
         taskId: ctx.taskId,
         command: this.options.command,
-        args: this.buildArgs(ctx, session, usageFile),
+        args: this.buildArgs(ctx, session, usageFile, pluginDir),
         cwd: ctx.sandbox.path,
         env: scrubbedEnv(this.options.scrubEnv),
         timeoutMs: ctx.budget.timeoutMs,
@@ -187,6 +194,21 @@ export class CopilotAdapter implements AgentAdapter {
     }
   }
 }
+
+/** Writes the attempt's plugin: a manifest, the grant, and the `permissionRequest` hook that reads it. */
+function writePermissionPlugin(dir: string, ctx: TaskContext): string {
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const policyFile = join(dir, "policy.json");
+  const policy: PermissionPolicy = { grant: ctx.tools, home: homedir() };
+  writeFileSync(policyFile, JSON.stringify(policy), { mode: 0o600 });
+  writeFileSync(join(dir, "plugin.json"), JSON.stringify({ name: "navarch-permissions", version: "1.0.0", description: "Navarch's tool grant for this task" }), { mode: 0o600 });
+  const hook = [process.execPath, fileURLToPath(new URL("./permission-hook.ts", import.meta.url)), policyFile].map(shellQuote).join(" ");
+  const hooks = { version: 1, hooks: { permissionRequest: [{ type: "command", matcher: "bash", bash: hook, timeoutSec: 30 }] } };
+  writeFileSync(join(dir, "hooks.json"), JSON.stringify(hooks, null, 2), { mode: 0o600 });
+  return dir;
+}
+
+const shellQuote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
 
 function readUsage(file: string, model: string | undefined): UsageRecord[] {
   let text: string;
