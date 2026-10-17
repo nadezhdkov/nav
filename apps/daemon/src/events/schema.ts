@@ -252,6 +252,26 @@ CREATE TABLE IF NOT EXISTS pull_requests (
   PRIMARY KEY (repo, number)
 );
 CREATE INDEX IF NOT EXISTS pull_requests_opened ON pull_requests(opened_at);
+-- CI failures noticed on open pull requests by polling (ADR 0041). One row per head commit.
+CREATE TABLE IF NOT EXISTS ci_failures (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  author TEXT NOT NULL,
+  url TEXT NOT NULL,
+  head_ref TEXT NOT NULL,
+  head_sha TEXT NOT NULL,
+  checks TEXT NOT NULL,
+  status TEXT NOT NULL,
+  detected_at TEXT NOT NULL,
+  run_id TEXT,
+  auto INTEGER NOT NULL DEFAULT 0,
+  started_at TEXT,
+  resolved_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS ci_failures_pr ON ci_failures(repo, number);
 -- budget.threshold events already recorded, so each is notified once per period.
 CREATE TABLE IF NOT EXISTS budget_alerts (
   scope TEXT NOT NULL,
@@ -279,6 +299,7 @@ DROP TABLE IF EXISTS budget_alerts;
 DROP TABLE IF EXISTS studio_flows;
 DROP TABLE IF EXISTS flow_versions;
 DROP TABLE IF EXISTS pull_requests;
+DROP TABLE IF EXISTS ci_failures;
 `;
 
 /**

@@ -16,6 +16,7 @@ import { modelMetrics } from "./budgets/metrics.ts";
 import { ConciergeService } from "./concierge/service.ts";
 import { AwayService } from "./away/service.ts";
 import { InboxService } from "./inbox/service.ts";
+import { CiWatcher } from "./github/ci.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
 import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
@@ -72,6 +73,7 @@ export class Daemon {
   readonly inbox: InboxService;
   readonly away: AwayService;
   readonly prs: PrWatcher;
+  readonly ci: CiWatcher;
   readonly budgets: Budgets;
   readonly flows: FlowLibrary;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
@@ -142,6 +144,7 @@ export class Daemon {
     this.inbox = new InboxService({ home: this.home, config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
     this.away = new AwayService({ config: this.config, store: this.store, policy, orchestrator: this.orchestrator, runtime, adapters });
     this.prs = new PrWatcher({ config: this.config, store: this.store, github });
+    this.ci = new CiWatcher({ config: this.config, store: this.store, github, orchestrator: this.orchestrator, policy });
   }
 
   get url(): string {
@@ -235,6 +238,7 @@ export class Daemon {
     this.inbox.start();
     this.away.start();
     this.prs.start();
+    this.ci.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
     void this.remoteStatus().catch(() => {});
@@ -271,6 +275,7 @@ export class Daemon {
     await this.inbox.stop();
     await this.away.stop();
     await this.prs.stop();
+    await this.ci.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });

@@ -270,6 +270,33 @@ describe("pull requests (ADR 0032)", () => {
   });
 });
 
+describe("watching checks (ADR 0041)", () => {
+  it("lists open pull requests with their head and reads a head's check status without logs", async () => {
+    const { gh, client } = await setup();
+    gh.pullRequests.set("acme/widgets#12", { title: "Add cache", body: null, author: "dana", head_ref: "cache", head_sha: "abc123", base_ref: "main", base_sha: "def456" });
+    gh.pullRequests.set("acme/widgets#13", { title: "From a fork", body: null, author: "eve", head_ref: "x", head_sha: "bbb222", head_repo: "eve/widgets", base_ref: "main", base_sha: "def456", draft: true });
+    gh.pullRequests.set("acme/widgets#14", { title: "Old", body: null, author: "dana", head_ref: "old", head_sha: "ccc333", base_ref: "main", base_sha: "def456", state: "closed" });
+    gh.pullRequests.set("other/repo#1", { title: "Elsewhere", body: null, author: "dana", head_ref: "z", head_sha: "ddd444", base_ref: "main", base_sha: "def456" });
+    expect(await client.listOpenPullRequests("acme/widgets")).toEqual([
+      expect.objectContaining({ number: 12, title: "Add cache", author: "dana", head_ref: "cache", head_sha: "abc123", head_repo: "acme/widgets", draft: false }),
+      expect.objectContaining({ number: 13, head_repo: "eve/widgets", draft: true }),
+    ]);
+
+    gh.checks.set("abc123", [
+      { id: 1, name: "test", conclusion: "failure", actions: true, log: "boom" },
+      { id: 2, name: "lint", conclusion: "success" },
+      { id: 3, name: "e2e", conclusion: null, status: "in_progress" },
+      { id: 4, name: "slow", conclusion: "timed_out" },
+    ]);
+    const status = await client.checkStatus("acme/widgets", "abc123");
+    expect(status.pending).toBe(1);
+    expect(status.failing.map((c) => [c.name, c.conclusion])).toEqual([["test", "failure"], ["slow", "timed_out"]]);
+    expect(status.failing[0]).not.toHaveProperty("log_tail");
+    expect(gh.requests.some((r) => r.path.includes("/actions/jobs/"))).toBe(false);
+    expect(await client.checkStatus("acme/widgets", "fff000")).toEqual({ pending: 0, failing: [] });
+  });
+});
+
 describe("fetchPullRequest (ADR 0032)", () => {
   it("fetches the head and base into refs/navarch/pr without touching branches or running hooks", async () => {
     const repo = makeRepo();

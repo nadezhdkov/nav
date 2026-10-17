@@ -21,6 +21,8 @@ export interface Notice {
   /** Path in the SPA to open. */
   url: string;
   subject?: ApprovalSubject;
+  /** Replaces the run title in the body, for a notice that is not about a run (ADR 0041). */
+  text?: string;
 }
 
 /** What the service worker receives (decrypted): enough to show and route, nothing more. */
@@ -166,7 +168,7 @@ export class Notifier {
         topic: message.tag.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 32),
       });
       if (res.status >= 200 && res.status < 300) {
-        this.record({ type: "notification.sent", payload: { channel: "web_push", device_id: sub.device_id, kind: notice.kind, run_id: notice.run_id } });
+        this.record({ type: "notification.sent", payload: { channel: "web_push", device_id: sub.device_id, kind: notice.kind, run_id: notice.text === undefined ? notice.run_id : null } });
         return;
       }
       if (res.status === 404 || res.status === 410) this.deps.devices.clearSubscription(sub.device_id, actor);
@@ -201,6 +203,12 @@ export class Notifier {
 
 /** The notification an event deserves, if any (spec §6.11 table in the slice spec). */
 export function noticeFor(event: NavarchEvent): Notice | undefined {
+  if (event.type === "ci.failure.detected") {
+    // Not about a run: the failure's id groups the notice, and its text is a one-line title (untrusted, T1).
+    const p = (event as NavarchEvent<"ci.failure.detected">).payload;
+    const text = `${p.repo}#${p.number} ${p.title}`.replace(/[\u0000-\u001f\u007f]/g, " ");
+    return { kind: "ci_failure", run_id: p.failure_id, critical: false, url: "/home", text: text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text };
+  }
   const runId = event.run_id;
   if (!runId) return undefined;
   if (event.type === "approval.requested") {
@@ -243,7 +251,7 @@ export function noticeFor(event: NavarchEvent): Notice | undefined {
 export function render(notice: Notice, more: number, run: RunView | undefined, locale: keyof typeof MESSAGES): PushMessage {
   const t = MESSAGES[locale] ?? MESSAGES.en;
   // The run title may come from an issue (untrusted, T1): plain text, one line, truncated.
-  const title = run ? runTitle(run) : notice.run_id;
+  const title = notice.text ?? (run ? runTitle(run) : notice.run_id);
   const parts = [notice.subject ? `${t.approval[notice.subject]}: ${title}` : title];
   if (more > 0) parts.push(fill(t.more, { n: more }));
   const actions = [{ action: "open", title: t.actions.open, url: notice.url }];

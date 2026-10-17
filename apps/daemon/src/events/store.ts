@@ -32,6 +32,7 @@ import {
   type WorkItemTriage,
   attachmentInfo,
   type RunAttachment,
+  type CiFailureView,
 } from "@navarch/contracts";
 import { competeState, competeTaskId, evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
@@ -65,7 +66,7 @@ export class EventStore {
     this.db.exec(eventsTable);
     // A projection table added later starts empty: fill it from the log.
     const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-    const missingTables = tableExists("runs") && !tableExists("pull_requests");
+    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures"));
     this.db.exec(projectionTables);
     this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
@@ -749,6 +750,22 @@ export class EventStore {
     ).map(pullRequestRecord);
   }
 
+  /** CI failures (ADR 0041), newest first; `status` narrows them. */
+  ciFailures(status?: CiFailureView["status"]): CiFailureView[] {
+    const rows = this.db.prepare("SELECT * FROM ci_failures WHERE (? IS NULL OR status = ?) ORDER BY detected_at DESC, rowid DESC").all(status ?? null, status ?? null) as Row[];
+    return rows.map(toCiFailure);
+  }
+
+  getCiFailure(id: string): CiFailureView | undefined {
+    const row = this.db.prepare("SELECT * FROM ci_failures WHERE id = ?").get(id) as Row | undefined;
+    return row ? toCiFailure(row) : undefined;
+  }
+
+  /** How many `ci-fix` runs the daemon started by itself since `since` (ISO), for the daily limit. */
+  autoCiFixesSince(since: string): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM ci_failures WHERE auto = 1 AND started_at >= ?").get(since) as { n: number }).n);
+  }
+
   /** The latest observation of every quota window, by adapter (Home, ADR 0021). */
   quotas(now = Date.now()): QuotaView[] {
     const latest = new Map<string, QuotaView>();
@@ -807,6 +824,25 @@ export type PullRequestRecord = {
   cost: number;
   plan_cost: number;
 };
+
+function toCiFailure(r: Row): CiFailureView {
+  return {
+    id: String(r.id),
+    project_id: String(r.project_id),
+    repo: String(r.repo),
+    number: Number(r.number),
+    title: String(r.title),
+    author: String(r.author),
+    url: String(r.url),
+    head_ref: String(r.head_ref),
+    head_sha: String(r.head_sha),
+    checks: JSON.parse(String(r.checks)) as CiFailureView["checks"],
+    status: String(r.status) as CiFailureView["status"],
+    detected_at: String(r.detected_at),
+    run_id: (r.run_id as string | null) ?? null,
+    resolved_reason: (r.resolved_reason as CiFailureView["resolved_reason"]) ?? null,
+  };
+}
 
 function pullRequestRecord(r: Row): PullRequestRecord {
   return {
