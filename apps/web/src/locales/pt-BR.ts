@@ -243,6 +243,14 @@ export const ptBR: Messages = {
       budget_exceeded: "{run} atingiu o orçamento",
       paused: "{run} está pausada",
     },
+    ci: {
+      title: "Falhas de CI",
+      line: "{repo}#{number} falhou em {checks}",
+      fix: "Corrigir",
+      dismiss: "Descartar",
+      open: "Abrir o pull request",
+      starting: "Iniciando…",
+    },
   },
   kill: {
     button: "Parar tudo",

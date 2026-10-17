@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -180,6 +180,28 @@ export const useInboxStore = defineStore("inbox", () => {
   }
 
   return { view, open, error, load, apply };
+});
+
+/** CI failures noticed on open pull requests (ADR 0041): the open ones, for Home. */
+export const useCiStore = defineStore("ci", () => {
+  const failures = ref<CiFailureView[]>([]);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      failures.value = await api.ciFailures();
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (event.type.startsWith("ci.failure.")) refetch();
+  }
+
+  return { failures, error, load, apply };
 });
 
 /** Registered projects and agents' quota windows, for the sidebar and Home. */

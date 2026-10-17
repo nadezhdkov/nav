@@ -3,6 +3,7 @@ import { isTerminalRun } from "@navarch/contracts";
 import { ChevronRight, CircleAlert, Coins, Gauge, Hand, Inbox, Plus } from "@lucide/vue";
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
+import CiFailures from "../components/CiFailures.vue";
 import KillSwitch from "../components/KillSwitch.vue";
 import QuotaBars from "../components/QuotaBars.vue";
 import StatusBadge from "../components/StatusBadge.vue";
@@ -81,6 +82,8 @@ function at(runId: string): string | null {
         <li v-for="a in alerts" :key="a.key"><RouterLink :to="a.to" class="text-fg hover:text-accent">{{ a.text }}</RouterLink></li>
       </ul>
     </div>
+
+    <CiFailures />
 
     <div class="grid gap-3 md:grid-cols-2">
       <RouterLink to="/inbox" class="block rounded-lg border border-line bg-surface p-4 hover:bg-surface-2">

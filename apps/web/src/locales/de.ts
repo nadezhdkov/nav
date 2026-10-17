@@ -243,6 +243,14 @@ export const de: Messages = {
       budget_exceeded: "{run} hat das Budget erreicht",
       paused: "{run} ist pausiert",
     },
+    ci: {
+      title: "CI-Fehler",
+      line: "{repo}#{number} ist bei {checks} fehlgeschlagen",
+      fix: "Beheben",
+      dismiss: "Verwerfen",
+      open: "Pull Request öffnen",
+      starting: "Startet…",
+    },
   },
   kill: {
     button: "Alles stoppen",

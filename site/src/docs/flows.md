@@ -26,7 +26,7 @@ A run may set its Flow's parameters with `--param name=value`, for example `--pa
 
 ### Failing checks are noticed for you
 
-On the same schedule as the Inbox (and on `navarch sync`), Navarch looks at the open pull requests of your projects. When a pull request's checks have all finished and some failed, it records the failure once per commit and sends a push notification. `navarch ci` lists them, and `navarch ci fix <failure>` starts `ci-fix` on the pull request.
+On the same schedule as the Inbox (and on `navarch sync`), Navarch looks at the open pull requests of your projects. When a pull request's checks have all finished and some failed, it records the failure once per commit and sends a push notification. Home shows them in a **CI failures** card with **Fix it** and **Dismiss** buttons (on your phone you see the list and a link to the pull request); `navarch ci` lists them, and `navarch ci fix <failure>` starts `ci-fix` on the pull request.
 
 It skips pull requests from forks, Navarch's own `ci-fix` branches and commits whose checks are still running. By default it only tells you. To let it start the run itself, set `ci_fix.auto: true`; it then starts at most `ci_fix.daily_runs` (3) a day, and the run still asks for the usual approvals and respects the budgets.
 

@@ -243,6 +243,14 @@ export const es: Messages = {
       budget_exceeded: "{run} alcanzó su presupuesto",
       paused: "{run} está en pausa",
     },
+    ci: {
+      title: "Fallos de CI",
+      line: "{repo}#{number} falló en {checks}",
+      fix: "Corregir",
+      dismiss: "Descartar",
+      open: "Abrir el pull request",
+      starting: "Iniciando…",
+    },
   },
   kill: {
     button: "Detener todo",
