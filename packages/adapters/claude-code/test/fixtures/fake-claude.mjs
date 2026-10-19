@@ -61,6 +61,7 @@ switch (scenario) {
     break;
   }
   case "lead":
+  case "lead-proposals":
   case "lead-question": {
     // A team lead (ADR 0022): turn 1 delegates to a Codex member (or asks first), a resumed turn
     // finishes once it sees the member's result (or the user's answer).
@@ -83,7 +84,9 @@ switch (scenario) {
         : { summary: "One member adds the file.", done: false, members: [{ key: "api", title: "Add codex.txt", brief: "Create codex.txt.", profile: "implementer", prefer: "codex", group: "backend" }] };
       result(true, "Planning the team.\n" + team(plan));
     } else {
-      result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);
+      // lead-proposals (ADR 0056): the reviewer also suggests two rules, one of which is not one line.
+      const proposals = "\n\n```navarch-principles\n" + JSON.stringify({ rules: [{ text: "use Pest, not PHPUnit", reason: "every existing test is a Pest test" }, { text: "two\nlines", reason: "not one line" }] }) + "\n```";
+      result(true, profile === "reviewer" ? "Verdict: approve." + (scenario === "lead-proposals" ? proposals : "") : `no answer for ${profile}`);
     }
     break;
   }

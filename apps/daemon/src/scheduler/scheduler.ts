@@ -63,6 +63,7 @@ export class Scheduler {
   private readonly onSucceeded: (runId: string) => void;
   private readonly billingOf: (adapter: string) => "metered" | "plan";
   private readonly principles: (run: { repo_path: string; base_commit: string }) => Promise<string[]>;
+  private readonly proposals: (run: { id: string; repo_path: string }, task: { id: string; profile: string }, summary: string) => NewEvent[];
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
   private readonly stopRequested = new Map<string, string>();
@@ -89,7 +90,10 @@ export class Scheduler {
     billingOf?: (adapter: string) => "metered" | "plan";
     /** The project's rules for a run's agents (ADR 0047); a failure to read them never fails a task. */
     principles?: (run: { repo_path: string; base_commit: string }) => Promise<string[]>;
+    /** The rules an agent's summary proposes for its project (ADR 0056), as events; a failure never fails a task. */
+    proposals?: (run: { id: string; repo_path: string }, task: { id: string; profile: string }, summary: string) => NewEvent[];
   }) {
+    this.proposals = deps.proposals ?? (() => []);
     this.principles = deps.principles ?? (async () => []);
     this.billingOf = deps.billingOf ?? (() => "metered");
     this.actions = deps.actions ?? new Map();
@@ -462,6 +466,13 @@ export class Scheduler {
       events.push(taskStatus(runId, task.id, "running", "cancelled", attempt, "cancelled by user"));
       if (!isTerminalRun(run.status)) events.push(runStatus(runId, run.status, "cancelled", "cancelled by user"));
     } else if (outcome.status === "succeeded") {
+      if (task.type === "agent") {
+        try {
+          events.push(...this.proposals(run, task, outcome.summary));
+        } catch {
+          // Suggestions are an extra; the task has succeeded either way.
+        }
+      }
       events.push(taskStatus(runId, task.id, "running", "succeeded", attempt));
       this.store.append(events);
       this.onSucceeded(runId);

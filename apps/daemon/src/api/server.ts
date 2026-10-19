@@ -282,6 +282,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return reply.code(201).send(daemon.principles.add((req.params as { id: string }).id, parsed.data, actorOf(req)));
   });
 
+  // What agents suggested (ADR 0056): only the user accepts or dismisses, from the desktop or the CLI.
+  app.post("/api/v1/projects/:id/principles/proposals/:proposal/:decision", async (req, reply) => {
+    if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot change a project's rules");
+    const params = req.params as { id: string; proposal: string; decision: string };
+    if (params.decision === "accept") return reply.code(201).send(daemon.principles.accept(params.id, params.proposal, actorOf(req)));
+    if (params.decision !== "dismiss") return notFound(reply, "route");
+    daemon.principles.dismiss(params.id, params.proposal, actorOf(req));
+    return reply.code(204).send();
+  });
+
   app.delete("/api/v1/projects/:id/principles/:principle", async (req, reply) => {
     if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot change a project's rules");
     const params = req.params as { id: string; principle: string };

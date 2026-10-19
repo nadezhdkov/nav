@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FleetView, NavarchEvent, RunDetail, RunMessage, RunView } from "@navarch/contracts";
+import type { FleetView, NavarchEvent, PrinciplesView, ProjectView, RunDetail, RunMessage, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude, type FakeScenario } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -66,6 +66,27 @@ async function waitFor<T>(fn: () => Promise<T>, done: (v: T) => boolean): Promis
     await new Promise((r) => setTimeout(r, 50));
   }
 }
+
+describe("rules proposed by agents (ADR 0056)", () => {
+  it("records what the team's reviewer proposes for the project, as suggestions the user still has to accept", async () => {
+    const { api } = await start("lead-proposals");
+    const dir = repo();
+    git(dir, "remote", "add", "origin", "https://github.com/acme/widgets.git");
+    const project = (await api<ProjectView>("POST", "/api/v1/projects", { path: dir })).body;
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: dir, prompt: "add codex.txt", flow: "team" })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status).toBe("done");
+
+    const view = (await api<PrinciplesView>("GET", `/api/v1/projects/${project.id}/principles`)).body;
+    // The two-line rule was dropped; the other one waits, and nothing applies it yet.
+    expect(view.principles).toEqual([]);
+    expect(view.proposals).toHaveLength(1);
+    expect(view.proposals[0]).toMatchObject({ text: "use Pest, not PHPUnit", reason: "every existing test is a Pest test", run_id: run.id });
+
+    const accepted = await api<{ text: string; source: string }>("POST", `/api/v1/projects/${project.id}/principles/proposals/${view.proposals[0]!.id}/accept`);
+    expect(accepted.body).toMatchObject({ text: "use Pest, not PHPUnit", source: "user" });
+  });
+});
 
 describe("team runs (ADR 0022)", () => {
   it("a lead delegates to a member on its preferred agent, reads the result and finishes", async () => {

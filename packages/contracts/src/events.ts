@@ -373,6 +373,10 @@ export const EventPayloads = {
   "principle.added": z.object({ project_id: z.string(), principle_id: z.string(), text: z.string(), run_id: z.string().nullable() }),
   /** The user removed a rule. */
   "principle.removed": z.object({ project_id: z.string(), principle_id: z.string() }),
+  /** An agent suggested a rule for a project (ADR 0056); it applies only if the user accepts it. */
+  "principle.proposed": z.object({ project_id: z.string(), proposal_id: z.string(), text: z.string(), reason: z.string(), run_id: z.string(), task_id: z.string() }),
+  /** The user accepted a proposal (it became the rule `principle_id`) or dismissed it. */
+  "principle.proposal.decided": z.object({ project_id: z.string(), proposal_id: z.string(), decision: z.enum(["accepted", "dismissed"]), principle_id: z.string().nullable() }),
   /** A pull request Navarch opened can no longer be read (404 three polls in a row); it is no longer followed (ADR 0037). */
   "github.pr.lost": z.object({ repo: z.string(), number: z.number().int().positive(), reason: z.string() }),
   /** Navarch posted a COMMENT review on a pull request (ADR 0032); `existing` when a retry found its earlier one. */
