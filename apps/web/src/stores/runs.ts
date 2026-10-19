@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView, PrinciplesView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -308,6 +308,46 @@ export const useSpecsStore = defineStore("specs", () => {
   }
 
   return { extractions, addenda, loaded, error, load, apply };
+});
+
+/** Project rules and the ones agents proposed (ADR 0047, 0056, 0057), per project. */
+export const usePrinciplesStore = defineStore("principles", () => {
+  const byProject = ref<Record<string, PrinciplesView>>({});
+  const loaded = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      const projects = await api.projects();
+      const views = await Promise.all(projects.map((p) => api.principles(p.id)));
+      byProject.value = Object.fromEntries(views.map((v) => [v.project_id, v]));
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    } finally {
+      loaded.value = true;
+    }
+  }
+
+  async function decide(projectId: string, proposalId: string, decision: "accept" | "dismiss") {
+    let refused: string | null = null;
+    try {
+      if (decision === "accept") await api.acceptProposal(projectId, proposalId);
+      else await api.dismissProposal(projectId, proposalId);
+    } catch (err) {
+      refused = (err as Error).message;
+    }
+    await load();
+    if (refused) error.value = refused;
+  }
+
+  const pending = computed(() => Object.values(byProject.value).reduce((n, v) => n + v.proposals.length, 0));
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (/^(principle|project)\./.test(event.type)) refetch();
+  }
+
+  return { byProject, loaded, error, pending, load, decide, apply };
 });
 
 /** Away mode (ADR 0039): whether an approver agent decides approvals, and what it did. */

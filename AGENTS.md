@@ -141,7 +141,9 @@ Slice 14, [reverse-spec modes](docs/specs/phase-3-14-reverse-spec-modes.md) (ADR
 
 Slice 15, [rule proposals](docs/specs/phase-3-15-principle-proposals.md) (ADR 0056): `planner` and `reviewer` may end an answer with one `navarch-principles` block (`parsePrincipleProposals` in `packages/contracts/src/principles.ts`: at most 3 one-line rules with a reason); the scheduler records `principle.proposed` (projection `principle_proposals`) for a run in a registered project, skipping known, pending or dismissed rules and keeping at most 10 pending per project. `GET …/principles` lists `proposals`; `POST …/principles/proposals/:id/accept|dismiss` and `navarch principles accept|dismiss <id>` are the user's alone (policy `principles.set`), and nothing reaches a prompt until accepted.
 
-Not yet: roles that lead sub-agents of their own (real two-level teams, a later feature the user deferred), user-defined profiles, the Archaeologist/Detective/Reviewer roles of reverse-spec, call and module graphs, semantic search, specs and ADRs as sources, balancing the campaign's tasks, a Web UI view of the proposals, acting MCP tools, REA.
+Slice 16, [Rules screen](docs/specs/phase-3-16-rules-screen.md) (ADR 0057): `/rules` in the Web UI (desktop tab, badge with the pending count) lists each project's rules and the proposals agents made, with Accept and Dismiss (hidden on a paired phone) over the existing routes of slice 15; the reason is plain text.
+
+Not yet: roles that lead sub-agents of their own (real two-level teams, a later feature the user deferred), user-defined profiles, the Archaeologist/Detective/Reviewer roles of reverse-spec, call and module graphs, semantic search, specs and ADRs as sources, balancing the campaign's tasks, acting MCP tools, REA.
 
 Not yet: editing parallel branches, L3 (hardened containers, egress allowlist) and agents inside containers, label triggers, webhooks (they need the relay) and a concierge tool for CI failures, starting PR runs from the Web UI, the morning summary (§7.4), WebAuthn (comes with the first action that needs re-authentication), relay.
 

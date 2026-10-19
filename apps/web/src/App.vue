@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FileCheck, Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
+import { FileCheck, ScrollText, Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair, reachable } from "./api/client.ts";
@@ -11,7 +11,7 @@ import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useAwayStore, useCiStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useSpecsStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useAwayStore, useCiStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useSpecsStore, usePrinciplesStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
@@ -21,7 +21,8 @@ const inbox = useInboxStore();
 const projects = useProjectsStore();
 const usage = useUsageStore();
 const away = useAwayStore();
-const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore(), away, useCiStore(), useSpecsStore()];
+const principles = usePrinciplesStore();
+const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore(), away, useCiStore(), useSpecsStore(), principles];
 
 const offs: (() => void)[] = [];
 /** Loads everything again, for the "Try again" of the unreachable notice. */
@@ -64,8 +65,10 @@ const items = computed(() => {
   const awayItem = { to: "/away", label: t("nav.away"), icon: ShieldCheck, badge: away.active ? 1 : 0, tone: "warning" };
   // Specs are a desktop tab; the data is readable from a phone, but there is no tab for it.
   const specsItem = { to: "/specs", label: t("nav.specs"), icon: FileCheck, badge: 0, tone: "neutral" };
+  // Rules are a desktop tab; the badge counts rules agents proposed that wait for a decision.
+  const rulesItem = { to: "/rules", label: t("nav.rules"), icon: ScrollText, badge: principles.pending, tone: "warning" };
   const flowsItem = { to: "/flows", label: t("nav.flows"), icon: Workflow, badge: 0, tone: "neutral" };
-  return [home, inboxItem, approvalsItem, runsItem, fleetItem, awayItem, flowsItem, specsItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
+  return [home, inboxItem, approvalsItem, runsItem, fleetItem, awayItem, flowsItem, specsItem, rulesItem, usageItem, { to: "/settings/devices", label: t("nav.settings"), icon: Settings, badge: 0, tone: "neutral" }];
 });
 </script>
 
