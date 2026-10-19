@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView, AutoMergeStatus } from "@navarch/contracts";
+import type { ScheduleView, ScheduleDay, CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView, AutoMergeStatus } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -527,4 +527,29 @@ export function formatSymbols(symbols: CodeSymbol[]): string {
 /** `navarch where` (ADR 0042). */
 export function formatHits(hits: SearchHit[]): string {
   return hits.length ? hits.map((h) => `${h.file}:${h.line}: ${h.text}`).join("\n") : "no matches";
+}
+
+/** `--days daily|weekdays|weekend|mon,wed,fri` as the API's list of days. */
+export function parseScheduleDays(text: string): ScheduleDay[] {
+  const all: ScheduleDay[] = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+  const named: Record<string, ScheduleDay[]> = { daily: all, weekdays: all.slice(0, 5), weekend: all.slice(5) };
+  const preset = named[text.trim().toLowerCase()];
+  if (preset) return preset;
+  const days = text.split(",").map((d) => d.trim().toLowerCase().slice(0, 3));
+  const bad = days.find((d) => !all.includes(d as ScheduleDay));
+  if (bad !== undefined || !days.length) throw new Error(`--days takes daily, weekdays, weekend or a list such as mon,wed,fri (got "${text}")`);
+  return [...new Set(days)] as ScheduleDay[];
+}
+
+/** `navarch schedule`: one block per schedule; the prompt is the user's own text. */
+export function formatSchedules(list: ScheduleView[]): string {
+  if (!list.length) return "no scheduled runs; add one with navarch schedule add";
+  return list
+    .map((s) => {
+      const days = s.days.length === 7 ? "daily" : s.days.join(",");
+      const next = s.enabled ? (s.next_at ? `next ${new Date(s.next_at).toLocaleString()}` : "no next slot") : "paused";
+      const last = s.last_outcome ? `last ${s.last_slot ?? "?"}: ${s.last_outcome}${s.last_run_id ? ` (${s.last_run_id})` : ""}${s.last_message ? ` · ${truncate(oneLine(s.last_message), 80)}` : ""}` : "not started yet";
+      return [`${s.id}  ${s.name}  ${s.repo ?? s.project_id}  ${days} at ${s.at}  $${s.budget} budget${s.flow ? `  flow ${s.flow}` : ""}`, `    ${truncate(oneLine(s.prompt), 100)}`, `    ${next} · ${last}`].join("\n");
+    })
+    .join("\n");
 }

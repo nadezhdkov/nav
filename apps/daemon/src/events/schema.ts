@@ -163,6 +163,23 @@ CREATE TABLE IF NOT EXISTS principle_proposals (
   decided_at TEXT
 );
 CREATE INDEX IF NOT EXISTS principle_proposals_project ON principle_proposals(project_id, status, proposed_at);
+CREATE TABLE IF NOT EXISTS schedules (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  prompt TEXT NOT NULL,
+  flow TEXT,
+  budget REAL NOT NULL,
+  at TEXT NOT NULL,
+  days TEXT NOT NULL,
+  enabled INTEGER NOT NULL,
+  saved_at TEXT NOT NULL,
+  removed_at TEXT,
+  last_slot TEXT,
+  last_outcome TEXT,
+  last_run_id TEXT,
+  last_message TEXT
+);
 CREATE TABLE IF NOT EXISTS work_items (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -315,6 +332,7 @@ DROP TABLE IF EXISTS devices;
 DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS principles;
 DROP TABLE IF EXISTS principle_proposals;
+DROP TABLE IF EXISTS schedules;
 DROP TABLE IF EXISTS work_items;
 DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS attempts;

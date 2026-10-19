@@ -1,6 +1,8 @@
 import type {
   AwayView,
   ConciergeTurn,
+  SaveScheduleRequest,
+  ScheduleView,
   ProposalDecision,
   CiFailureView,
   AutoMergeStatus,
@@ -200,6 +202,11 @@ export const api = {
   conciergeSend: (id: string, text: string) => request<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${encodeURIComponent(id)}/messages`, { text }),
   conciergeDecide: (id: string, proposal: string, decision: "approve" | "reject") =>
     request<ProposalDecision>("POST", `/api/v1/concierge/conversations/${encodeURIComponent(id)}/proposals/${encodeURIComponent(proposal)}`, { decision }),
+  schedules: () => request<ScheduleView[]>("GET", "/api/v1/schedules"),
+  saveSchedule: (body: SaveScheduleRequest, id?: string) =>
+    id ? request<ScheduleView>("PUT", `/api/v1/schedules/${encodeURIComponent(id)}`, body) : request<ScheduleView>("POST", "/api/v1/schedules", body),
+  setScheduleEnabled: (id: string, enabled: boolean) => request<ScheduleView>("PUT", `/api/v1/schedules/${encodeURIComponent(id)}/enabled`, { enabled }),
+  removeSchedule: (id: string) => request<void>("DELETE", `/api/v1/schedules/${encodeURIComponent(id)}`),
   stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
   startRun: (body: { repo_path: string; prompt: string; flow?: string; budget?: number; params?: Record<string, number | string | boolean>; attachments?: RunAttachment[] }) =>
     request<RunView>("POST", "/api/v1/runs", body),

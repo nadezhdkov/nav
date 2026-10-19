@@ -206,6 +206,18 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
+   * Scheduled runs (spec §7.4, UC-14, ADR 0064): runs the user set on a timetable. The daemon starts
+   * at most `daily_runs` of them a day (the PC's local time); a slot missed by more than
+   * `grace_minutes` (the daemon was off) is skipped, never started late.
+   */
+  schedules: z
+    .object({
+      enabled: z.boolean().default(true),
+      daily_runs: z.number().int().nonnegative().default(5),
+      grace_minutes: z.number().int().min(0).max(720).default(30),
+    })
+    .prefault({}),
+  /**
    * The morning summary (spec §7.4, ADR 0059). With `enabled`, once a day at `at` (the PC's local
    * time) the daemon syncs every project, builds the summary and sends a notification.
    */
