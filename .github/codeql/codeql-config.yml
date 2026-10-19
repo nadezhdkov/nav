@@ -1,0 +1,7 @@
+name: navarch codeql config
+# Tests and their fixtures run only on a developer's or CI machine, against loopback test daemons and fake
+# CLIs. Their reads of a test token that is sent to the test daemon (js/file-access-to-http) and their
+# check-then-write markers are not product risks, and they buried the alerts that are.
+paths-ignore:
+  - "**/test/**"
+  - "**/fixtures/**"

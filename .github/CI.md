@@ -9,7 +9,7 @@ Every job calls a `Makefile` target, so `make ci` locally runs the same gates (i
 | `ci.yml` | `lint-workflows` | `make lint-workflows` (actionlint) | every push and pull request |
 | `security.yml` | `audit` | `make audit` (`pnpm audit --audit-level high`) | push, pull request, weekly on Monday |
 | `security.yml` | `secrets` | `make secrets` (gitleaks over the full history) | push, pull request, weekly on Monday |
-| `codeql.yml` | `analyze` | CodeQL for JavaScript/TypeScript with the `security-extended` queries; results in Security → Code scanning | push to `main`, pull request, weekly on Monday |
+| `codeql.yml` | `analyze` | CodeQL for JavaScript/TypeScript with the `security-extended` queries, ignoring `test/` and `fixtures/` directories (`.github/codeql/codeql-config.yml`); results in Security → Code scanning | push to `main`, pull request, weekly on Monday |
 | `dependency-review.yml` | `review` | fails a pull request that adds a dependency with a known vulnerability of high severity or worse | pull request |
 | `dependabot.yml` | | grouped weekly updates for npm and GitHub Actions | weekly |
 
