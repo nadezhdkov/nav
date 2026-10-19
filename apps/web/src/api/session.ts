@@ -1,5 +1,6 @@
 import type { DeviceSession } from "@navarch/contracts";
 import { ref } from "vue";
+import { BASE, withBase } from "./base.ts";
 import { getToken } from "./token.ts";
 
 /**
@@ -8,7 +9,8 @@ import { getToken } from "./token.ts";
  * across tabs too, because the daemon rotates the refresh token on every use.
  */
 
-const KEY = "navarch.device";
+/** One key per relay address: a phone may be paired with more than one daemon on the same relay host. */
+export const KEY = `navarch.device${BASE}`;
 /** What `tailscale serve` (or another proxy) answers while the daemon behind it is down. */
 export const GATEWAY = new Set([502, 503, 504]);
 /** Refresh this long before the access token expires. */
@@ -63,7 +65,7 @@ export function deviceId(): string | null {
 
 /** Trades a pairing code from the desktop's QR code for a session. */
 export async function pairDevice(code: string, name: string): Promise<boolean> {
-  const res = await fetch("/api/v1/devices/pair", {
+  const res = await fetch(withBase("/api/v1/devices/pair"), {
     method: "POST",
     headers: { "content-type": "application/json", "x-navarch-client": "mobile" },
     body: JSON.stringify({ code, name }),
@@ -107,7 +109,7 @@ async function doRefresh(): Promise<string | null> {
   if (!stored) return null;
   if (before && before.expires - EARLY_MS > Date.now()) return before.token;
   // A network failure throws; the caller reports the daemon as unreachable, and the device stays paired.
-  const res = await fetch("/api/v1/devices/refresh", {
+  const res = await fetch(withBase("/api/v1/devices/refresh"), {
     method: "POST",
     headers: { "content-type": "application/json", "x-navarch-client": "mobile" },
     body: JSON.stringify({ refresh_token: stored.refresh_token }),

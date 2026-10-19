@@ -62,7 +62,7 @@ const HANDSHAKES_PER_MINUTE = 30;
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "DELETE"]);
 /** Headers a phone may pass on; anything else is dropped, and the relay marker is always ours. */
 const REQUEST_HEADERS = ["authorization", "content-type", "accept", "if-none-match", "x-navarch-client"];
-const RESPONSE_HEADERS = ["content-type", "cache-control", "etag", "location"];
+const RESPONSE_HEADERS = ["content-type", "cache-control", "etag", "location", "content-security-policy", "x-content-type-options", "referrer-policy"];
 export const RELAY_MARKER = "x-navarch-relay";
 
 export class RelayConnector {

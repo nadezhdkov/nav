@@ -1,5 +1,5 @@
 import { concat, fromB64u, text, toB64u, utf8 } from "./bytes.ts";
-import { bodyBytes, decodeMessage, encodeMessage, type Headers, type Message } from "./messages.ts";
+import { bodyBytes, decodeMessage, encodeMessage, MAX_IN_FLIGHT, type Headers, type Message } from "./messages.ts";
 import { initiate, type Session } from "./session.ts";
 
 /** The part of a WebSocket the client needs, which both the browser's and Node's have. */
@@ -8,7 +8,18 @@ export interface SocketLike {
   send(data: string): void;
   close(code?: number): void;
   addEventListener(type: "message", listener: (event: { data: unknown }) => void): void;
-  addEventListener(type: "open" | "close" | "error", listener: () => void): void;
+  addEventListener(type: "close", listener: (event: { code?: number }) => void): void;
+  addEventListener(type: "open" | "error", listener: () => void): void;
+}
+
+/** The relay (or the daemon, through it) ended the connection; `code` is the WebSocket close code (4404: the daemon is offline). */
+export class RelayClosed extends Error {
+  readonly code: number | undefined;
+
+  constructor(code: number | undefined) {
+    super(code === 4404 ? "the daemon is offline" : "the relay closed the connection");
+    this.code = code;
+  }
 }
 
 export type Response = { status: number; headers: Headers; body: Uint8Array };
@@ -32,6 +43,9 @@ export class RelayClient {
   private incoming: Promise<void> = Promise.resolve();
   private outgoing: Promise<void> = Promise.resolve();
   private closed = false;
+  /** A page asks for dozens of files at once; the daemon takes a few at a time, so the rest wait their turn here. */
+  private slots = MAX_IN_FLIGHT - 2;
+  private readonly queue: (() => void)[] = [];
   onclose: (() => void) | undefined;
 
   private constructor(socket: SocketLike, session: Session) {
@@ -46,7 +60,16 @@ export class RelayClient {
 
   /** Connects over `socket` and authenticates with `secret` as `deviceId`; rejects if the daemon does not answer. */
   static async connect(socket: SocketLike, deviceId: string, secret: Uint8Array, timeoutMs = 10_000): Promise<RelayClient> {
-    const pending = await initiate(secret, deviceId);
+    // Everything that can happen to the socket is listened for before the first await, so a relay that
+    // answers "offline" while the handshake keys are still being made is not missed, close code included.
+    const opening = new Promise<void>((resolve, reject) => {
+      if (socket.readyState === OPEN) resolve();
+      // 2 and 3: closing or already closed, so no `open` is coming.
+      else if (socket.readyState === 2 || socket.readyState === 3) reject(new RelayClosed(undefined));
+      socket.addEventListener("open", () => resolve());
+      socket.addEventListener("error", () => reject(new Error("could not reach the relay")));
+      socket.addEventListener("close", (e) => reject(new RelayClosed(e.code)));
+    });
     const welcome = new Promise<Uint8Array>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error("the daemon did not answer")), timeoutMs);
       socket.addEventListener("message", (e) => {
@@ -60,25 +83,40 @@ export class RelayClient {
           /* not for us */
         }
       });
-      socket.addEventListener("close", () => reject(new Error("the relay closed the connection")));
-      socket.addEventListener("error", () => reject(new Error("could not reach the relay")));
+      socket.addEventListener("close", (e) => {
+        clearTimeout(timer);
+        reject(new RelayClosed(e.code));
+      });
+      socket.addEventListener("error", () => {
+        clearTimeout(timer);
+        reject(new Error("could not reach the relay"));
+      });
     });
-    if (socket.readyState !== OPEN) await new Promise<void>((resolve, reject) => {
-      socket.addEventListener("open", () => resolve());
-      socket.addEventListener("error", () => reject(new Error("could not reach the relay")));
-    });
+    // Handled here too, so a failure before we get to wait for it is never reported as unhandled.
+    opening.catch(() => {});
+    welcome.catch(() => {});
+    const pending = await initiate(secret, deviceId);
+    await opening;
     socket.send(JSON.stringify({ t: "data", d: toB64u(pending.hello) }));
     // The first message was consumed above; later ones go to the session once it exists.
     const session = await pending.finish(await welcome);
     return new RelayClient(socket, session);
   }
 
-  fetch(method: string, path: string, init: { headers?: Headers; body?: Uint8Array } = {}): Promise<Response> {
-    return new Promise((resolve, reject) => {
-      const id = this.nextId++;
-      this.waiting.set(id, { chunks: [], resolve, reject });
-      this.send({ k: "req", id, method, path, ...(init.headers ? { headers: init.headers } : {}), ...(init.body?.length ? { body: toB64u(init.body) } : {}) }).catch((e) => this.fail(id, e));
-    });
+  async fetch(method: string, path: string, init: { headers?: Headers; body?: Uint8Array } = {}): Promise<Response> {
+    if (this.slots > 0) this.slots--;
+    else await new Promise<void>((turn) => this.queue.push(turn));
+    try {
+      return await new Promise<Response>((resolve, reject) => {
+        const id = this.nextId++;
+        this.waiting.set(id, { chunks: [], resolve, reject });
+        this.send({ k: "req", id, method, path, ...(init.headers ? { headers: init.headers } : {}), ...(init.body?.length ? { body: toB64u(init.body) } : {}) }).catch((e) => this.fail(id, e));
+      });
+    } finally {
+      const next = this.queue.shift();
+      if (next) next();
+      else this.slots++;
+    }
   }
 
   /** Pairing: exchanges the pairing code for a device session and the device's relay secret. */
@@ -185,6 +223,8 @@ export class RelayClient {
     if (this.closed) return;
     this.closed = true;
     for (const id of [...this.waiting.keys()]) this.fail(id, new Error("the connection closed"));
+    // Requests still waiting for a turn go on, and fail at once because the connection is closed.
+    for (const turn of this.queue.splice(0)) turn();
     for (const [id, s] of [...this.streams]) {
       this.streams.delete(id);
       s.reject?.(new Error("the connection closed"));

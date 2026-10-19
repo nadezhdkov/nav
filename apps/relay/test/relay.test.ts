@@ -151,4 +151,15 @@ describe("the relay (ADR 0066)", () => {
     const res = await fetch(`${r.url}/healthz`);
     expect(await res.json()).toEqual({ ok: true, online: 1 });
   });
+
+  it("limits how often the loader's files are served to one address", async () => {
+    const dir = (await import("node:fs")).mkdtempSync(join(tmpdir(), "navarch-relay-files-"));
+    (await import("node:fs")).writeFileSync(join(dir, "index.html"), "<title>x</title>");
+    const r = await relay({ phoneDir: dir, fileRequestsPerMinute: 3 });
+    const statuses: number[] = [];
+    for (let i = 0; i < 5; i++) statuses.push((await fetch(`${r.url}/r/${ID}/`)).status);
+    expect(statuses).toEqual([200, 200, 200, 429, 429]);
+    // The sockets and the health check are not counted.
+    expect((await fetch(`${r.url}/healthz`)).status).toBe(200);
+  });
 });

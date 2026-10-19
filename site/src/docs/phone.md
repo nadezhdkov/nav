@@ -15,11 +15,12 @@ The Web UI installs on your phone as an app (a PWA). Your phone reaches the daem
 3. In the Web UI on the computer, open **Settings → Devices** and create a pairing. Scan the QR code with your phone. The code works once, for five minutes.
 4. On the phone, add the page to your home screen.
 
-## Without Tailscale: a relay (preview)
+## Without Tailscale: a relay
 
 If you cannot use Tailscale, your PC can dial out to a **relay** instead, a small server you host. Phone and PC encrypt everything end to end with a secret that only the pairing QR code carries, so the relay only copies bytes it cannot read or change. It sees which relay id is online, when, and how much data.
 
 ```sh
+make relay-build                 # once: builds the small page and worker the relay serves to phones
 make relay                       # on a server; put a TLS proxy (Caddy, nginx) in front
 ```
 
@@ -31,7 +32,9 @@ daemon:
     relay_url: https://relay.example.com
 ```
 
-`navarch remote status` shows whether the PC is connected. Through the relay a phone can do exactly what it can over Tailscale, and the local token never works there. The phone side (a small loader page, and the app delivered by your PC through the encrypted tunnel) is the next step, so pairing a phone over a relay is not possible yet.
+`navarch remote status` shows whether the PC is connected, and pairing from Settings → Devices then gives a QR code for the relay. Scan it: the phone opens a small page that pairs end to end, and from then on **your PC serves the app to the phone through the encrypted tunnel**, so the code that runs is your PC's and not the relay's. Through the relay a phone can do exactly what it can over Tailscale, and the local token never works there.
+
+Two things to know. The small page and its worker do come from the relay, so a relay you do not control could serve a bad one to a phone that has not installed it yet: host your own. And behind a relay the app refreshes every few seconds instead of keeping a live connection.
 
 ## What a phone can do
 

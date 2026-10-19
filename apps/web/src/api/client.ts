@@ -61,6 +61,7 @@ import type {
   ValidateFlowResponse,
 } from "@navarch/contracts";
 import { ref } from "vue";
+import { withBase } from "./base.ts";
 import { bearer, forgetDevice, GATEWAY, isDevice, refresh } from "./session.ts";
 import { clearToken, getToken, setToken } from "./token.ts";
 
@@ -120,7 +121,7 @@ export async function signInFromFragment(location: Location = window.location, h
     authorized.value = true;
     return;
   }
-  const res = await fetch("/api/v1/web/exchange", {
+  const res = await fetch(withBase("/api/v1/web/exchange"), {
     method: "POST",
     headers: { "content-type": "application/json", "x-navarch-client": "web" },
     body: JSON.stringify({ code }),
@@ -139,7 +140,7 @@ async function request<T>(method: string, path: string, body?: unknown, as: "jso
       authorized.value = false;
       throw new ApiError(401, "unauthorized", "no token");
     }
-    res = await fetch(path, {
+    res = await fetch(withBase(path), {
       method,
       headers: {
         authorization: `Bearer ${token}`,

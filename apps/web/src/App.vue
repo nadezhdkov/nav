@@ -2,6 +2,7 @@
 import { CalendarClock, FileCheck, MessageSquare, ScrollText, Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { withBase } from "./api/base.ts";
 import { authorized, client, pendingPair, reachable } from "./api/client.ts";
 import { isDevice } from "./api/session.ts";
 import AwayBanner from "./components/AwayBanner.vue";
@@ -80,7 +81,7 @@ const items = computed(() => {
   <div v-else class="flex h-full min-h-0">
     <nav :aria-label="t('nav.main')" class="flex w-56 shrink-0 flex-col border-r border-line bg-surface max-md:hidden">
       <div class="flex items-center gap-2.5 px-4 py-4">
-        <img src="/favicon.svg" alt="" class="size-7" />
+        <img :src="withBase('/favicon.svg')" alt="" class="size-7" />
         <span class="text-base font-semibold tracking-tight">{{ t("app.name") }}</span>
       </div>
       <RouterLink

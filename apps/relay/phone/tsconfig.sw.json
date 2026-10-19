@@ -1,0 +1,6 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "lib": ["es2024", "webworker"], "types": [], "noEmit": true },
+  "include": ["core.ts", "sw.ts", "store.ts"],
+  "exclude": []
+}

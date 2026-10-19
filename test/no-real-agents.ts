@@ -1,6 +1,7 @@
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
+import { afterAll } from "vitest";
 
 /**
  * Vitest setup: tests must never reach a real agent CLI, which would spend the operator's quota
@@ -14,7 +15,14 @@ import { delimiter, join } from "node:path";
  */
 const AGENT_COMMANDS = ["claude", "gemini", "agy", "codex", "copilot", "opencode", "kilo", "grok", "ollama", "secret-tool", "tailscale", "docker", "podman"];
 
-const dir = mkdtempSync(join(tmpdir(), "navarch-no-agents-"));
+/**
+ * Every temp directory a test file makes lives under one root that is removed when the file ends.
+ * Tests call `tmpdir()` when they need a directory, so pointing TMPDIR here (child processes
+ * inherit it) keeps hundreds of `navarch-*` directories from piling up in /tmp (it once held 7.8 GB).
+ */
+const dir = mkdtempSync(join(tmpdir(), "navarch-test-"));
+process.env.TMPDIR = dir;
+afterAll(() => rmSync(dir, { recursive: true, force: true, maxRetries: 3 }));
 for (const name of AGENT_COMMANDS) {
   const stub = join(dir, name);
   writeFileSync(stub, `#!/bin/sh\necho "test tried to run the real ${name} CLI; use a fake CLI" >&2\nexit 127\n`);
