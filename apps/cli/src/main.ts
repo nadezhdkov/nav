@@ -49,7 +49,7 @@ import {
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
-import { wantsColor } from "./banner.ts";
+import { hasTruecolor, wantsColor } from "./banner.ts";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
@@ -915,5 +915,5 @@ function readAttachment(path: string): { name: string; content: string } {
 /** The terminal for `navarch` and `navarch chat`: the ship greets a terminal, in colour when it wants it. */
 function chatIo() {
   const tty = Boolean(process.stdout.isTTY);
-  return { input: process.stdin, output: process.stdout, cwd: process.cwd(), tty, color: wantsColor(tty) };
+  return { input: process.stdin, output: process.stdout, cwd: process.cwd(), tty, color: wantsColor(tty), truecolor: hasTruecolor(), columns: process.stdout.columns };
 }
