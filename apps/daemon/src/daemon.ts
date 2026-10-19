@@ -18,6 +18,7 @@ import { AwayService } from "./away/service.ts";
 import { PrinciplesService } from "./principles/service.ts";
 import { InboxService } from "./inbox/service.ts";
 import { CiWatcher } from "./github/ci.ts";
+import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { SpecSyncTrigger } from "./github/specsync.ts";
@@ -80,6 +81,7 @@ export class Daemon {
   readonly prs: PrWatcher;
   readonly ci: CiWatcher;
   readonly summary: SummaryService;
+  readonly autoMerge: AutoMerger;
   readonly budgets: Budgets;
   readonly flows: FlowLibrary;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
@@ -155,6 +157,7 @@ export class Daemon {
     const specSync = new SpecSyncTrigger({ config: this.config, store: this.store, orchestrator: this.orchestrator, policy });
     this.prs = new PrWatcher({ config: this.config, store: this.store, github, onMerged: (pr) => specSync.merged(pr) });
     this.ci = new CiWatcher({ config: this.config, store: this.store, github, orchestrator: this.orchestrator, policy });
+    this.autoMerge = new AutoMerger({ config: this.config, store: this.store, policy, github });
     this.summary = new SummaryService({
       config: this.config,
       store: this.store,
@@ -263,6 +266,7 @@ export class Daemon {
     this.prs.start();
     this.ci.start();
     this.summary.start();
+    this.autoMerge.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
     void this.remoteStatus().catch(() => {});
@@ -301,6 +305,7 @@ export class Daemon {
     await this.prs.stop();
     await this.ci.stop();
     await this.summary.stop();
+    await this.autoMerge.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
     });

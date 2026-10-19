@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView, AutoMergeStatus } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -257,6 +257,22 @@ export function formatRunAudit(a: RunAudit): string {
     `Audit of ${a.run.name} (${a.run.id}), ${a.run.status}; ${a.events.length} events; log chain ${a.chain.ok ? "holds" : `BROKEN at ${a.chain.broken?.seq}`}`,
     ...a.events.map((e) => `${String(e.seq).padStart(6)}  ${e.ts}  ${truncate(actor(e.actor), 22).padEnd(22)}  ${e.type.padEnd(28)}  ${e.hash ? e.hash.slice(0, 10) : "unchained"}`),
   ].join("\n");
+}
+
+/** The conditions the user reads before turning auto-merge on (spec §11.1). */
+export function formatAutoMergeConditions(status: AutoMergeStatus): string {
+  return ["Auto-merge merges a pull request of Navarch's without asking you, only when all of these hold:", ...status.conditions.map((c) => `  - ${c}`), "Release and deploy are never automatic. Turn it off at any time (navarch automerge off) or with the kill switch."].join("\n");
+}
+
+/** `navarch automerge`: each project's state and why its open PRs are waiting; reasons may carry untrusted text. */
+export function formatAutoMerge(status: AutoMergeStatus): string {
+  if (!status.projects.length) return "no projects; add one with navarch project add";
+  const lines = [formatAutoMergeConditions(status), ""];
+  for (const p of status.projects) {
+    lines.push(`${p.repo}  ${p.project_id}  auto-merge ${p.enabled ? `ON (${p.strategy}) since ${p.since}` : "off"}`);
+    for (const w of p.waiting) lines.push(`    #${w.number} waiting: ${truncate(oneLine(w.reason), 100)}`);
+  }
+  return lines.join("\n");
 }
 
 /** `navarch summary`: the morning summary; titles are untrusted text, kept on one line. */

@@ -149,6 +149,8 @@ Slice 17, [two-level teams](docs/specs/phase-3-17-two-level-teams.md) (ADR 0058)
 
 Slice 3, [hash-chained event log](docs/specs/phase-4-03-audit-chain.md) (ADR 0061, spec §10.3): every event stores `hash = sha256(previous hash + its own stored fields)` (`apps/daemon/src/events/chain.ts`), always on; events from before stay unhashed (`legacy`). `EventStore.verifyChain()` reports the first break; `navarchd` checks at start and warns. `navarch audit [verify] [--expect <hash>]` (`GET /api/v1/audit`) prints the report and the head, which the user keeps elsewhere: a chain cannot see the newest events cut off, only a kept head can. `navarch audit export <run>` (`GET /api/v1/runs/:id/audit`) lists a run's events with actor and hash. Desktop and CLI only.
 
+Slice 2, [opt-in auto-merge](docs/specs/phase-4-02-auto-merge.md) (ADR 0060, spec §11.1): `AutoMerger` (`apps/daemon/src/github/automerge.ts`) looks at Navarch's open PRs in projects whose user turned auto-merge on (`navarch automerge on <project> --confirm <owner/repo>`, `PUT /api/v1/projects/:id/auto-merge`, Policy `automerge.set` for the user on the desktop or CLI only, level 3+) and merges one only when the run's verification passed, the `reviewer` declared `verdict: approve, blocking: 0, red: 0` in its `navarch-outputs`, the head is the commit Navarch pushed, GitHub shows green checks, the default branch is not protected and no manifest, lockfile, workflow or protected path changed. It marks the draft ready, merges with the head `sha` as a guard and records `github.pr.merged`; Policy `github.pr.merge` is allowed for that actor only. The kill switch turns it off in every project; `GET /api/v1/auto-merge` is readable by devices.
+
 Not yet: sub-leads of sub-leads, user-defined profiles, the Archaeologist/Detective/Reviewer roles of reverse-spec, call and module graphs, semantic search, specs and ADRs as sources, balancing the campaign's tasks, acting MCP tools, REA.
 
 Not yet: editing parallel branches, L3 (hardened containers, egress allowlist) and agents inside containers, label triggers, webhooks (they need the relay) and a concierge tool for CI failures, starting PR runs from the Web UI, WebAuthn (comes with the first action that needs re-authentication), relay.
@@ -232,7 +234,7 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
   - Enabling requires an explicit confirmation step (UI/CLI prompt, plus re-authentication when available) that states which repository and conditions it applies to. A checkbox alone, a config edit by an agent, or a comment from a third party does not count.
   - Even when enabled, a merge happens only if all required checks and the review pass, the PR is not marked as touching protected paths, and the policy allows it. Merging into protected branches stays out of scope.
   - Each enablement, and every auto-merge performed, is recorded as an event with actor and reason, and can be turned off instantly.
-- Defined in spec §11.1 (decision recorded in §19.8). Create the matching ADR in `docs/adr/` when implementing it.
+- Defined in spec §11.1 (decision recorded in §19.8) and implemented in ADR 0060: the setting is the user's `github.auto_merge.enabled|disabled` events (never a file an agent could edit), turned on with `navarch automerge on <project> --confirm <owner/repo>`.
 
 ## Product conventions
 

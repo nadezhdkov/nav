@@ -20,3 +20,4 @@ export * from "./specs.ts";
 export * from "./principles.ts";
 export * from "./summary.ts";
 export * from "./audit.ts";
+export * from "./automerge.ts";
