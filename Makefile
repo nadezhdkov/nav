@@ -2,7 +2,7 @@
 # Targets are thin wrappers over pnpm; Node >= 22.18 runs the TypeScript sources directly.
 
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck test verify web-build web-dev web site-build site-dev audit secrets lint-workflows ci daemon cli chat doctor clean
+.PHONY: help install typecheck test verify web-build web-dev web site-build site-dev audit secrets lint-workflows ci daemon relay cli chat doctor clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  make %-10s %s\n", $$1, $$2}'
@@ -47,6 +47,9 @@ ci: verify web-build site-build audit secrets lint-workflows ## Every quality ga
 daemon: ## Run navarchd in the foreground (NAVARCH_HOME defaults to ~/.navarch); warns when dependencies are stale
 	@node apps/cli/src/check-deps.ts
 	node apps/daemon/src/main.ts
+
+relay: ## Run the relay (navarch-relay) in the foreground; put a TLS proxy in front (PORT, HOST, RELAY_STATE)
+	node apps/relay/src/main.ts
 
 cli: ## Run the CLI: make cli ARGS="run list"
 	node apps/cli/src/main.ts $(ARGS)

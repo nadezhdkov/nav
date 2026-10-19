@@ -100,7 +100,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const header = req.headers.authorization ?? "";
     const query = (req.query as { token?: string } | undefined)?.token ?? "";
     const given = header.startsWith("Bearer ") ? header.slice(7) : query;
-    if (safeEqual(given, token)) {
+    // A request that came through the relay (ADR 0066) never gets the local token's powers: only a paired device's.
+    const relayed = req.headers["x-navarch-relay"] !== undefined || (req.query as { relay?: string } | undefined)?.relay !== undefined;
+    if (!relayed && safeEqual(given, token)) {
       callers.set(req, { kind: "local" });
       return;
     }

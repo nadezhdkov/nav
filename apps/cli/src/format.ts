@@ -166,6 +166,10 @@ function table(header: string[], rows: (string | undefined)[][]): string {
 /** `navarch remote status`: what the phone opens and what is missing (ADR 0020). */
 export function formatRemote(s: RemoteStatus): string {
   if (s.mode === "off") return "remote access is off (daemon.remote.mode: off in config.yaml)";
+  if (s.mode === "relay") {
+    if (!s.installed) return `relay mode is on but no relay is set: ${s.setup_command}`;
+    return [`relay: ${s.running ? "connected" : "not connected (the daemon retries on its own)"}`, `phone URL: ${s.url ?? "unknown"}`, ...(s.running ? ["pair a phone from the Web UI: Settings → Devices → Pair a phone"] : [])].join("\n");
+  }
   const lines = [
     `tailscale: ${!s.installed ? "not installed (https://tailscale.com/download)" : s.running ? "running" : "installed, not logged in (run: tailscale up)"}`,
     `phone URL: ${s.url ?? "unknown (set daemon.remote.url, or log in to Tailscale)"}`,

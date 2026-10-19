@@ -21,6 +21,8 @@ import { CiWatcher } from "./github/ci.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
 import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
+import { RelayConnector } from "./relay/connector.ts";
+import { loadRelayIdentity } from "./relay/identity.ts";
 import { ScheduleService } from "./schedules/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { SpecSyncTrigger } from "./github/specsync.ts";
@@ -83,6 +85,8 @@ export class Daemon {
   readonly prs: PrWatcher;
   readonly ci: CiWatcher;
   readonly summary: SummaryService;
+  /** The outgoing connection to a relay, when `daemon.remote.mode` is `relay` (ADR 0066). */
+  relay: RelayConnector | undefined;
   readonly schedules: ScheduleService;
   readonly autoMerge: AutoMerger;
   readonly webauthn: WebAuthnService;
@@ -285,6 +289,7 @@ export class Daemon {
     this.prs.start();
     this.ci.start();
     this.summary.start();
+    this.startRelay();
     this.schedules.start();
     this.autoMerge.start();
     this.scheduler.pump();
@@ -292,10 +297,33 @@ export class Daemon {
     void this.remoteStatus().catch(() => {});
   }
 
+  private startRelay(): void {
+    const remote = this.config.daemon.remote;
+    if (remote.mode !== "relay" || !remote.relay_url) return;
+    this.relay = new RelayConnector({
+      relayUrl: remote.relay_url,
+      identity: loadRelayIdentity(this.home),
+      devices: this.devices,
+      port: () => this.port ?? this.config.daemon.port,
+    });
+    this.relay.start();
+  }
+
   /** Remote access as configured and as Tailscale reports it; cached for 30 seconds. */
   async remoteStatus(): Promise<RemoteStatus> {
     const remote = this.config.daemon.remote;
     const port = this.port ?? this.config.daemon.port;
+    if (remote.mode === "relay") {
+      const connected = this.relay?.connected ?? false;
+      return {
+        mode: "relay",
+        installed: this.relay !== undefined,
+        running: connected,
+        url: this.relay?.phoneUrl ?? null,
+        serving: connected,
+        setup_command: "set daemon.remote.relay_url in ~/.navarch/config.yaml to your relay's address, then restart navarchd",
+      };
+    }
     if (remote.mode === "off") {
       return { mode: "off", installed: false, running: false, url: null, serving: false, setup_command: `tailscale serve --bg ${port}` };
     }
@@ -308,7 +336,7 @@ export class Daemon {
 
   /** The phone's origin, if known, for the WebSocket origin check. */
   remoteOrigin(): string | undefined {
-    if (this.config.daemon.remote.mode === "off") return undefined;
+    if (this.config.daemon.remote.mode !== "tailscale") return undefined;
     const url = this.config.daemon.remote.url ?? this.remoteCache?.status.url ?? undefined;
     return url ? new URL(url).origin : undefined;
   }
@@ -325,6 +353,7 @@ export class Daemon {
     await this.prs.stop();
     await this.ci.stop();
     await this.summary.stop();
+    await this.relay?.stop();
     await this.schedules.stop();
     await this.autoMerge.stop();
     await this.scheduler.stop(async () => {

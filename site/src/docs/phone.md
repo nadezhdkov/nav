@@ -15,6 +15,24 @@ The Web UI installs on your phone as an app (a PWA). Your phone reaches the daem
 3. In the Web UI on the computer, open **Settings → Devices** and create a pairing. Scan the QR code with your phone. The code works once, for five minutes.
 4. On the phone, add the page to your home screen.
 
+## Without Tailscale: a relay (preview)
+
+If you cannot use Tailscale, your PC can dial out to a **relay** instead, a small server you host. Phone and PC encrypt everything end to end with a secret that only the pairing QR code carries, so the relay only copies bytes it cannot read or change. It sees which relay id is online, when, and how much data.
+
+```sh
+make relay                       # on a server; put a TLS proxy (Caddy, nginx) in front
+```
+
+```yaml
+# ~/.navarch/config.yaml on your PC
+daemon:
+  remote:
+    mode: relay
+    relay_url: https://relay.example.com
+```
+
+`navarch remote status` shows whether the PC is connected. Through the relay a phone can do exactly what it can over Tailscale, and the local token never works there. The phone side (a small loader page, and the app delivered by your PC through the encrypted tunnel) is the next step, so pairing a phone over a relay is not possible yet.
+
 ## What a phone can do
 
 A paired phone gets its own session: a 15-minute access token and a 30-day refresh token that rotates on every use. Reusing an old refresh token revokes the device.

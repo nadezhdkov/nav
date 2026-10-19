@@ -105,8 +105,10 @@ export const Config = z.object({
        */
       remote: z
         .object({
-          mode: z.enum(["tailscale", "off"]).default("tailscale"),
+          mode: z.enum(["tailscale", "relay", "off"]).default("tailscale"),
           url: z.string().url().optional(),
+          /** The relay to dial out to when `mode` is `relay` (ADR 0066), e.g. `https://relay.example.com`. */
+          relay_url: z.string().url().optional(),
           /** The Tailscale CLI, read-only (`status`, `serve status`); tests point it at a fake. */
           tailscale_command: z.string().default("tailscale"),
         })

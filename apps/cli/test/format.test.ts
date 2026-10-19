@@ -107,6 +107,11 @@ describe("remote and devices (ADR 0020)", () => {
   it("says what is missing for the phone to reach the daemon", () => {
     expect(formatRemote(base)).toContain("not set up; run: tailscale serve --bg 7420");
     expect(formatRemote({ ...base, serving: true })).toContain("Pair a phone");
+    const relay = { mode: "relay", installed: true, running: true, url: "https://relay.example.com/r/abc", serving: true, setup_command: "set relay_url" } as const;
+    expect(formatRemote(relay)).toContain("relay: connected");
+    expect(formatRemote(relay)).toContain("phone URL: https://relay.example.com/r/abc");
+    expect(formatRemote({ ...relay, running: false, serving: false })).toContain("not connected");
+    expect(formatRemote({ ...relay, installed: false, url: null })).toContain("no relay is set");
     expect(formatRemote({ ...base, installed: false, running: false, url: null })).toContain("not installed");
     expect(formatRemote({ ...base, mode: "off" })).toContain("remote access is off");
   });

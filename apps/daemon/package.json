@@ -32,6 +32,7 @@
     "@navarch/flow-engine": "workspace:*",
     "@navarch/github": "workspace:*",
     "@navarch/knowledge": "workspace:*",
+    "@navarch/relay-protocol": "workspace:*",
     "@navarch/runner": "workspace:*",
     "@navarch/verification": "workspace:*",
     "fastify": "^5.12.7",
