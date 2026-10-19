@@ -160,10 +160,47 @@ export const QualityPanel = z.object({
 });
 export type QualityPanel = z.infer<typeof QualityPanel>;
 
+/** One side of the context comparison: attempts with or without a compiled context block (ADR 0044). */
+export const ContextGroup = z.object({
+  attempts: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
+  success_rate: Rate,
+  /** Median input per attempt: fresh plus cached input tokens. */
+  median_input_tokens: z.number().nullable(),
+});
+export type ContextGroup = z.infer<typeof ContextGroup>;
+
+const ContextPrGroup = z.object({
+  closed: z.number().int().nonnegative(),
+  merged: z.number().int().nonnegative(),
+  acceptance_rate: Rate,
+});
+
+/**
+ * Phase 3's token goal (spec §16): the input tokens per Task with the compiled context against
+ * without it, per profile and overall, and whether PR acceptance held (ADR 0044).
+ */
+export const KnowledgePanel = z.object({
+  /** The reduction to reach, from the go/no-go (0.3). */
+  target_reduction: z.number(),
+  /** Attempts needed on each side before a reduction is reported. */
+  min_attempts: z.number().int().positive(),
+  /** Attempts that carried a block, and the block's own median size. */
+  context: z.object({ attempts: z.number().int().nonnegative(), median_est_tokens: z.number().nullable() }),
+  profiles: z.array(z.object({ profile: z.string(), with: ContextGroup, without: ContextGroup, reduction: z.number().nullable() })),
+  overall: z.object({ with: ContextGroup, without: ContextGroup, reduction: z.number().nullable() }),
+  /** Runs where every comparable attempt had a block (with) or none (without); mixed runs count in neither. */
+  pull_requests: z.object({ with: ContextPrGroup, without: ContextPrGroup }),
+  /** `insufficient` until both sides have `min_attempts`; `met` needs the target and no drop in success or acceptance. */
+  verdict: z.enum(["met", "not_met", "insufficient"]),
+});
+export type KnowledgePanel = z.infer<typeof KnowledgePanel>;
+
 export const MetricsView = z.object({
   generated_at: z.string(),
   window_days: z.number().int().positive(),
   cost: CostPanel,
   quality: QualityPanel,
+  knowledge: KnowledgePanel,
 });
 export type MetricsView = z.infer<typeof MetricsView>;

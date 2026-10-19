@@ -84,6 +84,7 @@ function attempt(profile: string, status: "succeeded" | "failed", error_kind: st
     cached_tokens: 0,
     cost: 0,
     plan_cost: 0,
+    context_tokens: null,
   };
 }
 

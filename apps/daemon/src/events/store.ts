@@ -689,7 +689,14 @@ export class EventStore {
 
   /** Finished agent attempts since `from`, oldest first: the observed metrics' source (ADR 0023). */
   attemptsSince(from: string): AttemptRecord[] {
-    return (this.db.prepare("SELECT * FROM attempts WHERE ts >= ? ORDER BY seq").all(from) as Row[]).map((r) => ({
+    // The compiled context of an attempt is the `context.compiled` event recorded after the task's previous attempt ended.
+    const sql = `SELECT a.*,
+        (SELECT json_extract(e.payload, '$.est_tokens') FROM events e
+           WHERE e.type = 'context.compiled' AND e.task_id = a.task_id AND e.seq < a.seq
+             AND e.seq > COALESCE((SELECT MAX(p.seq) FROM attempts p WHERE p.task_id = a.task_id AND p.seq < a.seq), 0)
+           ORDER BY e.seq DESC LIMIT 1) AS context_tokens
+      FROM attempts a WHERE a.ts >= ? ORDER BY a.seq`;
+    return (this.db.prepare(sql).all(from) as Row[]).map((r) => ({
       ts: String(r.ts),
       run_id: String(r.run_id),
       task_id: String(r.task_id),
@@ -705,6 +712,7 @@ export class EventStore {
       cached_tokens: Number(r.cached_tokens),
       cost: Number(r.cost),
       plan_cost: Number(r.plan_cost),
+      context_tokens: r.context_tokens === null || r.context_tokens === undefined ? null : Number(r.context_tokens),
     }));
   }
 
@@ -883,6 +891,8 @@ export type AttemptRecord = {
   cached_tokens: number;
   cost: number;
   plan_cost: number;
+  /** Estimated tokens of the compiled context block the attempt carried, null without one (ADR 0043). */
+  context_tokens: number | null;
 };
 
 export type ProjectRecord = {

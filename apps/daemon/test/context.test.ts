@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { RunDetail, RunView } from "@navarch/contracts";
+import type { MetricsView, RunDetail, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -71,6 +71,12 @@ describe("compiled context in the prompt", () => {
     const compiled = events.find((e) => e.type === "context.compiled");
     expect(compiled?.payload.est_tokens).toBeGreaterThan(0);
     expect(compiled?.payload.sources).toContain("greet.ts:1");
+
+    // The attempt that carried the block shows up on the context side of the metrics.
+    const metrics = (await api<MetricsView>("GET", "/api/v1/metrics")).body;
+    expect(metrics.knowledge.context.attempts).toBeGreaterThan(0);
+    expect(metrics.knowledge.context.median_est_tokens).toBe(compiled!.payload.est_tokens);
+    expect(metrics.knowledge.verdict).toBe("insufficient");
   });
 
   it("leaves the prompt unchanged when disabled", async () => {
