@@ -45,7 +45,10 @@ export function parseSpecClaims(component: string, markdown: string): ParsedClai
   for (const line of markdown.split(/\r?\n/)) {
     const m = /^- (🟢|🟡|🔴) \*\*([a-z0-9][a-z0-9-]*)\*\*(.*)$/u.exec(line);
     if (!m) continue;
-    const rest = m[3]!.replace(/ _\(stated confirmed; lowered: .*\)_\s*$/, "");
+    // The lowered note is cut with plain string search: a regex over this untrusted text can backtrack.
+    let rest = m[3]!.trimEnd();
+    const note = rest.lastIndexOf(" _(stated confirmed; lowered: ");
+    if (note >= 0 && rest.endsWith(")_")) rest = rest.slice(0, note);
     const at = rest.lastIndexOf(" — `");
     const cites: ParsedClaim["cites"] = [];
     if (at >= 0) {

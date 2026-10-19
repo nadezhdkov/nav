@@ -54,6 +54,23 @@ describe("parseSpecClaims", () => {
   });
 });
 
+describe("parseSpecClaims on hostile text", () => {
+  it("reads a line with thousands of repeated notes in linear time", () => {
+    const hostile = `- 🟢 **a** text${" _(stated confirmed; lowered: ".repeat(50_000)}`;
+    const started = performance.now();
+    const claims = parseSpecClaims("x", hostile);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    expect(claims).toEqual([{ component: "x", claim: "a", confidence: "confirmed", cites: [] }]);
+  });
+
+  it("cuts the lowered note only when it closes the line", () => {
+    const [claim] = parseSpecClaims("x", "- 🟡 **a** text — `src/a.ts:2` _(stated confirmed; lowered: no quote)_  ");
+    expect(claim!.cites).toEqual([{ file: "src/a.ts", line: 2, found: true }]);
+    const [open] = parseSpecClaims("x", "- 🟡 **b** text — `src/b.ts:3` _(stated confirmed; lowered: never closed");
+    expect(open!.cites).toEqual([{ file: "src/b.ts", line: 3, found: true }]);
+  });
+});
+
 describe("isTestFile", () => {
   it.each(["src/a.test.ts", "src/a.spec.js", "tests/x.py", "pkg/a_test.go", "pkg/test_a.py", "src/FooTest.java", "test/helpers.ts"])("%s is a test", (f) => expect(isTestFile(f)).toBe(true));
   it.each(["src/a.ts", "src/contest.ts", "lib/latest.py", ".navarch/specs/auth.md", "tests/notes.md"])("%s is not", (f) => expect(isTestFile(f)).toBe(false));
