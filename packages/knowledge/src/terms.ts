@@ -6,7 +6,8 @@ const STOP = new Set(
  * Words of the task that may be names in the code, strongest first: backticked identifiers and
  * file names, then camelCase, PascalCase and snake_case words, then plain words of 4+ letters.
  */
-export function taskTerms(task: string, limit = 12): string[] {
+export function taskTerms(rawTask: string, limit = 12): string[] {
+  const task = rawTask.slice(0, 20_000);
   const out = new Map<string, number>();
   const add = (term: string, weight: number) => {
     const key = term.trim();
@@ -18,9 +19,11 @@ export function taskTerms(task: string, limit = 12): string[] {
     add(quoted, 4);
     for (const part of quoted.split(/[^A-Za-z0-9_]+/)) add(part, 3);
   }
-  for (const m of task.matchAll(/[\w.-]+\.(?:ts|tsx|js|jsx|vue|py|go|rs|md|ya?ml|json)\b/g)) {
-    add(m[0], 4);
-    add(m[0].replace(/\.[^.]+$/, "").split("/").pop() ?? "", 2);
+  // Whitespace-split tokens with a bounded, anchored pattern: the task may quote an untrusted issue.
+  for (const token of task.split(/[\s"'`()<>,;:]+/)) {
+    if (token.length > 120 || !/^[\w./-]+\.(?:ts|tsx|js|jsx|vue|py|go|rs|md|ya?ml|json)$/.test(token)) continue;
+    add(token, 4);
+    add((token.split("/").pop() ?? "").replace(/\.[^.]+$/, ""), 2);
   }
   for (const m of task.matchAll(/[A-Za-z_][A-Za-z0-9_]*/g)) {
     const w = m[0];

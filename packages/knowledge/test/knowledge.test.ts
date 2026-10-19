@@ -64,3 +64,12 @@ describe("compileContext", () => {
     expect(await compileContext({ root: mkdtempSync(join(tmpdir(), "navarch-empty-")), task: "x" })).toBeUndefined();
   });
 });
+
+describe("taskTerms file names", () => {
+  it("takes file names and their stems, and stays fast on long runs of dashes", () => {
+    expect(taskTerms("see src/team.ts for it")).toEqual(expect.arrayContaining(["src/team.ts", "team"]));
+    const started = Date.now();
+    taskTerms(`${"-".repeat(50_000)}.`);
+    expect(Date.now() - started).toBeLessThan(500);
+  });
+});
