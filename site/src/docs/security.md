@@ -8,6 +8,10 @@ Navarch runs agents that write code on your machine, so its defaults are strict.
 - Runs push only `navarch/*` branches, **never forced**, and only through the GitHub Integration.
 - Pull requests are always **drafts**.
 
+## The history can be checked
+
+Every recorded event is chained to the one before it by a hash, so editing, deleting or reordering history breaks the chain. `navarch audit` verifies it and prints the latest hash; keep a copy somewhere the daemon cannot write, and `navarch audit --expect <hash>` later shows whether that point is still in the log. `navarch audit export <run>` lists a run's events with their actors. It detects tampering; it does not prevent it.
+
 ## Agents stay in their box
 
 - Each run works in **its own git worktree**. Agents may not write outside it, and access to `~/.ssh` and to the vault is always denied.

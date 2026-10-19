@@ -256,6 +256,9 @@ export class Daemon {
     const address = this.server.server.address();
     this.port = typeof address === "object" && address ? address.port : this.config.daemon.port;
     writeFileSync(homeFiles(this.home).daemonInfo, JSON.stringify({ pid: process.pid, url: this.url }));
+    // The hash chain (ADR 0061): a break is reported at once; the daemon keeps running, since stopping would hide it.
+    const chain = this.store.verifyChain();
+    if (!chain.ok) console.error(`navarchd: the event log's hash chain is broken at event ${chain.broken?.seq} (${chain.broken?.reason}); run navarch audit`);
     this.orchestrator.recover();
     this.notifier.start();
     this.inbox.start();
