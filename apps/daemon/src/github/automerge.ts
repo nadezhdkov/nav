@@ -10,7 +10,7 @@ const system: Actor = { kind: "system", component: "automerge" };
 const TICK_MS = 60_000;
 
 export class AutoMergeError extends Error {
-  readonly code: "not_found" | "bad_request" | "conflict" | "forbidden";
+  readonly code: "not_found" | "bad_request" | "conflict" | "forbidden" | "reauth_required";
 
   constructor(code: AutoMergeError["code"], message: string) {
     super(message);
@@ -42,7 +42,7 @@ export function sensitiveFile(file: string, protectedPaths: readonly string[]): 
  * repository, and the kill switch turns it off. Merging is decided by the Policy Engine.
  */
 export class AutoMerger {
-  private readonly deps: { config: Config; store: EventStore; policy: PolicyEngine; github: Pick<GitHubIntegration, "mergeFacts" | "autoMerge">; now?: () => number };
+  private readonly deps: { config: Config; store: EventStore; policy: PolicyEngine; reauth?: { required(): boolean; consume(token: string | undefined, purpose: "automerge.enable"): boolean }; github: Pick<GitHubIntegration, "mergeFacts" | "autoMerge">; now?: () => number };
   private readonly waiting = new Map<string, { number: number; url: string; reason: string; at: number }>();
   private readonly lastCheck = new Map<string, number>();
   private timer: NodeJS.Timeout | undefined;
@@ -100,6 +100,8 @@ export class AutoMerger {
       if (req.confirm?.trim().toLowerCase() !== project.repo.toLowerCase()) throw new AutoMergeError("bad_request", `to turn auto-merge on, confirm it by typing the repository name: ${project.repo}`);
       const level = (await loadProjectConfig(project.path, "HEAD").catch(() => ({ autonomy_level: undefined }))).autonomy_level ?? this.deps.config.autonomy_level;
       if (level < 3) throw new AutoMergeError("conflict", `auto-merge needs autonomy level 3 or higher on ${project.repo}; it is ${level} (autonomy_level in the daemon config or in .navarch/project.yaml)`);
+      // Spec §11.1: re-authentication when available. With a security key registered, the name typed back is not enough.
+      if (this.deps.reauth?.required() && !this.deps.reauth.consume(req.reauth, "automerge.enable")) throw new AutoMergeError("reauth_required", "turning auto-merge on needs your security key: do it in the Web UI (Settings → Security)");
       if (!current?.enabled || (req.strategy && req.strategy !== current.strategy)) {
         this.deps.store.append([{ type: "github.auto_merge.enabled", run_id: null, task_id: null, actor, payload: { project_id: project.id, repo: project.repo, strategy: req.strategy ?? "squash" } }]);
       }

@@ -11,7 +11,7 @@ describe("navarch web", () => {
         return { code: "c0de_abc", expires_at: "2026-10-15T00:01:00Z" } as T;
       },
     };
-    expect(await webUrl(api)).toBe("http://127.0.0.1:7420/#code=c0de_abc");
+    expect(await webUrl(api)).toBe("http://localhost:7420/#code=c0de_abc");
     expect(calls).toEqual(["POST /api/v1/web/codes"]);
   });
 
