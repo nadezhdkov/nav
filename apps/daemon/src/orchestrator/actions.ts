@@ -7,6 +7,7 @@ import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import {
   newId,
   parseReviewDraft,
+  parseAddendumDraft,
   parseSpecDrafts,
   redact,
   VerificationReport,
@@ -18,7 +19,7 @@ import {
   type SandboxHandle,
   type WorkItem,
 } from "@navarch/contracts";
-import { renderIndex, renderSpec, verifyDrafts } from "@navarch/knowledge";
+import { renderAddendum, renderIndex, renderSpec, verifyAddendum, verifyDrafts } from "@navarch/knowledge";
 import { changedFiles, commitAll, concludeMerge, createWorktree, diffRightLines, fullPullRequestDiff, mergeBranch, worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { matchesPath, verify } from "@navarch/verification";
 import type { Config } from "../config.ts";
@@ -40,6 +41,7 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
     ["pr.create", openPrNode(deps)],
     ["pr.specs", specsPrNode(deps)],
     ["spec.write", specWriteNode(deps)],
+    ["spec.addendum", specAddendumNode(deps)],
     ["pr.review", reviewPrNode(deps)],
     ["pr.comment", commentPrNode(deps)],
     ["team.integrate", integrateNode(deps)],
@@ -121,34 +123,44 @@ function specWriteNode(deps: Deps): ActionExecutor {
 }
 
 /**
- * Pushes the branch `spec.write` committed and opens a draft PR adding `.navarch/specs/` to the
- * project's default branch (ADR 0048). Unlike `pr.create` it needs no issue: the repository is the
- * run's registered project. A retry finds the PR already open for the branch.
+ * Pushes the branch `spec.write` or `spec.addendum` committed and opens a draft PR adding what it
+ * wrote under `.navarch/specs/` to the project's default branch (ADR 0048, 0049). Unlike
+ * `pr.create` it needs no issue: the repository is the run's registered project. A retry finds the
+ * PR already open for the branch.
  */
 function specsPrNode(deps: Deps): ActionExecutor {
-  const generated = (store: EventStore, run: RunRecord) => store.events({ runId: run.id }).filter((e) => e.type === "spec.generated").at(-1)?.payload as SpecGenerated | undefined;
+  const written = (store: EventStore, run: RunRecord): SpecsWritten | undefined => {
+    const event = store.events({ runId: run.id }).filter((e) => e.type === "spec.generated" || e.type === "spec.addendum.written").at(-1);
+    if (!event) return undefined;
+    if (event.type === "spec.generated") return { kind: "specs", ...(event.payload as SpecGenerated) };
+    return { kind: "addendum", ...(event.payload as AddendumWritten) };
+  };
   return {
     action: "github.pr.create",
     describe: (run) => {
-      const g = generated(deps.store, run);
+      const w = written(deps.store, run);
       const repo = deps.store.projectByPath(run.repo_path)?.repo ?? "the project";
-      if (!g) return `Push the run's branch and open a draft PR on ${repo} with the specs.`;
-      const pct = g.green_rate === null ? "-" : `${Math.round(g.green_rate * 100)} %`;
-      return `Push ${g.branch} and open a draft PR on ${repo} adding ${g.files.length} file(s) under .navarch/specs/: ${g.components} component(s), ${g.claims} claims, ${pct} confirmed.`;
+      if (!w) return `Push the run's branch and open a draft PR on ${repo} with the specs.`;
+      if (w.kind === "addendum") return `Push ${w.branch} and open a draft PR on ${repo} adding the spec addendum for #${w.pr_number} under .navarch/specs/addenda/: ${w.changes} change(s), ${w.confirmed} confirmed, ${w.stale} claim(s) that may be stale.`;
+      const pct = w.green_rate === null ? "-" : `${Math.round(w.green_rate * 100)} %`;
+      return `Push ${w.branch} and open a draft PR on ${repo} adding ${w.files.length} file(s) under .navarch/specs/: ${w.components} component(s), ${w.claims} claims, ${pct} confirmed.`;
     },
     async execute({ run, task, signal }) {
       const started = Date.now();
       try {
-        const g = generated(deps.store, run);
-        if (!g) return failed("fatal", "no specs were written in this run", started);
+        const w = written(deps.store, run);
+        if (!w) return failed("fatal", "no specs were written in this run", started);
         const repo = deps.store.projectByPath(run.repo_path)?.repo;
         if (!repo) return failed("fatal", "the run's repository is not a registered project", started);
         const sandbox = sharedSandbox(deps.store, run);
         if (signal.aborted) return failed("cancelled", "cancelled before push", started);
         const commit = await deps.github.push(sandbox.path, repo, sandbox.branch, deps.config.autonomy_level);
         publish(deps.store, run.id, task.id, github, "github.push", { repo, branch: sandbox.branch, commit });
-        const index = await readFile(join(sandbox.path, ".navarch", "specs", "index.md"), "utf8").catch(() => "");
-        const pr = await deps.github.openDraftPr({ repo, head: sandbox.branch, title: specsPrTitle(g), body: redact(specsPrBody(g, index, run.id)) });
+        const file = w.kind === "addendum" ? `addenda/pr-${w.pr_number}.md` : "index.md";
+        const text = await readFile(join(sandbox.path, ".navarch", "specs", file), "utf8").catch(() => "");
+        const title = w.kind === "addendum" ? `docs(specs): addendum for ${w.repo}#${w.pr_number}` : specsPrTitle(w);
+        const body = w.kind === "addendum" ? addendumPrBody(w, text) : specsPrBody(w, text, run.id);
+        const pr = await deps.github.openDraftPr({ repo, head: sandbox.branch, title: title.slice(0, 120), body: redact(body) });
         publish(deps.store, run.id, task.id, github, "github.pr.opened", { repo, number: pr.number, url: pr.url, branch: sandbox.branch, draft: true });
         return { status: "succeeded", summary: `Draft PR ${pr.url}`, artifacts: [], claims: [], usage: [], cost: 0, durationMs: Date.now() - started };
       } catch (err) {
@@ -161,11 +173,13 @@ function specsPrNode(deps: Deps): ActionExecutor {
 }
 
 type SpecGenerated = { components: number; claims: number; confirmed: number; inferred: number; gap: number; downgraded: number; green_rate: number | null; branch: string; files: string[] };
+type AddendumWritten = { repo: string; pr_number: number; changes: number; confirmed: number; inferred: number; gap: number; downgraded: number; stale: number; unmatched: number; branch: string; files: string[] };
+type SpecsWritten = ({ kind: "specs" } & SpecGenerated) | ({ kind: "addendum" } & AddendumWritten);
 
 function specsPrTitle(g: SpecGenerated): string {
   const names = g.files.filter((f) => f.endsWith(".md") && !f.endsWith("/index.md")).map((f) => f.replace(/^.*\//, "").replace(/\.md$/, ""));
   const shown = names.slice(0, 3).join(", ");
-  return `docs(specs): verified specs for ${shown}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`.slice(0, 120);
+  return `docs(specs): verified specs for ${shown}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`;
 }
 
 /** The PR body: what was written, how much of it Navarch could check, and how to read the icons. */
@@ -186,6 +200,76 @@ function specsPrBody(g: SpecGenerated, index: string, runId: string): string {
     "",
     index.slice(0, 6000).trimEnd() || `Generated by Navarch for run ${runId}.`,
   ].join("\n");
+}
+
+/** The body of an addendum PR: the counts, then the addendum itself. */
+function addendumPrBody(w: AddendumWritten, addendum: string): string {
+  return [
+    "## Summary",
+    "",
+    `Adds an addendum to the specs for ${w.repo}#${w.pr_number}, which was merged: ${w.changes} change(s) described.`,
+    "",
+    `- 🟢 confirmed: ${w.confirmed}, each one checked by Navarch against the code after the merge`,
+    `- 🟡 inferred: ${w.inferred}, of which ${w.downgraded} were stated as confirmed and lowered after the evidence check`,
+    `- 🔴 gaps: ${w.gap}`,
+    `- Claims that may no longer hold: ${w.stale}${w.unmatched ? ` (and ${w.unmatched} the agent named that the specs do not have)` : ""}`,
+    "",
+    "Only `.navarch/specs/addenda/` changes; the spec files keep their text until the next full `reverse-spec`. Please read the 🟡 and 🔴 items before merging.",
+    "",
+    "## Addendum",
+    "",
+    addendum.slice(0, 6000).trimEnd(),
+  ].join("\n");
+}
+
+/**
+ * Checks the spec-syncer's changes against the code at the merge commit and writes the addendum for
+ * the merged pull request under `.navarch/specs/addenda/`, committed on the run's branch (ADR 0049).
+ * The spec files themselves are left alone. An unusable answer does not fail the task: the Flow's
+ * loop sends the errors back to the agent.
+ */
+function specAddendumNode(deps: Deps): ActionExecutor {
+  return {
+    action: "spec.write",
+    describe: () => "Check the spec-syncer's changes against the code and write the verified addendum to .navarch/specs/addenda/ in the run's worktree.",
+    async execute({ run, task }) {
+      const started = Date.now();
+      try {
+        const sandbox = sharedSandbox(deps.store, run);
+        const item = workItem(deps.store, run);
+        const { draft, errors } = parseAddendumDraft(latestSummary(deps.store, run.id, "spec-syncer") ?? "");
+        if (!draft) {
+          const reason = `no usable addendum: ${errors.join("; ")}`;
+          return { status: "succeeded", summary: reason, artifacts: [], claims: [], usage: [], outputs: { saved: false, errors: errors.join("\n") }, cost: 0, durationMs: Date.now() - started };
+        }
+        const verified = await verifyAddendum(sandbox.path, draft);
+        const { markdown, counts } = renderAddendum(
+          { repo: item.repo, number: item.number, title: item.title, url: item.url, mergeCommit: run.base_commit, runId: run.id, generatedAt: new Date().toISOString() },
+          draft.summary,
+          verified,
+        );
+        const dir = join(sandbox.path, ".navarch", "specs", "addenda");
+        await mkdir(dir, { recursive: true });
+        const rel = `.navarch/specs/addenda/pr-${item.number}.md`;
+        await writeFile(join(sandbox.path, rel), markdown);
+        await commitAll(sandbox, `docs(specs): addendum for ${item.repo}#${item.number}\n\nWritten by Navarch for run ${run.id}.`);
+        publish(deps.store, run.id, task.id, runner, "spec.addendum.written", {
+          repo: item.repo,
+          pr_number: item.number,
+          changes: verified.changes.length,
+          ...counts,
+          stale: verified.stale.length,
+          unmatched: verified.unmatched.length,
+          branch: sandbox.branch,
+          files: [rel],
+        });
+        const summary = `${verified.changes.length} change(s): ${counts.confirmed} confirmed, ${counts.inferred} inferred, ${counts.gap} gaps; ${counts.downgraded} lowered after the evidence check; ${verified.stale.length} stale claim(s). Written to ${sandbox.branch}.`;
+        return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { saved: true, changes: verified.changes.length, errors: "" }, cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        return failed("fatal", redact(err instanceof Error ? err.message : String(err)), started);
+      }
+    },
+  };
 }
 
 function verifyNode(deps: Deps): ActionExecutor {

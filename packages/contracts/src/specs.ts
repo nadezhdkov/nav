@@ -136,3 +136,60 @@ export const SpecRunView = SpecCoverage.extend({
   files: z.array(z.string()),
 });
 export type SpecRunView = z.infer<typeof SpecRunView>;
+
+// --- addenda (spec-sync, ADR 0049) ---
+
+export const AddendumKind = z.enum(["added", "changed", "removed"]);
+export type AddendumKind = z.infer<typeof AddendumKind>;
+
+/** What a merged pull request did to the behavior one component's spec describes. */
+export const AddendumChange = z.object({
+  id: Slug,
+  component: Slug,
+  kind: AddendumKind,
+  text: z.string().min(1).max(600),
+  confidence: SpecConfidence,
+  evidence: z.array(SpecEvidence).max(6).default([]),
+});
+export type AddendumChange = z.infer<typeof AddendumChange>;
+
+/** A claim of the existing specs that the pull request may have made untrue. */
+export const StaleClaim = z.object({
+  component: Slug,
+  claim: Slug,
+  reason: z.string().min(1).max(400),
+});
+export type StaleClaim = z.infer<typeof StaleClaim>;
+
+export const AddendumDraft = z.object({
+  summary: z.string().min(1).max(1_000),
+  changes: z.array(AddendumChange).max(40).default([]),
+  stale: z.array(StaleClaim).max(40).default([]),
+});
+export type AddendumDraft = z.infer<typeof AddendumDraft>;
+
+const ADDENDUM_BLOCK = /```navarch-addendum[ \t]*\r?\n([\s\S]*?)```/g;
+
+/** The one `navarch-addendum` block of a spec-syncer's summary; the last one wins when it writes two. */
+export function parseAddendumDraft(text: string): { draft?: AddendumDraft; errors: string[] } {
+  const blocks = [...text.matchAll(ADDENDUM_BLOCK)];
+  const last = blocks.at(-1);
+  if (!last) return { errors: ["no ```navarch-addendum block in the summary"] };
+  let json: unknown;
+  try {
+    json = JSON.parse(last[1]!);
+  } catch (err) {
+    return { errors: [`the block is not valid JSON: ${(err as Error).message}`] };
+  }
+  const parsed = AddendumDraft.safeParse(json);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]!;
+    return { errors: [`the block ${issue.path.join(".") || "draft"}: ${issue.message}`] };
+  }
+  const draft = parsed.data;
+  const ids = new Set<string>();
+  const dup = draft.changes.find((c) => (ids.has(c.id) ? true : (ids.add(c.id), false)));
+  if (dup) return { errors: [`change id "${dup.id}" appears twice`] };
+  if (!draft.changes.length && !draft.stale.length) return { errors: ["the block lists no change and no stale claim; say what the pull request changed in the specs' terms"] };
+  return { draft, errors: [] };
+}

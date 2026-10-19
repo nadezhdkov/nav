@@ -151,6 +151,8 @@ export class GitHubClient {
       user: { login: string } | null;
       state: string;
       draft?: boolean;
+      merged?: boolean;
+      merge_commit_sha?: string | null;
       head: { ref: string; sha: string; repo: { full_name: string } | null };
       base: { ref: string; sha: string };
     }>("GET", `/repos/${repo}/pulls/${number}`, undefined, `${repo}#${number}`);
@@ -172,6 +174,8 @@ export class GitHubClient {
       head_repo: pr.head.repo?.full_name ?? "(deleted fork)",
       base_ref: pr.base.ref,
       base_sha: pr.base.sha,
+      merged: pr.merged ?? false,
+      merge_commit_sha: pr.merge_commit_sha ?? null,
     };
   }
 
@@ -323,7 +327,7 @@ export type OpenPullRequest = { number: number; url: string; title: string; auth
 export type CheckStatus = { pending: number; failing: { name: string; conclusion: string; url: string }[] };
 
 /** A pull request as read from GitHub, before the run fetches it and lists its checks. */
-export type PullRequestDetails = WorkItem & Omit<PullRequestInfo, "failing_checks"> & { state: "open" | "closed" };
+export type PullRequestDetails = WorkItem & Omit<PullRequestInfo, "failing_checks"> & { state: "open" | "closed"; merged: boolean; merge_commit_sha: string | null };
 
 /** A repository as GitHub lists it, before Navarch adds what it knows locally. */
 export type GitHubRepo = Omit<GitHubRepoView, "project_id" | "path">;

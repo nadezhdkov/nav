@@ -1,0 +1,38 @@
+# Keep the specs current after a merge (spec §6.8.1 "adendos pós-entrega", ADR 0049). Started on a
+# merged pull request (`navarch run --flow spec-sync --pr owner/repo#N`). The run works on the merge
+# commit; the spec-syncer says what the merge changed in terms of `.navarch/specs/`, and
+# `spec.addendum` checks its evidence against the code and writes `.navarch/specs/addenda/pr-<N>.md`
+# without touching the specs themselves. `pr.specs` then opens a draft PR with the addendum.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: spec-sync
+  description: Describe what a merged pull request changed in the specs, as a verified addendum, and open a draft PR with it.
+params:
+  max_attempts: { type: int, default: 2 }
+  # false keeps the addendum on the run's branch and opens no PR (--param open_pr=false).
+  open_pr: { type: bool, default: true }
+
+nodes:
+  - id: sync_loop
+    type: loop
+    max_iterations: ${{ params.max_attempts }}
+    until: ${{ nodes.save.outputs.saved }}
+    body:
+      - id: write
+        type: agent
+        profile: spec-syncer
+        inputs:
+          previous_failures: ${{ nodes.save.outputs.errors }}
+      - id: save
+        type: action
+        uses: spec.addendum
+
+  - id: open_pr
+    type: github
+    uses: pr.specs
+    when: ${{ params.open_pr }}
+    with: { draft: true }
+
+edges:
+  - sync_loop -> open_pr

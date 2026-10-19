@@ -113,6 +113,33 @@ export async function fetchPullRequest(spec: { repoPath: string; repo: string; n
 }
 
 /**
+ * Fetches the base branch of a pull request that was merged into `refs/navarch/pr/<N>/base` and
+ * checks that its merge commit is still on it (ADR 0049). Returns the merge commit and its first
+ * parent, so the diff between them is what the pull request brought in, for merge, squash and
+ * rebase merges alike. Branches and tags are left alone; no hook runs.
+ */
+export async function fetchMergedPullRequest(spec: { repoPath: string; repo: string; number: number; baseRef: string; mergeCommit: string; token: string; gitUrl?: string }): Promise<{ merge: string; parent: string }> {
+  if (!Number.isInteger(spec.number) || spec.number < 1) throw new Error(`invalid pull request number ${spec.number}`);
+  if (!/^[0-9a-f]{40}$/.test(spec.mergeCommit)) throw new Error(`invalid merge commit ${JSON.stringify(spec.mergeCommit)}`);
+  await git(spec.repoPath, ["check-ref-format", `refs/heads/${spec.baseRef}`]).catch(() => {
+    throw new Error(`invalid base branch ${JSON.stringify(spec.baseRef)}`);
+  });
+  const remote = remoteFor(spec.repo, spec.gitUrl);
+  const ref = pullRequestRefs(spec.number).base;
+  try {
+    await git(spec.repoPath, ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote.url, `+refs/heads/${spec.baseRef}:${ref}`], remote.auth(spec.token));
+  } catch (err) {
+    throw remote.failure(`fetch of ${spec.repo}#${spec.number} failed`, err, spec.token);
+  }
+  const merge = (await git(spec.repoPath, ["rev-parse", "--verify", `${spec.mergeCommit}^{commit}`]).catch(() => "")).trim();
+  const onBase = merge ? await git(spec.repoPath, ["merge-base", "--is-ancestor", merge, ref]).then(() => true, () => false) : false;
+  if (!onBase) throw new Error(`the merge commit ${spec.mergeCommit.slice(0, 7)} of ${spec.repo}#${spec.number} is not on ${spec.baseRef} any more`);
+  const parent = (await git(spec.repoPath, ["rev-parse", "--verify", `${merge}^1`]).catch(() => "")).trim();
+  if (!parent) throw new Error(`the merge commit ${merge.slice(0, 7)} has no parent to compare with`);
+  return { merge, parent };
+}
+
+/**
  * The URL a repository is reached at (from the repository name, never from `origin`, so the
  * operator's SSH keys and credential helpers are never used) and the `GIT_CONFIG_*` environment that
  * hands git the token for one command (ADR 0007), scoped to the GitHub URL.

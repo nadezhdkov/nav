@@ -17,7 +17,7 @@ The `navarch` command (or `nav`) talks to the daemon. `navarch --help` prints th
 |---|---|
 | `navarch run [options] <prompt>` | the `task` Flow: implement, verify, fix |
 | `navarch run --issue owner/repo#N [--repo <clone>]` | the `fix-issue` Flow, ending in a draft PR |
-| `navarch run --pr owner/repo#N [--flow review-pr\|ci-fix]` | review a pull request, or fix its failing checks |
+| `navarch run --pr owner/repo#N [--flow review-pr\|ci-fix\|spec-sync]` | review a pull request, fix its failing checks, or (`spec-sync`, on a merged one) write an addendum to the specs |
 | `navarch run list` | all runs |
 | `navarch run show <run>` | one run: status, tasks, branches, worktrees, cost |
 | `navarch run resume <run> [--follow]` | continue a paused run, or retry a failed one |

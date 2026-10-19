@@ -48,7 +48,7 @@ export function subflowsOf(flow: FlowDefinition, flows: ReadonlyMap<string, Flow
 export const PR_USES = ["pr.review", "pr.comment"];
 
 /** What a run of a Flow must start from. */
-export type FlowNeeds = "prompt" | "issue" | "pull_request";
+export type FlowNeeds = "prompt" | "issue" | "pull_request" | "merged_pull_request";
 
 /**
  * What a run of `flow` must start from: a pull request when it (or a subflow) reviews or
@@ -58,6 +58,9 @@ export type FlowNeeds = "prompt" | "issue" | "pull_request";
 export function flowNeeds(flow: FlowDefinition, subflows: Record<string, FlowDefinition> = {}): FlowNeeds {
   const all = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
   if (all.some((n) => n.type === "github" && PR_USES.includes(n.uses))) return "pull_request";
+  // `spec.addendum` describes what a merged pull request changed (ADR 0049).
+  const inner = flow.nodes.flatMap((n): (FlowNode | BodyNode)[] => (n.type === "loop" ? n.body : [n]));
+  if (inner.some((n) => n.type === "action" && n.uses === "spec.addendum")) return "merged_pull_request";
   // `pr.specs` opens a PR for the specs a run wrote, so a prompt is enough (ADR 0048).
   if (flow.nodes.some((n) => n.type === "github" && !n.when && n.uses !== "pr.specs")) return "issue";
   return "prompt";

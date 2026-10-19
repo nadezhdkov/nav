@@ -2,9 +2,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { coverageOf, parseSpecDrafts, type SpecDraft } from "@navarch/contracts";
+import { coverageOf, parseAddendumDraft, parseSpecDrafts, type AddendumDraft, type SpecDraft } from "@navarch/contracts";
 import { beforeAll, describe, expect, it } from "vitest";
-import { renderIndex, renderSpec, searchSpecs, verifyDrafts } from "../src/index.ts";
+import { renderAddendum, renderIndex, renderSpec, searchSpecs, verifyAddendum, verifyDrafts } from "../src/index.ts";
 
 let root: string;
 function put(rel: string, body: string): void {
@@ -140,5 +140,49 @@ describe("searchSpecs", () => {
     expect(hits).toEqual([{ file: ".navarch/specs/auth.md", line: 2, text: "- 🟢 **c1** Creates a Session for the user" }]);
     expect(await searchSpecs(dir, "")).toEqual([]);
     expect(await searchSpecs(join(dir, "nothing"), "auth")).toEqual([]);
+  });
+});
+
+describe("addenda (ADR 0049)", () => {
+  const block = (o: unknown) => "```navarch-addendum\n" + JSON.stringify(o) + "\n```";
+  const change = { id: "rate-limit", component: "auth", kind: "added", text: "login is rate limited", confidence: "confirmed", evidence: [{ file: "src/auth.ts", line: 3, quote: "return createSession(user)" }] };
+
+  it("reads the last block, defaults the lists and reports what is wrong", () => {
+    expect(parseAddendumDraft(`${block({ summary: "old", changes: [change] })}\n${block({ summary: "new", changes: [change] })}`).draft?.summary).toBe("new");
+    expect(parseAddendumDraft(block({ summary: "s", stale: [{ component: "auth", claim: "c1", reason: "r" }] })).draft?.changes).toEqual([]);
+    expect(parseAddendumDraft("nothing").errors[0]).toContain("no ```navarch-addendum block");
+    expect(parseAddendumDraft("```navarch-addendum\n{ nope\n```").errors[0]).toContain("not valid JSON");
+    expect(parseAddendumDraft(block({ summary: "s", changes: [change, change] })).errors[0]).toContain('change id "rate-limit" appears twice');
+    expect(parseAddendumDraft(block({ summary: "s" })).errors[0]).toContain("lists no change and no stale claim");
+    expect(parseAddendumDraft(block({ summary: "s", changes: [{ ...change, kind: "moved" }] })).errors[0]).toContain("changes.0.kind");
+  });
+
+  it("checks evidence like a spec claim and matches stale claims against the component file", async () => {
+    put(".navarch/specs/auth.md", "# Authentication\n\n- 🟢 **rejects-empty** login throws\n");
+    const draft: AddendumDraft = {
+      summary: "s",
+      changes: [
+        change as AddendumDraft["changes"][number],
+        { ...change, id: "wrong-quote", evidence: [{ file: "src/auth.ts", line: 3, quote: "return somethingElse(user)" }] } as AddendumDraft["changes"][number],
+        { ...change, id: "gone", kind: "removed", evidence: [] } as AddendumDraft["changes"][number],
+      ],
+      stale: [
+        { component: "auth", claim: "rejects-empty", reason: "r1" },
+        { component: "auth", claim: "missing", reason: "r2" },
+        { component: "nowhere", claim: "x", reason: "r3" },
+      ],
+    };
+    const result = await verifyAddendum(root, draft);
+    expect(result.changes.map((c) => [c.id, c.confidence])).toEqual([["rate-limit", "confirmed"], ["wrong-quote", "inferred"], ["gone", "inferred"]]);
+    expect(result.stale.map((s) => s.claim)).toEqual(["rejects-empty"]);
+    expect(result.unmatched.map((s) => s.claim)).toEqual(["missing", "x"]);
+
+    const { markdown, counts } = renderAddendum({ repo: "acme/widgets", number: 7, title: "Add\nlimit", url: "https://github.com/acme/widgets/pull/7", mergeCommit: "a".repeat(40), runId: "run_1", generatedAt: "2026-10-19T00:00:00Z" }, "Summary.", result);
+    expect(counts).toEqual({ confirmed: 1, inferred: 2, gap: 0, downgraded: 2 });
+    expect(markdown).toContain("# Addendum: acme/widgets#7 — Add limit");
+    expect(markdown).toContain("- 🟢 **rate-limit** (added) login is rate limited — `src/auth.ts:3`");
+    expect(markdown).toContain("(stated confirmed; lowered:");
+    expect(markdown).toContain("## Claims that may no longer hold");
+    expect(markdown).toContain("## Named, but not found in the specs");
   });
 });

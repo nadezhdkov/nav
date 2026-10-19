@@ -10,6 +10,7 @@ A Flow defines what a run does. Navarch ships with six built-in Flows, and you c
 | `task` | a prompt | implement ⇄ verify, no pull request |
 | `team` | an issue or a prompt | a lead agent splits the work and delegates members ([Team mode](/docs/team-and-compete)) |
 | `compete` | an issue or a prompt | the same task for 2–5 agents, a judge ranks them, you pick ([Compete mode](/docs/team-and-compete)) |
+| `spec-sync` | a merged pull request | writes a verified addendum to the specs describing what the merge changed, and opens a draft PR with it |
 | `review-pr` | a pull request | a read-only reviewer drafts one review, posted as a comment after approval |
 | `ci-fix` | a pull request with failing checks | diagnoses the failure; fixes code failures in a draft PR into the branch, or comments on flaky and infra ones |
 | `reverse-spec` | a prompt naming the scope | reads the code and writes specs to `.navarch/specs/` on the run's branch and opens a draft PR with them, each claim marked 🟢 confirmed, 🟡 inferred or 🔴 gap |
@@ -33,6 +34,14 @@ navarch specs
 ```
 
 The agent describes what the code does as claims, each with a confidence and its evidence: the file, the line and a quote of the code. Navarch checks every quote against the code before writing anything. A claim the agent calls 🟢 keeps it only when the file, line and quote are really there; otherwise it becomes 🟡 and the spec says why. The files (one per component, an index and a coverage summary) are committed on the run's branch, `navarch/<run>/reverse-spec`, and your clone is not changed. The run then pushes that branch and opens a **draft pull request** that adds only `.navarch/specs/`, with the coverage in its body; below autonomy level 3 it waits for your approval first. The repository must be a registered project (`navarch project add`); `--param open_pr=false` keeps the specs on the branch and opens no PR. `navarch specs` shows each run's share of 🟢 claims. If the agent's answer is unusable, it is told what was wrong and tries once more.
+
+### Keeping the specs current after a merge
+
+```bash
+navarch run --flow spec-sync --pr owner/repo#17    # pull request 17 must be merged
+```
+
+The run works on the merge commit. An agent reads what the merge changed, compares it with your specs and lists what is new, changed or gone, and which existing claims may no longer hold. Navarch checks the evidence the same way as for `reverse-spec`, then writes one file, `.navarch/specs/addenda/pr-17.md`, and opens a draft pull request with it (waiting for your approval below autonomy level 3). Your spec files are not rewritten: the addendum sits beside them until the next full `reverse-spec`. Like `reverse-spec`, it needs a registered project; `--param open_pr=false` keeps the addendum on the run's branch.
 
 ### Failing checks are noticed for you
 
