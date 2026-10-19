@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ConciergeTurn, NavarchEvent, ProposalDecision, RunDetail, RunView } from "@navarch/contracts";
+import type { ConciergeTurn, DevicePairing, DeviceSession, NavarchEvent, ProposalDecision, RunDetail, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { fakeModelServer, type FakeServer, type Scripted } from "../../../packages/adapters/native/test/fake-server.ts";
@@ -242,5 +242,62 @@ describe("concierge API", () => {
     expect(res.status).toBe(503);
     expect(res.body.message).toMatch(/no model for the concierge.*concierge\.model/);
     expect((await api("POST", "/api/v1/concierge/conversations/conv_nope/messages", { text: "x" })).status).toBe(404);
+  });
+});
+
+describe("concierge from a paired phone (ADR 0063)", () => {
+  const remote = { concierge: { model: "fake/concierge-1" }, daemon: { port: 0, remote: { url: "https://pc.tail1234.ts.net", tailscale_command: "/nonexistent/tailscale" } } };
+
+  async function phone(script: Scripted[]) {
+    const ctx = await start(script, remote);
+    const pairing = (await ctx.api<DevicePairing>("POST", "/api/v1/devices/pairings")).body;
+    const paired = await fetch(ctx.daemon.url + "/api/v1/devices/pair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code: pairing.code, name: "Pixel 9" }),
+    });
+    const session = (await paired.json()) as DeviceSession;
+    const call = async <T>(method: string, path: string, body?: unknown) => {
+      const res = await fetch(ctx.daemon.url + path, {
+        method,
+        headers: { authorization: `Bearer ${session.access_token}`, ...(body ? { "content-type": "application/json" } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      return { status: res.status, body: (await res.json()) as T };
+    };
+    return { ...ctx, call, device: session.device.id };
+  }
+
+  it("proposes and runs a prompt in a known repository, as the device", async () => {
+    const repo = makeRepo();
+    const { api, call, daemon, device } = await phone([
+      { tool_calls: [{ name: "start_run", args: { prompt: "add hello.txt", repo_path: repo } }] },
+      { content: "Proposed." },
+    ]);
+    // An earlier run makes the repository known to the phone.
+    await api("POST", "/api/v1/runs", { repo_path: repo, prompt: "earlier" });
+    const { body: conv } = await call<{ id: string }>("POST", "/api/v1/concierge/conversations", { cwd: "/etc" });
+    const turn = await call<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${conv.id}/messages`, { text: "add hello" });
+    expect(turn.status).toBe(200);
+    const decided = await call<ProposalDecision>("POST", `/api/v1/concierge/conversations/${conv.id}/proposals/${turn.body.proposals[0]!.id}`, { decision: "approve" });
+    expect(decided.status).toBe(200);
+    const created = daemon.store.events().filter((e) => e.type === "run.created").at(-1)!;
+    expect(created.actor).toEqual({ kind: "user", via: "mobile", device_id: device });
+  });
+
+  it("refuses what the phone cannot do by hand, and other conversations", async () => {
+    const repo = makeRepo();
+    const { api, call, conversation } = await phone([
+      { tool_calls: [{ name: "start_run", args: { prompt: "x", repo_path: repo, budget: 50, flow: "team" } }] },
+      { content: "Proposed." },
+    ]);
+    const { body: conv } = await call<{ id: string }>("POST", "/api/v1/concierge/conversations");
+    const turn = await call<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${conv.id}/messages`, { text: "go" });
+    const decided = await call<ProposalDecision>("POST", `/api/v1/concierge/conversations/${conv.id}/proposals/${turn.body.proposals[0]!.id}`, { decision: "approve" });
+    expect(JSON.stringify(decided.body)).toMatch(/cannot set budget, flow/);
+    expect((await api<RunView[]>("GET", "/api/v1/runs")).body).toEqual([]);
+    // The phone does not reach a conversation the desktop opened.
+    const desktop = await conversation();
+    expect((await call("POST", `/api/v1/concierge/conversations/${desktop}/messages`, { text: "hi" })).status).toBe(404);
   });
 });

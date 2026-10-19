@@ -1,5 +1,7 @@
 import type {
   AwayView,
+  ConciergeTurn,
+  ProposalDecision,
   CiFailureView,
   MorningSummary,
   SetAwayRequest,
@@ -182,6 +184,11 @@ export const api = {
   decide: (id: string, decision: "approve" | "reject", reason?: string, choice?: string) =>
     request<unknown>("POST", `/api/v1/approvals/${encodeURIComponent(id)}`, { decision, ...(reason ? { reason } : {}), ...(choice ? { choice } : {}) }),
   pause: (id: string) => request<RunView>("POST", `/api/v1/runs/${encodeURIComponent(id)}/pause`),
+  /** Concierge (ADR 0016, ADR 0063): a phone reaches only its own conversations. */
+  conciergeOpen: () => request<{ id: string }>("POST", "/api/v1/concierge/conversations", {}),
+  conciergeSend: (id: string, text: string) => request<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${encodeURIComponent(id)}/messages`, { text }),
+  conciergeDecide: (id: string, proposal: string, decision: "approve" | "reject") =>
+    request<ProposalDecision>("POST", `/api/v1/concierge/conversations/${encodeURIComponent(id)}/proposals/${encodeURIComponent(proposal)}`, { decision }),
   stopAll: () => request<StopResult>("POST", "/api/v1/stop"),
   startRun: (body: { repo_path: string; prompt: string; flow?: string; budget?: number; params?: Record<string, number | string | boolean>; attachments?: RunAttachment[] }) =>
     request<RunView>("POST", "/api/v1/runs", body),

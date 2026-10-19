@@ -44,6 +44,7 @@ import {
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
+import { wantsColor } from "./banner.ts";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
@@ -184,7 +185,7 @@ async function main(argv: string[]): Promise<number> {
   });
   const [command, ...rest] = positionals;
   if (!command && !values.help && process.stdin.isTTY && process.stdout.isTTY) {
-    return chat(new ApiClient(home), { input: process.stdin, output: process.stdout, cwd: process.cwd() });
+    return chat(new ApiClient(home), chatIo());
   }
   if (values.help || !command) {
     process.stdout.write(USAGE);
@@ -194,7 +195,7 @@ async function main(argv: string[]): Promise<number> {
 
   switch (command) {
     case "chat":
-      return chat(new ApiClient(home), { input: process.stdin, output: process.stdout, cwd: process.cwd() });
+      return chat(new ApiClient(home), chatIo());
     case "ask": {
       const text = rest.join(" ").trim();
       if (!text) throw new CliError("missing question", EXIT.usage);
@@ -821,4 +822,10 @@ function readAttachment(path: string): { name: string; content: string } {
   } catch (err) {
     throw new CliError(`cannot read ${path}: ${(err as Error).message}`, EXIT.usage);
   }
+}
+
+/** The terminal for `navarch` and `navarch chat`: the ship greets a terminal, in colour when it wants it. */
+function chatIo() {
+  const tty = Boolean(process.stdout.isTTY);
+  return { input: process.stdin, output: process.stdout, cwd: process.cwd(), tty, color: wantsColor(tty) };
 }

@@ -6,7 +6,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
  * shapes (`run … created`, `run show`, `approvals`); names and numbers are made up.
  */
 
-type Line = { kind: "cmd" | "out" | "dim" | "ok" | "warn" | "you"; text: string };
+type Line = { kind: "cmd" | "out" | "dim" | "ok" | "warn" | "you" | "art" | "brand"; text: string };
 
 const SESSIONS: { id: string; label: string; lines: Line[] }[] = [
   {
@@ -50,6 +50,11 @@ const SESSIONS: { id: string; label: string; lines: Line[] }[] = [
     label: "Just ask",
     lines: [
       { kind: "cmd", text: "navarch" },
+      { kind: "art", text: "       |\\" },
+      { kind: "art", text: "       | \\" },
+      { kind: "art", text: "    ___|__\\___    navarch" },
+      { kind: "art", text: "    \\ (o_o)  /    your fleet of coding agents" },
+      { kind: "art", text: "     \\______/     ~/code/shop · /help for help" },
       { kind: "you", text: "› why did the last run fail?" },
       { kind: "out", text: "witty-knarr failed at verify: `make lint` reported 2 files to" },
       { kind: "out", text: "reformat after 3 fix iterations. Want me to resume it?" },
@@ -90,7 +95,7 @@ async function play(id: string) {
       await wait(260);
       typing.value = "";
     } else {
-      await wait(line.kind === "dim" ? 380 : 520);
+      await wait(line.kind === "dim" ? 380 : line.kind === "art" ? 120 : 520);
     }
     if (mine !== runId) return;
     shown.value = [...shown.value, line];
@@ -138,6 +143,8 @@ const CLASS: Record<Line["kind"], string> = {
   dim: "text-muted",
   ok: "text-success",
   warn: "text-warning",
+  art: "text-accent",
+  brand: "text-accent",
 };
 </script>
 

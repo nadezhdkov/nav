@@ -88,7 +88,6 @@ describe("device pairing and sessions (ADR 0020)", () => {
       ["GET", "/api/v1/secrets/github%2Ftoken"],
       ["POST", "/api/v1/web/codes"],
       ["GET", "/api/v1/devices"],
-      ["POST", "/api/v1/concierge/conversations"],
       ["GET", "/api/v1/remote"],
     ] as const) {
       expect((await call(t, method, path, method === "POST" ? {} : undefined)).status, `${method} ${path}`).toBe(403);

@@ -32,12 +32,18 @@ export type ConciergeDeps = {
   requestCancel: (taskId: string) => void;
   sendMessage: (runId: string, req: SendRunMessage, actor: Actor) => RunMessage;
   listInbox?: () => InboxView;
+  /** Repositories a paired device may start runs in. */
+  knownRepos?: () => string[];
   usage?: () => UsageView;
   metrics?: () => MetricsView;
 };
 
 type Via = Extract<Actor, { kind: "user" }>["via"];
-type Entry = { conversation: Conversation; via: Via };
+/** Who is talking: a client by its channel, or a paired phone by its device (ADR 0063). */
+export type Origin = { via: Via; deviceId?: string };
+type Entry = { conversation: Conversation; origin: Origin };
+
+const userActor = (o: Origin): Actor => ({ kind: "user", via: o.via, ...(o.deviceId ? { device_id: o.deviceId } : {}) });
 
 const MAX_CONVERSATIONS = 50;
 
@@ -49,12 +55,12 @@ export class ConciergeService {
     this.deps = deps;
   }
 
-  create(cwd: string | undefined, via: Via): { id: string } {
+  create(cwd: string | undefined, origin: Origin): { id: string } {
     const native = this.deps.adapters.get("native");
     if (!this.deps.config.concierge.enabled) throw new ConciergeError("unavailable", "the concierge is disabled (concierge.enabled: false)");
     if (!(native instanceof NativeAdapter)) throw new ConciergeError("unavailable", "the concierge needs the native adapter (adapters.native.enabled)");
     const id = newId("conv");
-    const entry: Entry = { via, conversation: undefined as unknown as Conversation };
+    const entry: Entry = { origin, conversation: undefined as unknown as Conversation };
     entry.conversation = new Conversation({
       id,
       engine: new RoutedEngine(native, () => this.candidates()),
@@ -66,10 +72,11 @@ export class ConciergeService {
         ...(this.deps.listInbox ? { listInbox: this.deps.listInbox } : {}),
         ...(this.deps.usage ? { usage: this.deps.usage } : {}),
         ...(this.deps.metrics ? { metrics: this.deps.metrics } : {}),
-        actor: () => ({ kind: "user", via: entry.via }),
-        ...(cwd ? { cwd } : {}),
+        actor: () => userActor(entry.origin),
+        // A phone sets no working directory and gets the device limits on start_run.
+        ...(origin.deviceId ? { device: { knownRepos: this.deps.knownRepos ?? (() => []) } } : cwd ? { cwd } : {}),
       }),
-      context: cwd ? `The operator's current directory is ${cwd}; runs default to that repository.` : undefined,
+      context: cwd && !origin.deviceId ? `The operator's current directory is ${cwd}; runs default to that repository.` : undefined,
       onEvent: (event) => this.record(event, entry),
       newId: () => newId("prop"),
       maxSteps: this.deps.config.concierge.max_steps,
@@ -80,9 +87,9 @@ export class ConciergeService {
     return { id };
   }
 
-  async send(id: string, text: string, via: Via): Promise<{ reply: string; proposals: ProposalView[]; model: string }> {
-    const entry = this.get(id);
-    entry.via = via;
+  async send(id: string, text: string, origin: Origin): Promise<{ reply: string; proposals: ProposalView[]; model: string }> {
+    const entry = this.get(id, origin);
+    entry.origin = origin;
     try {
       return await entry.conversation.send(text);
     } catch (err) {
@@ -92,9 +99,9 @@ export class ConciergeService {
     }
   }
 
-  async decide(id: string, proposalId: string, decision: "approve" | "reject", via: Via): Promise<{ reply: string; proposal: ProposalView }> {
-    const entry = this.get(id);
-    entry.via = via;
+  async decide(id: string, proposalId: string, decision: "approve" | "reject", origin: Origin): Promise<{ reply: string; proposal: ProposalView }> {
+    const entry = this.get(id, origin);
+    entry.origin = origin;
     try {
       const { reply, proposal } = await entry.conversation.decide(proposalId, decision);
       return { reply, proposal };
@@ -114,14 +121,15 @@ export class ConciergeService {
     return found.models;
   }
 
-  private get(id: string): Entry {
+  /** A phone reaches only its own conversations; the desktop and the CLI reach any. */
+  private get(id: string, origin: Origin): Entry {
     const entry = this.conversations.get(id);
-    if (!entry) throw new ConciergeError("not_found", `conversation ${id} not found (the daemon may have restarted)`);
+    if (!entry || (origin.deviceId && entry.origin.deviceId !== origin.deviceId)) throw new ConciergeError("not_found", `conversation ${id} not found (the daemon may have restarted)`);
     return entry;
   }
 
   private record(event: ConciergeEvent, entry: Entry): void {
-    const user: Actor = { kind: "user", via: entry.via };
+    const user = userActor(entry.origin);
     const agent: Actor = { kind: "agent", profile: "concierge", adapter: "native", model: entry.conversation.model };
     const actor = event.type === "concierge.action.proposed" || (event.type === "concierge.message" && event.payload.role === "assistant") ? agent : user;
     this.deps.store.append([{ type: event.type, run_id: event.run_id, task_id: null, actor, payload: event.payload } as Parameters<EventStore["append"]>[0][number]]);

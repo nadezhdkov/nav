@@ -147,6 +147,7 @@ export class Daemon {
       requestCancel: (taskId) => this.scheduler.requestCancel(taskId),
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
       listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
+      knownRepos: () => [...this.store.listRepos().map((r) => r.path), ...this.store.listProjects().map((p) => p.path)],
       usage: () => this.usage({ days: 30 }),
       metrics: () => this.metrics({ days: 30 }),
     });
