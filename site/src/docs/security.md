@@ -24,6 +24,16 @@ Every recorded event is chained to the one before it by a hash, so editing, dele
 - `.navarch/project.yaml` is read **at the run's base commit**, so an agent cannot change its own rules.
 - Instructions you send to a running agent never widen what it is allowed to do.
 
+## Hardened containers (L3)
+
+For code you do not trust, such as a third party's pull request, a project can ask for `isolation: hardened` in `.navarch/project.yaml` (or you set `security.default_isolation: hardened` for every project, which a repository cannot lower).
+
+- The **agent itself** runs in a throwaway container with **no network interface**. It reaches only its model provider, through a proxy on your PC that tunnels HTTPS to a short allowlist and refuses everything else, including names that resolve to private addresses.
+- Its root is read-only, all capabilities are dropped, and it sees only the worktree (**read-only for a profile that may not edit**), the git directory read-only and a home of its own. Nothing of your environment goes in except the provider key it needs.
+- Verify checks and setup run in containers too, with no network for checks.
+- Build the image once with `make agent-image`. For a stronger runtime such as gVisor, set `container.oci_runtime: runsc`.
+- Today this covers the `claude-code` and `codex` agents. Routing picks only those for a hardened run, and a pinned agent that cannot run hardened is refused, never run on your machine.
+
 ## Untrusted input
 
 Text from issues, pull requests, comments and the web is **data, never instructions**. Navarch passes it to agents inside delimited, labelled blocks.

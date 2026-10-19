@@ -31,6 +31,8 @@ protected_paths:           # changes here are flagged in reviews and PRs
 
 Verify checks are required unless marked `required: false`.
 
+`isolation: container` runs setup and checks in a container (L2); `isolation: hardened` also runs the agents in one, with no network but an allowlist to their provider (L3, see Security). The image, the runtime, extra allowed hosts and the agent image are the daemon's `container` settings (`image`, `agent_image`, `oci_runtime`, `egress_allow`), never the repository's.
+
 ## Daemon: `~/.navarch/config.yaml`
 
 The most useful keys, with their defaults:

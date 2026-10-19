@@ -1,5 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
+import { sandboxFor, type SandboxedCli } from "./sandbox.ts";
 
 /** Shared subprocess handling for adapters that drive an agent CLI (claude, gemini, codex). */
 
@@ -23,11 +24,13 @@ export type CliExit = {
   timedOut: boolean;
 };
 
-type Entry = { child: ChildProcess; cancelled: boolean };
+type Entry = { child: ChildProcess; cancelled: boolean; onKill?: () => void };
 
 export class CliProcesses {
   private readonly running = new Map<string, Entry>();
   private readonly killGraceMs: number;
+  /** Tasks whose sandbox is being prepared; a cancel that arrives then ends the task before it starts. */
+  private readonly preparing = new Map<string, { cancelled: boolean }>();
 
   constructor(killGraceMs = 5_000) {
     this.killGraceMs = killGraceMs;
@@ -36,9 +39,28 @@ export class CliProcesses {
   run(spec: CliRun): Promise<CliExit> {
     // PWD follows cwd: some CLIs (OpenCode) take their project directory from $PWD, and an
     // inherited one points at the daemon's directory instead of the task's worktree.
-    const env = { ...spec.env, PWD: spec.cwd };
-    const child = spawn(spec.command, spec.args, { cwd: spec.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
-    const entry: Entry = { child, cancelled: false };
+    const sandbox = sandboxFor(spec.taskId);
+    if (!sandbox) return this.start(spec, { command: spec.command, args: spec.args, env: { ...spec.env, PWD: spec.cwd }, cwd: spec.cwd });
+    const pending = { cancelled: false };
+    this.preparing.set(spec.taskId, pending);
+    return sandbox({ ...spec, env: { ...spec.env, PWD: spec.cwd } }).then(
+      (wrapped) => {
+        this.preparing.delete(spec.taskId);
+        if (!pending.cancelled) return this.start(spec, wrapped);
+        void Promise.resolve(wrapped.onExit?.()).catch(() => {});
+        return { code: null, signal: null, stderr: "", cancelled: true, timedOut: false };
+      },
+      (err: Error) => {
+        this.preparing.delete(spec.taskId);
+        // Not sandboxable (no runtime, no image): the task fails; the CLI never runs unsandboxed.
+        return { code: null, signal: null, stderr: "", spawnError: err, cancelled: pending.cancelled, timedOut: false };
+      },
+    );
+  }
+
+  private start(spec: CliRun, wrapped: SandboxedCli): Promise<CliExit> {
+    const child = spawn(wrapped.command, wrapped.args, { cwd: wrapped.cwd, env: wrapped.env, stdio: ["pipe", "pipe", "pipe"] });
+    const entry: Entry = { child, cancelled: false, ...(wrapped.onKill ? { onKill: wrapped.onKill } : {}) };
     this.running.set(spec.taskId, entry);
 
     let stderr = "";
@@ -59,7 +81,7 @@ export class CliProcesses {
       spec.timeoutMs > 0
         ? setTimeout(() => {
             timedOut = true;
-            void this.kill(child);
+            void this.kill(child, entry.onKill);
           }, spec.timeoutMs)
         : undefined;
 
@@ -69,27 +91,33 @@ export class CliProcesses {
         if (timer) clearTimeout(timer);
         this.running.delete(spec.taskId);
         lines.close();
+        void Promise.resolve(wrapped.onExit?.()).catch(() => {});
         resolve({ code, signal, stderr, spawnError, cancelled: entry.cancelled, timedOut });
       });
     });
   }
 
   async cancel(taskId: string): Promise<void> {
+    const pending = this.preparing.get(taskId);
+    if (pending) pending.cancelled = true;
     const entry = this.running.get(taskId);
     if (!entry) return;
     entry.cancelled = true;
-    await this.kill(entry.child);
+    await this.kill(entry.child, entry.onKill);
   }
 
   /** Stops every running subprocess without marking it cancelled (daemon shutdown). */
   async stopAll(): Promise<void> {
-    await Promise.all([...this.running.values()].map((entry) => this.kill(entry.child)));
+    await Promise.all([...this.running.values()].map((entry) => this.kill(entry.child, entry.onKill)));
   }
 
-  private kill(child: ChildProcess): Promise<void> {
+  private kill(child: ChildProcess, onKill?: () => void): Promise<void> {
     if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
     return new Promise((resolve) => {
-      const force = setTimeout(() => child.kill("SIGKILL"), this.killGraceMs);
+      const force = setTimeout(() => {
+        onKill?.();
+        child.kill("SIGKILL");
+      }, this.killGraceMs);
       child.once("close", () => {
         clearTimeout(force);
         resolve();

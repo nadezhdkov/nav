@@ -2,7 +2,7 @@ import { mkdtempSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CliProcesses, classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText, scrubbedEnv } from "../src/index.ts";
+import { CliProcesses, useCliSandbox, classifyError, cliOutcome, commandAllowed, epochToIso, matchesPattern, retryAtFromText, scrubbedEnv } from "../src/index.ts";
 
 describe("command patterns", () => {
   it("matches exact commands and prefix wildcards on word boundaries", () => {
@@ -134,5 +134,71 @@ describe("CliProcesses", () => {
       onLine: (l) => lines.push(l),
     });
     expect(lines).toEqual([cwd]);
+  });
+});
+
+describe("CliProcesses with a sandbox (ADR 0069)", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "navarch-kit-"));
+  const spec = (taskId: string, lines: string[]) => ({ taskId, command: "sh", args: ["-c", "echo host"], cwd, env: { PATH: process.env.PATH ?? "" }, timeoutMs: 5_000, onLine: (l: string) => lines.push(l) });
+
+  it("runs what the sandbox returns instead of the adapter's command, and tells it when the process ended", async () => {
+    const lines: string[] = [];
+    const seen: string[] = [];
+    let exited = 0;
+    const release = useCliSandbox("sb1", async (run) => {
+      seen.push(`${run.command} ${run.args.join(" ")} ${run.env.PWD}`);
+      return { command: "sh", args: ["-c", "echo sandboxed"], env: { PATH: process.env.PATH ?? "" }, cwd: run.cwd, onExit: () => void exited++ };
+    });
+    const exit = await new CliProcesses().run(spec("sb1", lines));
+    release();
+    expect(exit.code).toBe(0);
+    expect(lines).toEqual(["sandboxed"]);
+    expect(seen).toEqual([`sh -c echo host ${cwd}`]);
+    expect(exited).toBe(1);
+    // Released: the next process of the task is the adapter's own again.
+    const again: string[] = [];
+    await new CliProcesses().run(spec("sb1", again));
+    expect(again).toEqual(["host"]);
+  });
+
+  it("never starts the CLI when the sandbox fails: the task gets a spawn error", async () => {
+    const lines: string[] = [];
+    const release = useCliSandbox("sb2", async () => {
+      throw new Error("container runtime unavailable");
+    });
+    const exit = await new CliProcesses().run(spec("sb2", lines));
+    release();
+    expect(exit.spawnError?.message).toBe("container runtime unavailable");
+    expect(exit.code).toBeNull();
+    expect(lines).toEqual([]);
+  });
+
+  it("a cancel that arrives while the sandbox is being prepared ends the task before it starts", async () => {
+    const processes = new CliProcesses();
+    const lines: string[] = [];
+    let exited = 0;
+    let started = 0;
+    const release = useCliSandbox("sb3", async (run) => {
+      await new Promise((r) => setTimeout(r, 50));
+      started++;
+      return { command: "sh", args: ["-c", "echo late"], env: {}, cwd: run.cwd, onExit: () => void exited++ };
+    });
+    const running = processes.run(spec("sb3", lines));
+    await processes.cancel("sb3");
+    const exit = await running;
+    release();
+    expect(exit.cancelled).toBe(true);
+    expect(lines).toEqual([]);
+    expect(started).toBe(1);
+    expect(exited).toBe(1);
+  });
+
+  it("calls onKill when a process outlives its grace period after a timeout", async () => {
+    let killed = 0;
+    const release = useCliSandbox("sb4", async (run) => ({ command: "sh", args: ["-c", "trap '' TERM; sleep 5"], env: { PATH: process.env.PATH ?? "" }, cwd: run.cwd, onKill: () => void killed++ }));
+    const exit = await new CliProcesses(100).run({ ...spec("sb4", []), timeoutMs: 100 });
+    release();
+    expect(exit.timedOut).toBe(true);
+    expect(killed).toBe(1);
   });
 });

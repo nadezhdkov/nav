@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
+import { spawn } from "node:child_process";
 import { createWriteStream, existsSync, type WriteStream } from "node:fs";
+import { homedir } from "node:os";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   newId,
   parseDeclaredOutputs,
@@ -15,9 +17,9 @@ import {
   type TaskResult,
   type ToolGrant,
 } from "@navarch/contracts";
-import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
+import { DEFAULT_SCRUB_ENV, scrubbedEnv, useCliSandbox } from "@navarch/adapter-kit";
 import { route, type RouteDecision, type RouteRequest, type RouterConfig } from "@navarch/model-router";
-import { branchName, changedFiles, containerRuntimeProblem, createWorktree, forkWorktree, gitCommonDir, hostUser, runInContainer, runShell, serialized, worktreeDiff, worktreePath } from "@navarch/runner";
+import { agentContainerArgs, branchName, changedFiles, DEFAULT_EGRESS, forwardedEnv, HARDENED_ADAPTERS, seedHome, startEgressProxy, containerRuntimeProblem, createWorktree, forkWorktree, gitCommonDir, hostUser, runInContainer, runShell, serialized, worktreeDiff, worktreePath } from "@navarch/runner";
 
 /**
  * Agent Runtime (spec §6.3.1): prepares the sandbox and task context, runs the adapter and
@@ -111,11 +113,16 @@ export class AgentRuntime {
     const log = await this.openLog(spec);
     // Cancel or stop can arrive before the agent process exists; the adapter can only kill what it started.
     const stopAgent = () => void adapter.cancel(spec.taskId);
+    let releaseSandbox: (() => void) | undefined;
     try {
       if (spec.signal?.aborted) return failed("cancelled", "cancelled before setup");
       const setupError = await this.runSetup(spec, sandbox, log);
       if (spec.signal?.aborted) return failed("cancelled", "cancelled during setup");
       if (setupError) return failed("fatal", setupError);
+      // L3 (ADR 0069): the agent's own process goes into a container; an adapter that cannot is refused, never run on the host.
+      const hardened = spec.container?.isolation.hardened ? await this.hardenAgent(spec, adapter.id, sandbox, log) : undefined;
+      if (typeof hardened === "string") return failed("fatal", hardened);
+      releaseSandbox = hardened;
       // Adapters start their process synchronously in run(), so the listener below can always reach it.
       const running = adapter.run(
         {
@@ -184,9 +191,71 @@ export class AgentRuntime {
       // Outputs the agent declared in a `navarch-outputs` block, for later nodes and `when` (ADR 0032).
       return { ...result, summary, outputs: { ...result.outputs, ...parseDeclaredOutputs(summary), summary }, artifacts, cost, durationMs: Date.now() - started };
     } finally {
+      releaseSandbox?.();
       spec.signal?.removeEventListener("abort", stopAgent);
       await new Promise<void>((resolve) => log.end(resolve));
     }
+  }
+
+  /**
+   * Registers the container for this task's agent processes. Returns the function that releases it, or why the
+   * agent cannot run hardened. Each process gets its own egress proxy and container, removed when it ends.
+   */
+  private async hardenAgent(spec: TaskSpec, adapter: string, sandbox: SandboxHandle, log: WriteStream): Promise<(() => void) | string> {
+    const container = spec.container!;
+    const hardened = container.isolation.hardened!;
+    if (!(HARDENED_ADAPTERS as readonly string[]).includes(adapter)) {
+      return `the ${adapter} adapter cannot run in hardened isolation yet (supported: ${HARDENED_ADAPTERS.join(", ")}); pick one of those with --adapter or isolation: container`;
+    }
+    const problem = await containerRuntimeProblem(container.runtime);
+    if (problem) return `hardened isolation needs a container: container runtime unavailable: ${problem}`;
+    const gitDir = await gitCommonDir(sandbox.path).catch(() => undefined);
+    const allow = [...(DEFAULT_EGRESS[adapter] ?? []), ...hardened.egress_allow];
+    let n = 0;
+    log.write(`--- agent in container ${hardened.agent_image}${hardened.oci_runtime ? ` (${hardened.oci_runtime})` : ""}, egress: ${allow.join(", ") || "none"}\n`);
+    return useCliSandbox(spec.taskId, async (run) => {
+      const proxy = await startEgressProxy({ allow });
+      try {
+        const home = join(this.deps.home, "agent-homes", spec.taskId);
+        const seeded = seedHome(adapter, homedir(), home);
+        const name = `navarch-${spec.taskId}-${spec.attempt}-agent-${++n}`.toLowerCase();
+        const args = agentContainerArgs({
+          runtime: container.runtime,
+          isolation: container.isolation,
+          name,
+          worktree: sandbox.path,
+          ...(gitDir ? { gitDir } : {}),
+          // A profile that may not edit gets a worktree it cannot write to, which holds even if the agent's own rules fail.
+          readOnly: !spec.tools.editFiles,
+          user: hostUser(),
+          home,
+          socketDir: dirname(proxy.socketPath),
+          socketName: basename(proxy.socketPath),
+          command: run.command,
+          args: run.args,
+          env: forwardedEnv(run.env),
+        });
+        return {
+          command: container.runtime,
+          args,
+          // The runtime's client needs its own environment; the container gets none of it.
+          env: process.env,
+          cwd: run.cwd,
+          onKill: () => {
+            spawn(container.runtime, ["rm", "--force", name], { stdio: "ignore" }).on("error", () => {});
+          },
+          onExit: async () => {
+            seeded.sync();
+            const denied = proxy.denied();
+            if (Object.keys(denied).length) log.write(`--- egress denied: ${Object.entries(denied).map(([h, c]) => `${h} x${c}`).join(", ")}\n`);
+            await proxy.close();
+          },
+        };
+      } catch (err) {
+        await proxy.close();
+        throw err;
+      }
+    });
   }
 
   private async prepareSandbox(spec: TaskSpec): Promise<SandboxHandle> {
