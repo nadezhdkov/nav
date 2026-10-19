@@ -12,6 +12,7 @@ import {
   type ConciergeTurn,
   type DeviceView,
   type RemoteStatus,
+  type WebhookStatus,
   type RunDetail,
   type RunMessage,
   type RunView,
@@ -53,7 +54,7 @@ import { hasTruecolor, wantsColor } from "./banner.ts";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
-import { formatApprovals, formatAway, formatSchedules, parseScheduleDays, formatBudgets, formatCiFailures, formatSummary, formatAudit, formatRunAudit, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics, formatAutoMerge, formatAutoMergeConditions } from "./format.ts";
+import { formatApprovals, formatAway, formatSchedules, parseScheduleDays, formatBudgets, formatCiFailures, formatSummary, formatAudit, formatRunAudit, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatWebhook, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics, formatAutoMerge, formatAutoMergeConditions } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -90,6 +91,7 @@ Usage:
   navarch reject <approval-id> [--reason <text>]
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
+  navarch webhook [status]                 where GitHub posts webhooks (through the relay) and what has arrived
   navarch remote status                    Tailscale (or relay) and the phone's URL (\`tailscale serve\` must proxy to the daemon)
   navarch devices                          paired phones (pair one from the Web UI: Settings → Devices)
   navarch devices revoke <device-id>       sign a phone out
@@ -299,6 +301,11 @@ async function main(argv: string[]): Promise<number> {
       if (rest[0] !== "status") throw new CliError("usage: navarch remote status", EXIT.usage);
       const status = await new ApiClient(home).request<RemoteStatus>("GET", "/api/v1/remote");
       return print(json ? status : formatRemote(status), json);
+    }
+    case "webhook": {
+      if (rest[0] !== undefined && rest[0] !== "status") throw new CliError("usage: navarch webhook [status]", EXIT.usage);
+      const status = await new ApiClient(home).request<WebhookStatus>("GET", "/api/v1/webhooks");
+      return print(json ? status : formatWebhook(status), json);
     }
     case "devices": {
       const api = new ApiClient(home);

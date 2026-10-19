@@ -189,6 +189,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.get("/api/v1/remote", async () => daemon.remoteStatus());
 
+  // Desktop only: the address and counters of GitHub webhooks (ADR 0068).
+  app.get("/api/v1/webhooks", async () => daemon.webhookStatus());
+
   app.post("/api/v1/devices/pairings", async (_req, reply) => {
     const remote = await daemon.remoteStatus();
     if (remote.mode === "off" || !remote.url) {

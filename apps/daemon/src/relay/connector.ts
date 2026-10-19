@@ -39,6 +39,8 @@ export type ConnectorDeps = {
   devices: RelayDevices;
   /** The daemon's own port, for the loopback calls. */
   port: () => number;
+  /** Answers a webhook the relay forwarded (ADR 0068); without it the relay is told they are not served. */
+  webhook?: (headers: Record<string, string | undefined>, body: Uint8Array) => Promise<{ status: number; message: string }>;
   log?: (line: string) => void;
   /** Delay before reconnecting after attempt n (tests shorten it). */
   backoff?: (attempt: number) => number;
@@ -131,12 +133,13 @@ export class RelayConnector {
   }
 
   private onMessage(raw: string): void {
-    let m: { t?: string; c?: string; d?: string };
+    let m: { t?: string; c?: string; d?: string; h?: string; headers?: Record<string, unknown>; body?: string };
     try {
       m = JSON.parse(raw);
     } catch {
       return;
     }
+    if (m.t === "hook" && typeof m.h === "string") return void this.hook(m.h, m.headers, m.body);
     if (m.t === "ready") {
       this.ready = true;
       this.attempt = 0;
@@ -161,6 +164,20 @@ export class RelayConnector {
       }
       chan.incoming = chan.incoming.then(() => this.frame(chan, frame)).catch(() => this.drop(chan, true));
     }
+  }
+
+  /** A webhook delivery: the daemon checks it itself and tells the relay what to answer GitHub. */
+  private async hook(h: string, headers: Record<string, unknown> | undefined, body: string | undefined): Promise<void> {
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headers ?? {})) if (typeof v === "string") clean[k.toLowerCase()] = v;
+    let answer = { status: 503, message: "webhooks are not served by this daemon" };
+    try {
+      if (this.deps.webhook) answer = await this.deps.webhook(clean, body ? fromB64u(body) : new Uint8Array(0));
+    } catch (err) {
+      this.deps.log?.(`relay: webhook failed (${(err as Error).message})`);
+      answer = { status: 500, message: "the daemon could not handle the delivery" };
+    }
+    this.sendRelay({ t: "hookres", h, status: answer.status, message: answer.message });
   }
 
   private async frame(chan: Channel, frame: Uint8Array): Promise<void> {
