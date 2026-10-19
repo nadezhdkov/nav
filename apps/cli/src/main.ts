@@ -28,6 +28,10 @@ import {
   type StartInboxResult,
   type SyncInboxResult,
   type AwayView,
+  type AuditVerifyView,
+  type RunAudit,
+  type AutoMergeStatus,
+  type AutoMergeView,
   type CiFailureView,
   type MorningSummary,
   SetAwayRequest,
@@ -48,7 +52,7 @@ import { wantsColor } from "./banner.ts";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatSummary, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatSummary, formatAudit, formatRunAudit, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics, formatAutoMerge, formatAutoMergeConditions } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -111,6 +115,11 @@ Usage:
                                          start a ci-fix run on the pull request
   navarch ci dismiss <failure-id>
   navarch away [status]                    Away mode: whether an approver agent decides approvals for you, and what it did
+  navarch audit [verify] [--expect <hash>]   check the event log's hash chain; --expect checks a head you kept earlier
+  navarch audit export <run>               the run's events with their hashes (readable; --json for the full export)
+  navarch automerge [status]               opt-in auto-merge per repository: the conditions and each project's state
+  navarch automerge on <project> --confirm <owner/repo> [--strategy squash|merge|rebase]
+  navarch automerge off <project>
   navarch away on [--for <4h|90m|none>] [--delegate plan,pr,start] [--max-complexity <1-5|none>] [--max-revisions <0-3>] [--yes]
   navarch away off
   navarch budget [show]                    billed use against the run, project-day and monthly limits
@@ -181,6 +190,9 @@ async function main(argv: string[]): Promise<number> {
       "max-complexity": { type: "string" },
       "max-revisions": { type: "string" },
       yes: { type: "boolean", default: false },
+      expect: { type: "string" },
+      confirm: { type: "string" },
+      strategy: { type: "string" },
     },
   });
   const [command, ...rest] = positionals;
@@ -322,6 +334,35 @@ async function main(argv: string[]): Promise<number> {
       const api = new ApiClient(home);
       const repos = await api.request<GitHubRepoView[]>("GET", `/api/v1/github/repos${values.refresh ? "?refresh=1" : ""}`);
       return print(json ? repos : formatGitHubRepos(repos), json);
+    }
+    case "audit": {
+      const api = new ApiClient(home);
+      if (rest[0] === "export") {
+        const id = required(rest[1], "run id or name");
+        const audit = await api.request<RunAudit>("GET", `/api/v1/runs/${encodeURIComponent(id)}/audit`);
+        return print(json ? audit : formatRunAudit(audit), json);
+      }
+      if (rest[0] !== undefined && rest[0] !== "verify") throw new CliError("usage: navarch audit [verify] [--expect <hash>] | navarch audit export <run>", EXIT.usage);
+      const report = await api.request<AuditVerifyView>("GET", `/api/v1/audit${values.expect ? `?expect=${encodeURIComponent(values.expect)}` : ""}`);
+      print(json ? report : formatAudit(report), json);
+      return report.ok && (report.expected === null || report.expected.found) ? EXIT.ok : EXIT.error;
+    }
+    case "automerge": {
+      const api = new ApiClient(home);
+      const status = await api.request<AutoMergeStatus>("GET", "/api/v1/auto-merge");
+      if (rest[0] === "on" || rest[0] === "off") {
+        const ref = required(rest[1], "project (id or owner/repo)");
+        const project = status.projects.find((p) => p.project_id === ref || p.repo.toLowerCase() === ref.toLowerCase());
+        if (!project) throw new CliError(`no project ${ref}; see navarch project list`, EXIT.usage);
+        if (rest[0] === "on" && !values.confirm) {
+          process.stderr.write(`${formatAutoMergeConditions(status)}\n\n`);
+          throw new CliError(`auto-merge merges pull requests without asking you. After reading the conditions above, confirm by name: navarch automerge on ${project.repo} --confirm ${project.repo}`, EXIT.usage);
+        }
+        const view = await api.request<AutoMergeView>("PUT", `/api/v1/projects/${encodeURIComponent(project.project_id)}/auto-merge`, rest[0] === "on" ? { enabled: true, confirm: values.confirm, ...(values.strategy ? { strategy: values.strategy } : {}) } : { enabled: false });
+        return print(json ? view : `${view.repo}: auto-merge ${view.enabled ? `on (${view.strategy})` : "off"}`, json);
+      }
+      if (rest[0] !== undefined && rest[0] !== "status") throw new CliError("usage: navarch automerge [status|on <project> --confirm <owner/repo>|off <project>]", EXIT.usage);
+      return print(json ? status : formatAutoMerge(status), json);
     }
     case "away": {
       const api = new ApiClient(home);

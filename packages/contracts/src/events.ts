@@ -5,6 +5,7 @@ import { RunStatus, TaskStatus } from "./status.ts";
 import { CompeteTaskRef } from "./compete.ts";
 import { TeamTaskRef } from "./team.ts";
 import { AwayDelegate, AwaySettings, AwayVerdict } from "./away.ts";
+import { AutoMergeStrategy } from "./automerge.ts";
 import { MorningSummary } from "./summary.ts";
 import { ContainerIsolation, VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
@@ -368,6 +369,12 @@ export const EventPayloads = {
   "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
   /** The user dismissed a CI failure. */
   "ci.failure.dismissed": z.object({ failure_id: z.string() }),
+  /** The user turned auto-merge on for a project's repository, after confirming it by name (ADR 0060). */
+  "github.auto_merge.enabled": z.object({ project_id: z.string(), repo: z.string(), strategy: AutoMergeStrategy }),
+  /** Auto-merge was turned off: by the user, or by the kill switch. */
+  "github.auto_merge.disabled": z.object({ project_id: z.string(), repo: z.string(), reason: z.string() }),
+  /** The daemon merged a pull request of Navarch's under auto-merge; `run_id` is the event's. */
+  "github.pr.merged": z.object({ repo: z.string(), number: z.number().int().positive(), sha: z.string(), merge_sha: z.string().nullable(), method: AutoMergeStrategy, auto: z.literal(true) }),
   /** The morning summary was made (spec §7.4, ADR 0059); the payload is the summary as it was. */
   "summary.generated": MorningSummary,
   /** The daemon started a `spec-sync` run for a pull request of Navarch's that was merged (ADR 0052, `spec_sync.auto`). */

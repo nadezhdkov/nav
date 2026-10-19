@@ -1,3 +1,4 @@
+import { chainHash, chainTip, verifyChain } from "./chain.ts";
 import { DatabaseSync } from "node:sqlite";
 import {
   isTerminalRun,
@@ -34,7 +35,10 @@ import {
   type WorkItemTriage,
   attachmentInfo,
   type RunAttachment,
+  type AuditEvent,
+  type ChainReport,
   type CiFailureView,
+  type AutoMergeStrategy,
   type MorningSummary,
 } from "@navarch/contracts";
 import { competeState, competeTaskId, evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
@@ -67,6 +71,8 @@ export class EventStore {
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
     this.db.exec(eventsTable);
+    // The hash chain (ADR 0061): a log from before it gets the column, and its old events stay unhashed.
+    if (!(this.db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).some((c) => c.name === "hash")) this.db.exec("ALTER TABLE events ADD COLUMN hash TEXT");
     // A projection table added later starts empty: fill it from the log.
     const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
     const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles")) || (tableExists("runs") && !tableExists("principle_proposals"));
@@ -96,15 +102,19 @@ export class EventStore {
   append(events: NewEvent[]): NavarchEvent[] {
     const stored: NavarchEvent[] = [];
     const insert = this.db.prepare(
-      "INSERT INTO events (id, ts, type, run_id, task_id, actor, payload, schema_version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+      "INSERT INTO events (id, ts, type, run_id, task_id, actor, payload, schema_version, hash) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)",
     );
     this.db.exec("BEGIN IMMEDIATE");
     try {
+      let tip = chainTip(this.db);
       for (const e of events) {
         const payload = parsePayload(e.type, e.payload);
         const id = newId("evt");
         const ts = new Date().toISOString();
-        const info = insert.run(id, ts, e.type, e.run_id, e.task_id, JSON.stringify(e.actor), JSON.stringify(payload));
+        const actorJson = JSON.stringify(e.actor);
+        const payloadJson = JSON.stringify(payload);
+        tip = chainHash(tip, { id, ts, type: e.type, run_id: e.run_id, task_id: e.task_id, actor: actorJson, payload: payloadJson, schema_version: 1 });
+        const info = insert.run(id, ts, e.type, e.run_id, e.task_id, actorJson, payloadJson, tip);
         const event = {
           id,
           seq: Number(info.lastInsertRowid),
@@ -145,6 +155,22 @@ export class EventStore {
           .prepare("SELECT * FROM events WHERE seq > ? ORDER BY seq LIMIT ?")
           .all(filter.afterSeq ?? 0, filter.limit ?? 10_000);
     return rows.map(rowToEvent);
+  }
+
+  /** A run's events with their hashes, oldest first, for the audit export. */
+  auditEvents(runId: string): AuditEvent[] {
+    const rows = this.db.prepare("SELECT seq, id, ts, type, task_id, actor, payload, hash FROM events WHERE run_id = ? ORDER BY seq").all(runId) as Row[];
+    return rows.map((r) => ({ seq: Number(r.seq), id: String(r.id), ts: String(r.ts), type: String(r.type), task_id: (r.task_id as string | null) ?? null, actor: JSON.parse(String(r.actor)), payload: JSON.parse(String(r.payload)), hash: (r.hash as string | null) ?? null }));
+  }
+
+  /** Whether the log has an event whose hash is `hash` (a head the user kept earlier). */
+  hasHash(hash: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM events WHERE hash = ? LIMIT 1").get(hash);
+  }
+
+  /** Recomputes the hash chain of the whole log (spec §10.3, ADR 0061). */
+  verifyChain(): ChainReport {
+    return verifyChain(this.db);
   }
 
   /** The latest events of one type, newest first. */
@@ -773,6 +799,21 @@ export class EventStore {
         )
         .all() as Row[]
     ).map(pullRequestRecord);
+  }
+
+  /**
+   * Auto-merge settings (ADR 0060), from the latest enable or disable event of each project. The
+   * state lives in events the user caused, never in a file of the repository an agent could edit.
+   */
+  autoMergeSettings(): Map<string, { enabled: boolean; since: string | null; strategy: AutoMergeStrategy }> {
+    const rows = this.db.prepare("SELECT ts, type, payload FROM events WHERE type IN ('github.auto_merge.enabled','github.auto_merge.disabled') ORDER BY seq").all() as { ts: string; type: string; payload: string }[];
+    const out = new Map<string, { enabled: boolean; since: string | null; strategy: AutoMergeStrategy }>();
+    for (const r of rows) {
+      const p = JSON.parse(r.payload) as { project_id: string; strategy?: AutoMergeStrategy };
+      const before = out.get(p.project_id);
+      out.set(p.project_id, r.type.endsWith("enabled") ? { enabled: true, since: r.ts, strategy: p.strategy ?? "squash" } : { enabled: false, since: null, strategy: before?.strategy ?? "squash" });
+    }
+    return out;
   }
 
   /** The latest morning summary (ADR 0059), as it was recorded. */

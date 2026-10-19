@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import fastifyStatic from "@fastify/static";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import {
   FlowRevisionRequest,
@@ -39,6 +40,7 @@ import {
   CiFailureStatus,
   StartInboxRequest,
   SyncInboxRequest,
+  SetAutoMergeRequest,
   SetAwayRequest,
   AddPrincipleRequest,
   SetBudgetRequest,
@@ -63,6 +65,7 @@ import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { PrinciplesError } from "../principles/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
+import { AutoMergeError } from "../github/automerge.ts";
 import { CiError } from "../github/ci.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
@@ -79,6 +82,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return caller.kind === "device" ? { via: "mobile", deviceId: caller.deviceId } : { via: viaOf(req.headers) };
   };
   await app.register(websocket);
+  // Off everywhere but the routes that scan the whole event log: they opt in with `config.rateLimit`.
+  await app.register(rateLimit, { global: false });
 
   // Who is calling: the local token (CLI, desktop UI) or a paired device's access token (ADR 0020).
   // `tailscale serve` makes remote requests look local, so the source address proves nothing.
@@ -351,6 +356,30 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
+
+  // The event log's hash chain and the per-run audit export (spec §10.3, ADR 0061). Desktop and CLI only.
+  app.get("/api/v1/audit", { config: { rateLimit: AUDIT_LIMIT } }, async (req) => {
+    const expect = (req.query as { expect?: string }).expect;
+    return { ...daemon.store.verifyChain(), expected: expect ? { hash: expect, found: daemon.store.hasHash(expect) } : null };
+  });
+  app.get("/api/v1/runs/:id/audit", { config: { rateLimit: AUDIT_LIMIT } }, async (req, reply) => {
+    const run = daemon.store.getRun((req.params as { id: string }).id);
+    if (!run) return reply.code(404).send({ error: "not_found", message: "no such run" });
+    return { run: { id: run.id, name: run.name, status: run.status }, generated_at: new Date().toISOString(), chain: daemon.store.verifyChain(), events: daemon.store.auditEvents(run.id) };
+  });
+
+  // Opt-in auto-merge (spec §11.1, ADR 0060). A phone may read the state; changing it is desktop and CLI only.
+  app.get("/api/v1/auto-merge", async () => daemon.autoMerge.status());
+  app.put("/api/v1/projects/:id/auto-merge", async (req, reply) => {
+    const parsed = SetAutoMergeRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return await daemon.autoMerge.set((req.params as { id: string }).id, parsed.data, actorOf(req));
+    } catch (err) {
+      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400 }[err.code]).send({ error: err.code, message: err.message });
+      throw err;
+    }
+  });
 
   // The morning summary (ADR 0059). A phone may read it; making one now syncs every project, so it is desktop only.
   app.get("/api/v1/summary", async () => daemon.summary.latest() ?? null);
@@ -722,6 +751,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
 const WEB_CODE_TTL_MS = 60_000;
 
+/** Verifying the chain reads every event, so a loop of requests could keep the daemon busy. */
+const AUDIT_LIMIT = { max: 30, timeWindow: "1 minute" };
+
 type Caller = { kind: "local" } | { kind: "device"; deviceId: string };
 
 /** Routes whose credential is in the body: a sign-in code, a pairing code or a refresh token. */
@@ -765,6 +797,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/summary",
+  "GET /api/v1/auto-merge",
   "GET /api/v1/inbox/:id",
   "POST /api/v1/inbox/sync",
   "POST /api/v1/inbox/start",
