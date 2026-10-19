@@ -137,6 +137,9 @@ export const SpecRunView = SpecCoverage.extend({
 });
 export type SpecRunView = z.infer<typeof SpecRunView>;
 
+/** The Phase 3 criterion: the share of claims the code confirmed, at least (spec §16). */
+export const SPEC_GREEN_TARGET = 0.7;
+
 // --- addenda (spec-sync, ADR 0049) ---
 
 export const AddendumKind = z.enum(["added", "changed", "removed"]);
@@ -193,3 +196,22 @@ export function parseAddendumDraft(text: string): { draft?: AddendumDraft; error
   if (!draft.changes.length && !draft.stale.length) return { errors: ["the block lists no change and no stale claim; say what the pull request changed in the specs' terms"] };
   return { draft, errors: [] };
 }
+
+/** One finished `spec-sync` write, newest first (`GET /api/v1/specs/addenda`, ADR 0053). */
+export const SpecAddendumRunView = z.object({
+  run_id: z.string(),
+  run_name: z.string().nullable(),
+  ts: z.string(),
+  repo: z.string(),
+  pr_number: z.number().int().positive(),
+  changes: z.number().int().nonnegative(),
+  confirmed: z.number().int().nonnegative(),
+  inferred: z.number().int().nonnegative(),
+  gap: z.number().int().nonnegative(),
+  downgraded: z.number().int().nonnegative(),
+  stale: z.number().int().nonnegative(),
+  unmatched: z.number().int().nonnegative(),
+  branch: z.string(),
+  files: z.array(z.string()),
+});
+export type SpecAddendumRunView = z.infer<typeof SpecAddendumRunView>;

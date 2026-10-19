@@ -43,6 +43,7 @@ import {
   AddPrincipleRequest,
   SetBudgetRequest,
   WorkItemStatus,
+  type SpecAddendumRunView,
   type SpecRunView,
   type SyncInboxResult,
 } from "@navarch/contracts";
@@ -372,6 +373,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.get("/api/v1/specs", async (): Promise<SpecRunView[]> =>
     daemon.store.eventsOfType("spec.generated", 20).map((e) => ({
       ...(e.payload as NavarchEvent<"spec.generated">["payload"]),
+      run_id: e.run_id ?? "",
+      run_name: e.run_id ? (daemon.store.getRun(e.run_id)?.name ?? null) : null,
+      ts: e.ts,
+    })),
+  );
+
+  // Addenda written by spec-sync runs (ADR 0053); devices may read them too.
+  app.get("/api/v1/specs/addenda", async (): Promise<SpecAddendumRunView[]> =>
+    daemon.store.eventsOfType("spec.addendum.written", 20).map((e) => ({
+      ...(e.payload as NavarchEvent<"spec.addendum.written">["payload"]),
       run_id: e.run_id ?? "",
       run_name: e.run_id ? (daemon.store.getRun(e.run_id)?.name ?? null) : null,
       ts: e.ts,
@@ -736,6 +747,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/usage",
   "GET /api/v1/metrics",
   "GET /api/v1/specs",
+  "GET /api/v1/specs/addenda",
   "GET /api/v1/budgets",
   "GET /api/v1/away",
   "POST /api/v1/stop",
