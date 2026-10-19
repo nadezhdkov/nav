@@ -27,3 +27,15 @@ export const RepoMap = z.object({
   files: z.number().int(),
 });
 export type RepoMap = z.infer<typeof RepoMap>;
+
+/** What the context compiler produced for a Task (ADR 0043). `text` comes from the repository and is untrusted. */
+export const CompiledContext = z.object({
+  text: z.string(),
+  /** `file:line` of each item, so the agent can check it. */
+  sources: z.array(z.string()),
+  chars: z.number().int().nonnegative(),
+  est_tokens: z.number().int().nonnegative(),
+  max_tokens: z.number().int().positive(),
+  ms: z.number().int().nonnegative(),
+});
+export type CompiledContext = z.infer<typeof CompiledContext>;

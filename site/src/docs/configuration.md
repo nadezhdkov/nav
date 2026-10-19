@@ -63,6 +63,11 @@ ci_fix:
   auto: false               # true: start ci-fix on a newly failing pull request by itself
   daily_runs: 3             # most automatic starts per local day
 
+knowledge:
+  context:
+    enabled: false          # true: give triage, plan and implement agents a compiled map of the code
+    max_tokens: 4000
+
 concierge:
   model: ollama/qwen2.5:7b  # an API model with tool calling
 

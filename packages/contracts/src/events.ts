@@ -223,6 +223,16 @@ export const EventPayloads = {
     /** On a fallback after a rate limit: the catalog id the task left. */
     fallback_from: z.string().optional(),
   }),
+  /** The context compiler built the `<context>` block of a task's prompt (ADR 0043); the block itself is not stored. */
+  "context.compiled": z.object({
+    chars: z.number().int().nonnegative(),
+    est_tokens: z.number().int().nonnegative(),
+    max_tokens: z.number().int().positive(),
+    /** `file:line` of the items in the block. */
+    sources: z.array(z.string()),
+    ms: z.number().int().nonnegative(),
+    attempt: z.number().int().positive(),
+  }),
   /** An instruction from the user to a run's agents (ADR 0019); `task_id` targets one task. */
   "run.message": z.object({
     message_id: z.string(),
