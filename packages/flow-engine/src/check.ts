@@ -5,7 +5,7 @@ import { exprPaths, isExpression, parseExpr } from "./expr.ts";
 /** Operations an `action` or `github` node may name; the daemon registers an executor for each. */
 export const KNOWN_USES: Record<"action" | "github", readonly string[]> = {
   action: ["verification.run", "spec.write"],
-  github: ["pr.create", "pr.review", "pr.comment"],
+  github: ["pr.create", "pr.specs", "pr.review", "pr.comment"],
 };
 
 /** What a Flow may name, from the daemon; a check is skipped when its list is not given. */

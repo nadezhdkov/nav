@@ -54,7 +54,7 @@ export const ActionNode = z.strictObject({
 export const GitHubNode = z.strictObject({
   ...base,
   type: z.literal("github"),
-  /** `pr.create` (always a draft on a `navarch/*` branch). */
+  /** `pr.create` or `pr.specs` (always a draft on a `navarch/*` branch). */
   uses: z.string().min(1),
   with: z.record(z.string(), z.unknown()).optional(),
 });

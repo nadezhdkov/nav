@@ -56,7 +56,7 @@ describe("reverse-spec Flow (ADR 0045)", () => {
   it("sends unusable drafts back, checks the evidence, and commits the verified specs on the run's branch", async () => {
     const { api, wait, claude } = await start();
     const dir = repo();
-    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: dir, prompt: "document src/auth.ts", flow: "reverse-spec" });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: dir, prompt: "document src/auth.ts", flow: "reverse-spec", params: { open_pr: false } });
     expect(created.status).toBe(201);
     const run = await wait(created.body.id);
     expect(run.status).toBe("done");

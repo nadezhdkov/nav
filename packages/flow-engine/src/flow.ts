@@ -58,7 +58,8 @@ export type FlowNeeds = "prompt" | "issue" | "pull_request";
 export function flowNeeds(flow: FlowDefinition, subflows: Record<string, FlowDefinition> = {}): FlowNeeds {
   const all = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
   if (all.some((n) => n.type === "github" && PR_USES.includes(n.uses))) return "pull_request";
-  if (flow.nodes.some((n) => n.type === "github" && !n.when)) return "issue";
+  // `pr.specs` opens a PR for the specs a run wrote, so a prompt is enough (ADR 0048).
+  if (flow.nodes.some((n) => n.type === "github" && !n.when && n.uses !== "pr.specs")) return "issue";
   return "prompt";
 }
 
@@ -185,7 +186,7 @@ export function next(flow: FlowDefinition, ctx: RunContext): Step {
     if (latest.outputs?.passed === false) return { kind: "fail", reason: `node ${node.id} reported a failed result` };
   }
   const last = chain(flow).at(-1);
-  const opened = (f: FlowDefinition, prefix: string) => f.nodes.some((n) => n.type === "github" && n.uses === "pr.create" && latestTask(ctx, prefix + n.id)?.status === "succeeded");
+  const opened = (f: FlowDefinition, prefix: string) => f.nodes.some((n) => n.type === "github" && (n.uses === "pr.create" || n.uses === "pr.specs") && latestTask(ctx, prefix + n.id)?.status === "succeeded");
   const prOpened = opened(flow, "") || flow.nodes.some((n) => n.type === "subflow" && !!ctx.subflows?.[n.flow] && opened(ctx.subflows[n.flow]!, `${n.id}.`));
   return last ? { kind: "done", prOpened } : { kind: "fail", reason: "empty flow" };
 }

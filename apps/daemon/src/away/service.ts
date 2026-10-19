@@ -266,7 +266,8 @@ export function subjectOf(approval: ApprovalView, task: TaskRecord): AwayDelegat
     case "flow.approval":
       return /(^|\.)approve_plan$/.test(task.node_id) ? "plan" : undefined;
     case "github.pr.create":
-      return "pr";
+      // The approver reviews code changes against an issue; a PR of specs stays with the user (ADR 0048).
+      return task.uses === "pr.specs" ? undefined : "pr";
     case "task.start":
     case "team.turn":
     case "team.delegate":

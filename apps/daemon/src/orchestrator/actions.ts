@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createWriteStream, type WriteStream } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { TaskOutcome } from "@navarch/agent-runtime";
 import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
@@ -38,6 +38,7 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
   return new Map([
     ["verification.run", verifyNode(deps)],
     ["pr.create", openPrNode(deps)],
+    ["pr.specs", specsPrNode(deps)],
     ["spec.write", specWriteNode(deps)],
     ["pr.review", reviewPrNode(deps)],
     ["pr.comment", commentPrNode(deps)],
@@ -117,6 +118,74 @@ function specWriteNode(deps: Deps): ActionExecutor {
       }
     },
   };
+}
+
+/**
+ * Pushes the branch `spec.write` committed and opens a draft PR adding `.navarch/specs/` to the
+ * project's default branch (ADR 0048). Unlike `pr.create` it needs no issue: the repository is the
+ * run's registered project. A retry finds the PR already open for the branch.
+ */
+function specsPrNode(deps: Deps): ActionExecutor {
+  const generated = (store: EventStore, run: RunRecord) => store.events({ runId: run.id }).filter((e) => e.type === "spec.generated").at(-1)?.payload as SpecGenerated | undefined;
+  return {
+    action: "github.pr.create",
+    describe: (run) => {
+      const g = generated(deps.store, run);
+      const repo = deps.store.projectByPath(run.repo_path)?.repo ?? "the project";
+      if (!g) return `Push the run's branch and open a draft PR on ${repo} with the specs.`;
+      const pct = g.green_rate === null ? "-" : `${Math.round(g.green_rate * 100)} %`;
+      return `Push ${g.branch} and open a draft PR on ${repo} adding ${g.files.length} file(s) under .navarch/specs/: ${g.components} component(s), ${g.claims} claims, ${pct} confirmed.`;
+    },
+    async execute({ run, task, signal }) {
+      const started = Date.now();
+      try {
+        const g = generated(deps.store, run);
+        if (!g) return failed("fatal", "no specs were written in this run", started);
+        const repo = deps.store.projectByPath(run.repo_path)?.repo;
+        if (!repo) return failed("fatal", "the run's repository is not a registered project", started);
+        const sandbox = sharedSandbox(deps.store, run);
+        if (signal.aborted) return failed("cancelled", "cancelled before push", started);
+        const commit = await deps.github.push(sandbox.path, repo, sandbox.branch, deps.config.autonomy_level);
+        publish(deps.store, run.id, task.id, github, "github.push", { repo, branch: sandbox.branch, commit });
+        const index = await readFile(join(sandbox.path, ".navarch", "specs", "index.md"), "utf8").catch(() => "");
+        const pr = await deps.github.openDraftPr({ repo, head: sandbox.branch, title: specsPrTitle(g), body: redact(specsPrBody(g, index, run.id)) });
+        publish(deps.store, run.id, task.id, github, "github.pr.opened", { repo, number: pr.number, url: pr.url, branch: sandbox.branch, draft: true });
+        return { status: "succeeded", summary: `Draft PR ${pr.url}`, artifacts: [], claims: [], usage: [], cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        const message = redact(err instanceof Error ? err.message : String(err));
+        const transient = /fetch failed|ECONNRESET|ETIMEDOUT|returned 5\d\d/.test(message);
+        return failed(transient ? "transient" : "fatal", message, started);
+      }
+    },
+  };
+}
+
+type SpecGenerated = { components: number; claims: number; confirmed: number; inferred: number; gap: number; downgraded: number; green_rate: number | null; branch: string; files: string[] };
+
+function specsPrTitle(g: SpecGenerated): string {
+  const names = g.files.filter((f) => f.endsWith(".md") && !f.endsWith("/index.md")).map((f) => f.replace(/^.*\//, "").replace(/\.md$/, ""));
+  const shown = names.slice(0, 3).join(", ");
+  return `docs(specs): verified specs for ${shown}${names.length > 3 ? ` and ${names.length - 3} more` : ""}`.slice(0, 120);
+}
+
+/** The PR body: what was written, how much of it Navarch could check, and how to read the icons. */
+function specsPrBody(g: SpecGenerated, index: string, runId: string): string {
+  const pct = g.green_rate === null ? "-" : `${Math.round(g.green_rate * 100)} %`;
+  return [
+    "## Summary",
+    "",
+    `Adds ${g.files.length} file(s) under \`.navarch/specs/\`: ${g.components} component(s), ${g.claims} claims.`,
+    "",
+    `- 🟢 confirmed: ${g.confirmed} (${pct}), each one checked by Navarch against the code at the cited line`,
+    `- 🟡 inferred: ${g.inferred}, of which ${g.downgraded} were stated as confirmed and lowered after the evidence check`,
+    `- 🔴 gaps: ${g.gap}, which need a human to confirm`,
+    "",
+    "Only files under `.navarch/specs/` change; no source file is touched. Please read the 🟡 and 🔴 claims before merging: they are the ones that may be wrong.",
+    "",
+    "## Index",
+    "",
+    index.slice(0, 6000).trimEnd() || `Generated by Navarch for run ${runId}.`,
+  ].join("\n");
 }
 
 function verifyNode(deps: Deps): ActionExecutor {
