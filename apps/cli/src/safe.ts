@@ -14,3 +14,11 @@ export function stripControls(text: string): string {
 export function oneLineSafe(text: string): string {
   return stripControls(text.replace(/[\r\n]+/g, " "));
 }
+
+/**
+ * Prints one line of untrusted text. It is written as is, not through `console.log`, which would
+ * read `%s` and similar in the text as format directives.
+ */
+export function printSafeLine(text: string): void {
+  process.stdout.write(`${oneLineSafe(text)}\n`);
+}

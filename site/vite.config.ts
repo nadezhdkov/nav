@@ -13,15 +13,10 @@ import { defineConfig, type Plugin } from "vite";
 const base = process.env.SITE_BASE ?? "/";
 const docsDir = fileURLToPath(new URL("./src/docs", import.meta.url));
 
-/** Removes tags until none is left, so `<<b>i>` cannot leave one behind. */
-function withoutTags(text: string): string {
-  let out = text;
-  for (let next = out.replace(/<[^>]*>/g, ""); next !== out; next = out.replace(/<[^>]*>/g, "")) out = next;
-  return out;
-}
-
+/** A heading's anchor: letters, digits and hyphens only, so nothing from the text (`<`, `>`, quotes) reaches an id. */
 export const slugify = (text: string) =>
-  withoutTags(text.toLowerCase())
+  text
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
     .replace(/\s+/g, "-");

@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { Locale, newId, type Actor, type DevicePairing, type DeviceSession, type DeviceView, type PushSubscriptionRequest } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
@@ -209,19 +209,30 @@ function hash(token: string): string {
 }
 
 /** The HMAC key for access tokens, created on first use (mode 0600). */
-function loadKey(file: string): Buffer {
-  if (existsSync(file)) {
-    const key = Buffer.from(readFileSync(file, "utf8").trim(), "base64url");
-    if (key.length >= 32) return key;
-  }
+export function loadKey(file: string): Buffer {
+  const read = (): Buffer | undefined => {
+    try {
+      return Buffer.from(readFileSync(file, "utf8").trim(), "base64url");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+      throw err;
+    }
+  };
+  const existing = read();
+  if (existing && existing.length >= 32) return existing;
   mkdirSync(dirname(file), { recursive: true });
   const key = randomBytes(32);
-  // Exclusive creation: if another process made the key first, use that one.
+  // No file yet: create it exclusively, and if another process made one first, use that. A file that is
+  // there but too short to be a key is replaced.
   try {
-    writeFileSync(file, key.toString("base64url") + "\n", { mode: 0o600, flag: "wx" });
+    writeFileSync(file, key.toString("base64url") + "\n", { mode: 0o600, flag: existing ? "w" : "wx" });
+    // `mode` only applies when the file is created; a file that was there keeps its old permissions.
+    chmodSync(file, 0o600);
     return key;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    return Buffer.from(readFileSync(file, "utf8").trim(), "base64url");
+    const winner = read();
+    if (!winner || winner.length < 32) throw err;
+    return winner;
   }
 }

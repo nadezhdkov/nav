@@ -48,7 +48,7 @@ export function parseOpencodeLine(line: string): OpencodeItem | undefined {
         kind: "tool",
         tool: str(part.tool),
         ok: state.status === "completed",
-        denied: DENIED.test(error),
+        denied: isDenied(error),
         ...(command ? { command } : {}),
         ...(path ? { path } : {}),
         ...(error ? { error } : {}),
@@ -83,7 +83,9 @@ export function parseOpencodeLine(line: string): OpencodeItem | undefined {
  * OpenCode says "Permission denied: <tool>". Kilo explains the matching rule instead, and calls a
  * tool its rules removed "unavailable".
  */
-const DENIED = /^(?:permission denied)|(?:rule which prevents you from using)|(?:tried to call unavailable tool)/i;
+const DENIED_AT_START = /^permission denied/i;
+const DENIED_ANYWHERE = /rule which prevents you from using|tried to call unavailable tool/i;
+const isDenied = (text: string) => DENIED_AT_START.test(text) || DENIED_ANYWHERE.test(text);
 
 /** Some free models put their reasoning in the text, closed by `</think>`; keep what follows. */
 function visibleText(text: string): string {
