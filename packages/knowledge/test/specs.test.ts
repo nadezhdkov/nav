@@ -81,6 +81,14 @@ describe("verifyDrafts", () => {
     expect(by.symlink!.evidence[0]!.valid).toBe(false);
   });
 
+  it("lowers a confirmed claim when one of its citations is not found, even if another checks out", async () => {
+    const [spec] = await verifyDrafts(root, [
+      draft([{ id: "mixed", text: "mixed", confidence: "confirmed", evidence: [{ file: "src/auth.ts", line: 1, quote: "return createSession(user);" }, { file: "src/auth.ts", line: 99 }] }]),
+    ]);
+    expect(spec!.claims[0]!.confidence).toBe("inferred");
+    expect(spec!.claims[0]!.reason).toContain("not found");
+  });
+
   it("keeps inferred and gap claims as they are, and marks their evidence", async () => {
     const [spec] = await verifyDrafts(root, [
       draft([

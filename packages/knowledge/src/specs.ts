@@ -41,7 +41,7 @@ async function checkEvidence(root: string, ev: SpecEvidence, cache: Map<string, 
 
 /**
  * Checks every claim of the drafts against the code in `root` (ADR 0045). A claim the agent calls
- * 🟢 keeps it only with a piece of evidence whose file, line and quote are really there; otherwise
+ * 🟢 keeps it only when every piece of evidence has its file and line really there and one of them carries the quote; otherwise
  * it becomes 🟡 and says why. 🟡 and 🔴 claims are kept, with their evidence marked valid or not.
  */
 export async function verifyDrafts(root: string, drafts: readonly SpecDraft[]): Promise<VerifiedSpec[]> {
@@ -54,11 +54,13 @@ export async function verifyDrafts(root: string, drafts: readonly SpecDraft[]): 
       for (const ev of claim.evidence) checked.push(await checkEvidence(root, ev, cache));
       let confidence = claim.confidence;
       let reason: string | undefined;
-      if (confidence === "confirmed" && !checked.some((c) => c.valid && c.quoted)) {
+      if (confidence === "confirmed" && !(checked.some((c) => c.valid && c.quoted) && checked.every((c) => c.valid))) {
         confidence = "inferred";
         reason = !claim.evidence.length
           ? "no evidence given"
-          : checked.some((c) => c.valid)
+          : checked.some((c) => c.valid && c.quoted)
+            ? "a cited file, line or quote was not found in the code"
+            : checked.some((c) => c.valid)
             ? `no quote of at least ${MIN_QUOTE} characters found at the cited line`
             : "the cited file, line or quote was not found in the code";
       }
