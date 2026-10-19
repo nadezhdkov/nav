@@ -21,6 +21,7 @@ import { CiWatcher } from "./github/ci.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
 import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
+import { WebhookService } from "./webhooks/service.ts";
 import { RelayConnector } from "./relay/connector.ts";
 import { loadRelayIdentity } from "./relay/identity.ts";
 import { ScheduleService } from "./schedules/service.ts";
@@ -28,7 +29,7 @@ import { PrWatcher } from "./github/outcomes.ts";
 import { SpecSyncTrigger } from "./github/specsync.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
 import { knowledgePanel } from "./budgets/knowledge.ts";
-import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
+import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type WebhookStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
 import { GitHubIntegration } from "./github/integration.ts";
@@ -84,6 +85,7 @@ export class Daemon {
   readonly principles: PrinciplesService;
   readonly prs: PrWatcher;
   readonly ci: CiWatcher;
+  readonly webhooks: WebhookService;
   readonly summary: SummaryService;
   /** The outgoing connection to a relay, when `daemon.remote.mode` is `relay` (ADR 0066). */
   relay: RelayConnector | undefined;
@@ -166,6 +168,11 @@ export class Daemon {
     const specSync = new SpecSyncTrigger({ config: this.config, store: this.store, orchestrator: this.orchestrator, policy });
     this.prs = new PrWatcher({ config: this.config, store: this.store, github, onMerged: (pr) => specSync.merged(pr) });
     this.ci = new CiWatcher({ config: this.config, store: this.store, github, orchestrator: this.orchestrator, policy });
+    this.webhooks = new WebhookService({
+      store: this.store,
+      vault: this.vault,
+      sync: { inbox: (id) => this.inbox.sync(id, { kind: "system", component: "webhook" }), pullRequests: () => this.prs.check(), ci: () => this.ci.check() },
+    });
     this.webauthn = new WebAuthnService({
       store: this.store,
       policy,
@@ -304,9 +311,17 @@ export class Daemon {
       relayUrl: remote.relay_url,
       identity: loadRelayIdentity(this.home),
       devices: this.devices,
+      webhook: (headers, body) => this.webhooks.receive(headers, body),
       port: () => this.port ?? this.config.daemon.port,
     });
     this.relay.start();
+  }
+
+  /** Webhooks (ADR 0068): where GitHub posts, and what has arrived. */
+  async webhookStatus(): Promise<WebhookStatus> {
+    const base = await this.webhooks.status();
+    const relay = this.relay;
+    return { ...base, url: relay ? `${relay.phoneUrl.replace(/\/r\/([^/]+)$/, "/w/$1")}` : null, reachable: relay?.connected ?? false };
   }
 
   /** Remote access as configured and as Tailscale reports it; cached for 30 seconds. */
@@ -353,6 +368,7 @@ export class Daemon {
     await this.prs.stop();
     await this.ci.stop();
     await this.summary.stop();
+    this.webhooks.stop();
     await this.relay?.stop();
     await this.schedules.stop();
     await this.autoMerge.stop();

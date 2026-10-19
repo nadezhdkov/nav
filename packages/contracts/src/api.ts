@@ -345,6 +345,20 @@ export const RemoteStatus = z.object({
 });
 export type RemoteStatus = z.infer<typeof RemoteStatus>;
 
+/** GitHub webhooks as the daemon sees them (`GET /api/v1/webhooks`, `navarch webhook`, ADR 0068). */
+export const WebhookStatus = z.object({
+  /** The secret `github/webhook_secret` is stored. */
+  configured: z.boolean(),
+  /** Where GitHub posts: the relay's address for this daemon; null without a relay. */
+  url: z.string().nullable(),
+  /** The relay is connected, so a delivery can arrive. */
+  reachable: z.boolean(),
+  received: z.number().int().nonnegative(),
+  rejected: z.number().int().nonnegative(),
+  last_at: z.string().nullable(),
+});
+export type WebhookStatus = z.infer<typeof WebhookStatus>;
+
 /** The kill switch's result: the runs it paused. */
 export const StopResult = z.object({ paused: z.array(z.string()) });
 export type StopResult = z.infer<typeof StopResult>;

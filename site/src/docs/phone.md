@@ -53,6 +53,17 @@ navarch devices
 navarch devices revoke <device-id>
 ```
 
+## GitHub webhooks through the relay
+
+With a relay you can also let GitHub tell your PC at once when something changes, instead of waiting for the next poll. The relay passes GitHub's request to your PC untouched; your PC checks the signature, so the relay never holds the secret.
+
+```sh
+navarch secret set github/webhook_secret   # a long random string you choose
+navarch webhook                            # prints the payload URL and what is missing
+```
+
+In the repository's **Settings → Webhooks → Add webhook**, use that payload URL, content type `application/json`, the same secret, and the events *Issues*, *Pull requests*, *Check runs* and *Check suites*. A delivery only makes Navarch read GitHub sooner (Inbox sync, pull request and CI checks); the payload itself is never acted on. If your PC is off, GitHub's delivery fails and the next poll still catches up. The relay does see the payload, which is GitHub data about your repository, so host your own.
+
 ## Quiet hours
 
 Set `notifications.quiet_hours` in `~/.navarch/config.yaml` to hold notifications at night. Bursts from the same run are grouped within 10 seconds.
