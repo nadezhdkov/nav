@@ -369,6 +369,12 @@ export function ensureToken(home: string): string {
   const file = join(home, "token");
   if (existsSync(file)) return readFileSync(file, "utf8").trim();
   const token = randomBytes(32).toString("base64url");
-  writeFileSync(file, token + "\n", { mode: 0o600 });
-  return token;
+  // "wx" creates the file or fails: of two daemons starting together only one writes, the other reads its token.
+  try {
+    writeFileSync(file, token + "\n", { mode: 0o600, flag: "wx" });
+    return token;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    return readFileSync(file, "utf8").trim();
+  }
 }

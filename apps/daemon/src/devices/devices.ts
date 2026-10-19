@@ -216,6 +216,12 @@ function loadKey(file: string): Buffer {
   }
   mkdirSync(dirname(file), { recursive: true });
   const key = randomBytes(32);
-  writeFileSync(file, key.toString("base64url") + "\n", { mode: 0o600 });
-  return key;
+  // Exclusive creation: if another process made the key first, use that one.
+  try {
+    writeFileSync(file, key.toString("base64url") + "\n", { mode: 0o600, flag: "wx" });
+    return key;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    return Buffer.from(readFileSync(file, "utf8").trim(), "base64url");
+  }
 }

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { open, stat } from "node:fs/promises";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
 import { join } from "node:path";
 import type { WorktreeFile } from "@navarch/contracts";
 import { GitError } from "./git.ts";
@@ -74,12 +75,16 @@ export async function worktreeStatus(dir: string, base: string): Promise<{ files
 
 /** Lines of an untracked text file up to 1 MiB; null for binary or larger files. */
 async function untrackedLines(path: string): Promise<{ added: number | null; removed: number | null }> {
-  const info = await stat(path).catch(() => undefined);
-  if (!info?.isFile() || info.size > UNTRACKED_COUNT_LIMIT) return { added: null, removed: null };
-  const handle = await open(path, "r");
+  const none = { added: null, removed: null };
+  // Open first and ask the open file, so what is measured is what is read (not a path that changed in between).
+  // O_NONBLOCK so that a named pipe in the worktree cannot block the open.
+  const handle = await open(path, constants.O_RDONLY | constants.O_NONBLOCK).catch(() => undefined);
+  if (!handle) return none;
   try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > UNTRACKED_COUNT_LIMIT) return none;
     const buffer = await handle.readFile();
-    if (buffer.subarray(0, 8000).includes(0)) return { added: null, removed: null };
+    if (buffer.subarray(0, 8000).includes(0)) return none;
     const text = buffer.toString("utf8");
     const lines = text.length === 0 ? 0 : text.split("\n").length - (text.endsWith("\n") ? 1 : 0);
     return { added: lines, removed: 0 };

@@ -10,4 +10,16 @@ describe("PR body", () => {
     expect(prBody({ ...base, flow: { name: "fix-issue" } })).toContain("- Flow: fix-issue\n");
     expect(prBody(base)).not.toContain("- Flow:");
   });
+
+  it("keeps a judge's reason inside its table cell, whatever backslashes and pipes it holds", () => {
+    const competitors = [
+      { key: "c1", agent: "claude-code", state: "finalist", reason: null, rank: 1, score: 8, judge_reason: "ends in a backslash \\ | and a pipe \\| then\nnew line" },
+      { key: "c2", agent: "codex", state: "out", reason: "x", rank: null, score: null, judge_reason: null },
+    ];
+    const body = prBody({ ...base, compete: { winner: "c1", chosen_by: "judge", judge_summary: null, judge: undefined, competitors } });
+    const row = body.split("\n").find((l) => l.startsWith("| c1"))!;
+    // Every | the text brought is escaped, and a backslash it brought is escaped first, so it cannot cancel an escape.
+    expect(row).toBe("| c1 ✅ | claude-code | #1, 8/10: ends in a backslash \\\\ \\| and a pipe \\\\\\| then new line |");
+    expect(body.split("\n").filter((l) => l.startsWith("| c1"))).toHaveLength(1);
+  });
 });

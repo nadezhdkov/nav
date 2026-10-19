@@ -13,10 +13,15 @@ import { defineConfig, type Plugin } from "vite";
 const base = process.env.SITE_BASE ?? "/";
 const docsDir = fileURLToPath(new URL("./src/docs", import.meta.url));
 
+/** Removes tags until none is left, so `<<b>i>` cannot leave one behind. */
+function withoutTags(text: string): string {
+  let out = text;
+  for (let next = out.replace(/<[^>]*>/g, ""); next !== out; next = out.replace(/<[^>]*>/g, "")) out = next;
+  return out;
+}
+
 export const slugify = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/<[^>]+>/g, "")
+  withoutTags(text.toLowerCase())
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
     .replace(/\s+/g, "-");

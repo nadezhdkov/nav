@@ -35,6 +35,16 @@ function changedRepo(): { dir: string; base: string } {
 }
 
 describe("worktree status (slice 10)", () => {
+  it.skipIf(process.platform === "win32")("does not block on a named pipe among the untracked files", async () => {
+    const { dir, base } = changedRepo();
+    execFileSync("mkfifo", [join(dir, "pipe")]);
+    const status = await worktreeStatus(dir, base);
+    // Whether or not git lists it, the status comes back, and a pipe is never counted as text.
+    const pipe = status.files.find((f) => f.path === "pipe");
+    if (pipe) expect(pipe).toMatchObject({ added: null, removed: null });
+    expect(status.files.find((f) => f.path === "src/fresh.ts")).toMatchObject({ added: 3 });
+  });
+
   it("lists every change since the base commit with line counts and totals", async () => {
     const { dir, base } = changedRepo();
     const status = await worktreeStatus(dir, base);

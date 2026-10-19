@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ConciergeTurn, NavarchEvent, ProposalDecision, RunDetail, RunView } from "@navarch/contracts";
@@ -155,6 +156,20 @@ describe("concierge API", () => {
     const refused = await api<ProposalDecision>("POST", `/api/v1/concierge/conversations/${id}/proposals/${second.body.proposals[0]!.id}`, { decision: "approve" });
     expect(JSON.stringify(refused.body)).toMatch(/outside the repository/);
     expect((await api<RunView[]>("GET", "/api/v1/runs")).body).toHaveLength(1);
+  });
+
+  it.skipIf(process.platform === "win32")("refuses to attach a named pipe instead of blocking on it (ADR 0028)", async () => {
+    const repo = makeRepo();
+    execFileSync("mkfifo", [join(repo, "pipe")]);
+    const { api, conversation } = await start([
+      { tool_calls: [{ name: "start_run", args: { prompt: "read it", attach: ["pipe"] } }] },
+      { content: "Proposed." },
+    ]);
+    const id = await conversation(repo);
+    const turn = await api<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text: "attach the pipe" });
+    const refused = await api<ProposalDecision>("POST", `/api/v1/concierge/conversations/${id}/proposals/${turn.body.proposals[0]!.id}`, { decision: "approve" });
+    expect(JSON.stringify(refused.body)).toMatch(/not a file/);
+    expect((await api<RunView[]>("GET", "/api/v1/runs")).body).toHaveLength(0);
   });
 
   it("shows the whole prompt in a start_run proposal, however long", async () => {

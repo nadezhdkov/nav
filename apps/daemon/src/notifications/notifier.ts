@@ -288,6 +288,14 @@ function loadVapid(file: string): VapidKeys {
   }
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const keys = generateVapidKeys();
-  writeFileSync(file, JSON.stringify(keys) + "\n", { mode: 0o600 });
-  return keys;
+  // Exclusive creation: if another process made the keys first, use those.
+  try {
+    writeFileSync(file, JSON.stringify(keys) + "\n", { mode: 0o600, flag: "wx" });
+    return keys;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    const existing = JSON.parse(readFileSync(file, "utf8")) as Partial<VapidKeys>;
+    if (!existing.publicKey || !existing.privateKey) throw err;
+    return { publicKey: existing.publicKey, privateKey: existing.privateKey };
+  }
 }

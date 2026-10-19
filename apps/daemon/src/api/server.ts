@@ -610,8 +610,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.get("/api/v1/runs/:id/logs", async (req, reply) => {
-    const id = (req.params as { id: string }).id;
-    if (!daemon.store.getRun(id)) return notFound(reply, "run");
+    const run = daemon.store.getRun((req.params as { id: string }).id);
+    if (!run) return notFound(reply, "run");
+    const id = run.id;
     const dir = join(daemon.home, "logs", id);
     if (!existsSync(dir)) return reply.type("text/plain").send("");
     const taskId = (req.query as { task?: string }).task;

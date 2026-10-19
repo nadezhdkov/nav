@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { webUrl, type WebApi } from "../src/web.ts";
+import { openInBrowser, webUrl, type WebApi } from "../src/web.ts";
 
 describe("navarch web", () => {
   it("asks the daemon for a single-use code and puts it in the URL fragment, not the token", async () => {
@@ -13,5 +13,11 @@ describe("navarch web", () => {
     };
     expect(await webUrl(api)).toBe("http://127.0.0.1:7420/#code=c0de_abc");
     expect(calls).toEqual(["POST /api/v1/web/codes"]);
+  });
+
+  it("opens only http(s) URLs, and never starts an opener for anything else", async () => {
+    for (const url of ["file:///etc/passwd", "javascript:alert(1)", "ftp://host/x", "not a url", "-oProxyCommand=x", "calc.exe & whoami"]) {
+      expect(await openInBrowser(url), url).toBe(false);
+    }
   });
 });
