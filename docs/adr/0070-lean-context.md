@@ -1,6 +1,6 @@
 # 0070 — Lean context: point, do not explain
 
-- Status: accepted (the default stays off until measured)
+- Status: accepted; measured on 2026-10-19 and not met, so the default stays off ([report](../reports/2026-10-19-lean-context-campaign.md))
 - Date: 2026-10-19
 - Builds on: ADR 0043 (context compiler), ADR 0044 (context token metrics)
 
@@ -18,3 +18,7 @@ The Phase 3 campaign found the full context block raised median input tokens by 
 
 - 🟡 Whether this reduces tokens is unknown; the evidence above suggests it may not. If the measurement misses the target again, the code stays as an option and the feature stays off.
 - 🟡 The ranking is line-based symbol matching, so tasks that name no identifier get no block.
+
+## Outcome
+
+The campaign of 2026-10-19 (3 pairs of medium tasks in the Navarch repository) found no saving: +1 %, +4 % and +13 % input tokens with the lean block. The code stays as an option; `enabled` stays `false`.

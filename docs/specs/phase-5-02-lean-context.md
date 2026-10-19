@@ -1,6 +1,6 @@
 # Phase 5, slice 2 — lean context
 
-Status: implemented, measurement pending. ADR 0070. Spec §6.8.2; follows the Phase 3 go/no-go (token reduction not met).
+Status: implemented, measured and not met ([report](../reports/2026-10-19-lean-context-campaign.md)). ADR 0070. Spec §6.8.2; follows the Phase 3 go/no-go (token reduction not met).
 
 ## Why
 
@@ -15,7 +15,7 @@ The Phase 3 campaign measured +9 % input tokens with the full block (map, symbol
 ## Acceptance
 
 - Unit: the lean block lists the matching file with names and lines, the test beside it, never a test as the target, stays within its budget and is absent when nothing matches.
-- Measurement (pending, needs the user's agent quota): on a repository large enough that exploring costs, tasks of complexity 3+ with the block off against lean, success not lower and median input tokens per attempt reported by `navarch metrics`. `enabled` stays `false` unless it is met.
+- Measurement (done 2026-10-19, not met: +1 %, +4 %, +13 %): on a repository large enough that exploring costs, tasks of complexity 3+ with the block off against lean, success not lower and median input tokens per attempt reported by `navarch metrics`. `enabled` stays `false` unless it is met.
 
 ## Not in this slice
 
