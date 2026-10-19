@@ -274,9 +274,16 @@ importers:
       '@fastify/websocket':
         specifier: ^11.3.4
         version: 11.3.4
+      '@navarch/relay-protocol':
+        specifier: workspace:*
+        version: link:../../packages/relay-protocol
       fastify:
         specifier: ^5.12.7
         version: 5.12.7
+    devDependencies:
+      vite:
+        specifier: 8.3.4
+        version: 8.3.4(@types/node@26.6.5)(jiti@2.7.0)(yaml@2.9.1)
 
   apps/web:
     dependencies:

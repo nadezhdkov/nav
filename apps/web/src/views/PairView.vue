@@ -2,6 +2,7 @@
 import { Smartphone } from "@lucide/vue";
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
+import { withBase } from "../api/base.ts";
 import { authorized, pendingPair } from "../api/client.ts";
 import { pairDevice } from "../api/session.ts";
 
@@ -39,7 +40,7 @@ async function pair() {
   <div class="grid-canvas flex min-h-full items-center justify-center p-4">
     <form class="w-full max-w-md rounded-xl border border-line bg-surface p-6 shadow-2xl" @submit.prevent="pair">
       <div class="mb-4 flex items-center gap-3">
-        <img src="/favicon.svg" alt="" class="size-9" />
+        <img :src="withBase('/favicon.svg')" alt="" class="size-9" />
         <h1 class="text-lg font-semibold">{{ t("pair.title") }}</h1>
       </div>
       <template v-if="pendingPair">

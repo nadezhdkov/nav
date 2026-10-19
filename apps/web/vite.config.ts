@@ -12,4 +12,12 @@ export default defineConfig({
     proxy: { "/api": { target: daemon, ws: true } },
   },
   build: { outDir: "dist", emptyOutDir: true },
+  experimental: {
+    // Files the scripts load by name (module preloads) go under the relay prefix when the app was reached
+    // through a relay (ADR 0067): the phone's worker adds a `<meta name="navarch-base">`. Elsewhere it is empty.
+    renderBuiltUrl(filename, { hostType }) {
+      if (hostType !== "js") return undefined;
+      return { runtime: `((document.querySelector('meta[name="navarch-base"]')?.getAttribute("content")) || "") + ${JSON.stringify(`/${filename}`)}` };
+    },
+  },
 });

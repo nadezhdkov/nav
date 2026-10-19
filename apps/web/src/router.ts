@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
+import { BASE } from "./api/base.ts";
 
 export const routes = [
   { path: "/", redirect: "/home" },
@@ -23,4 +24,4 @@ export const routes = [
   { path: "/:rest(.*)*", redirect: "/home" },
 ];
 
-export const router = createRouter({ history: createWebHistory(), routes });
+export const router = createRouter({ history: createWebHistory(BASE || undefined), routes });

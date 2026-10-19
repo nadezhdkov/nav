@@ -8,7 +8,8 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json && pnpm --filter @navarch/web typecheck && pnpm --filter @navarch/site typecheck",
+    "typecheck": "tsc -p tsconfig.json && pnpm --filter @navarch/relay typecheck:phone && pnpm --filter @navarch/web typecheck && pnpm --filter @navarch/site typecheck",
+    "build:relay": "pnpm --filter @navarch/relay build:phone",
     "test": "vitest run",
     "dev:daemon": "node apps/daemon/src/main.ts",
     "navarch": "node apps/cli/src/main.ts",

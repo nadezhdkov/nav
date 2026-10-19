@@ -1,5 +1,6 @@
 import type { NavarchEvent, StreamServerMessage } from "@navarch/contracts";
 import { ref } from "vue";
+import { viaRelay } from "./base.ts";
 import { authorized } from "./client.ts";
 import { bearer, forgetDevice } from "./session.ts";
 
@@ -55,7 +56,23 @@ function send(msg: { subscribe?: string[]; unsubscribe?: string[] }): void {
 
 let opening = false;
 
+/**
+ * Behind a relay (ADR 0067) the live socket is not tunnelled yet: views refetch every few seconds
+ * while the page is visible, which is what they already do after a reconnect.
+ */
+const POLL_MS = 5_000;
+let polling: ReturnType<typeof setInterval> | undefined;
+
+function poll(): void {
+  if (polling) return;
+  connected.value = true;
+  polling = setInterval(() => {
+    if (document.visibilityState === "visible") for (const fn of reconnectListeners) fn();
+  }, POLL_MS);
+}
+
 function ensure(): void {
+  if (viaRelay) return poll();
   if (socket || timer || opening) return;
   opening = true;
   void bearer()

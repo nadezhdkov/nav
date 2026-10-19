@@ -18,12 +18,12 @@ ADR 0020 made Tailscale the only way to reach the daemon from a phone. Spec §6.
 5. **Pairing channels only enroll.** A channel opened with a pairing code can send one `enroll` message: the daemon pairs the device, returns the session and the device secret, and closes the channel. The code is single use as before. A device channel cannot enroll. A revoked device loses its channel at its next frame and cannot connect again.
 6. **Handshake cost.** The MAC is checked before any key is generated; the daemon accepts at most 30 handshakes a minute and a channel gets one attempt.
 7. **Configuration.** `daemon.remote.mode: relay` and `daemon.remote.relay_url`. `navarch remote status` and the pairing URL (`<relay>/r/<id>/#pair=<code>`) follow.
-8. **The phone loads the app through a minimal loader (slice 7b).** The relay will serve only a small page that does the handshake with the key from the fragment; the rest of the app comes from the daemon through the encrypted tunnel, by a service worker, so the code that runs is the daemon's and a relay cannot swap it. Slice 7a does not include the loader, so a phone cannot yet pair over a relay; the tests use a client built on the same protocol.
+8. **The phone loads the app through a minimal loader (slice 7b, ADR 0067).** The relay serves only a small page that does the handshake with the key from the fragment; the rest of the app comes from the daemon through the encrypted tunnel, by a service worker. Slice 7a had no loader (the tests used a client on the same protocol); 7b adds it.
 
 ## Consequences
 
 - 🟡 The relay sees metadata: which ids are online and when, sizes and timing, and addresses. It cannot read, alter, replay or inject traffic.
-- 🟡 The first page load of a phone comes from the relay (the loader), so a malicious relay could serve a bad loader to a phone that has not installed it yet; 7b narrows this (pin by hash in the QR code, service worker installed once) but a hostile relay at first use stays a risk. Self-hosting removes it.
+- 🟡 The first page load of a phone comes from the relay (the loader), so a malicious relay could serve a bad loader to a phone that has not installed it yet; ADR 0067 keeps that code small and delivers the app itself from the daemon, but a hostile relay at first use stays a risk. Self-hosting removes it.
 - 🟡 A stolen pairing QR code is worth one pairing for five minutes, as before; a stolen device secret works until the device is revoked.
 - 🟡 Responses are limited to 8 MiB and requests to 256 KiB.
-- 🔴 No loader, no phone UI over the relay yet (7b). No Web Push through the relay (push goes to the vendor's service as before). Nobody runs a public relay for others; there is no accounting or abuse handling beyond the limits above.
+- 🔴 Web Push through the relay is untested (push goes to the vendor's service as before; the subscription travels through the tunnel). Nobody runs a public relay for others; there is no accounting or abuse handling beyond the limits above.

@@ -11,6 +11,14 @@
   },
   "dependencies": {
     "@fastify/websocket": "^11.3.4",
-    "fastify": "^5.12.7"
+    "fastify": "^5.12.7",
+    "@navarch/relay-protocol": "workspace:*"
+  },
+  "scripts": {
+    "build:phone": "node phone/build.ts",
+    "typecheck:phone": "tsc -p phone/tsconfig.json && tsc -p phone/tsconfig.sw.json"
+  },
+  "devDependencies": {
+    "vite": "8.3.4"
   }
 }
