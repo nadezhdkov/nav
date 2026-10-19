@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import fastifyStatic from "@fastify/static";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import {
   FlowRevisionRequest,
@@ -81,6 +82,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return caller.kind === "device" ? { kind: "user", via: "mobile", device_id: caller.deviceId } : { kind: "user", via: viaOf(req.headers) };
   };
   await app.register(websocket);
+  // Off everywhere but the routes that opt in with `config.rateLimit`.
+  await app.register(rateLimit, { global: false });
 
   // Who is calling: the local token (CLI, desktop UI) or a paired device's access token (ADR 0020).
   // `tailscale serve` makes remote requests look local, so the source address proves nothing.
@@ -390,7 +393,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       return keyError(reply, err);
     }
   });
-  app.post("/api/v1/reauth/options", async (req, reply) => {
+  app.post("/api/v1/reauth/options", { config: { rateLimit: REAUTH_LIMIT } }, async (req, reply) => {
     const parsed = ReauthOptionsRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, parsed.error.message);
     try {
@@ -399,7 +402,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       return keyError(reply, err);
     }
   });
-  app.post("/api/v1/reauth/verify", async (req, reply) => {
+  app.post("/api/v1/reauth/verify", { config: { rateLimit: REAUTH_LIMIT } }, async (req, reply) => {
     const parsed = ReauthVerifyRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, parsed.error.message);
     try {
@@ -791,6 +794,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 }
 
 const WEB_CODE_TTL_MS = 60_000;
+
+/** A touch is a human gesture: a few a minute is plenty, and a loop of attempts is not one. */
+const REAUTH_LIMIT = { max: 20, timeWindow: "1 minute" };
 
 type Caller = { kind: "local" } | { kind: "device"; deviceId: string };
 
