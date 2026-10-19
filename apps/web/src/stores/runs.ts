@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -282,6 +282,32 @@ export const useUsageStore = defineStore("usage", () => {
   }
 
   return { view, days, profile, error, load, apply };
+});
+
+/** Specs (ADR 0053): what `reverse-spec` runs wrote and the addenda `spec-sync` runs added after merges. */
+export const useSpecsStore = defineStore("specs", () => {
+  const extractions = ref<SpecRunView[]>([]);
+  const addenda = ref<SpecAddendumRunView[]>([]);
+  const loaded = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      [extractions.value, addenda.value] = await Promise.all([api.specs(), api.specAddenda()]);
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    } finally {
+      loaded.value = true;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (event.type === "spec.generated" || event.type === "spec.addendum.written") refetch();
+  }
+
+  return { extractions, addenda, loaded, error, load, apply };
 });
 
 /** Away mode (ADR 0039): whether an approver agent decides approvals, and what it did. */

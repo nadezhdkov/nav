@@ -112,3 +112,4 @@ export async function compileContext(opts: { root: string; task: string; maxToke
 
 export { renderAddendum, renderIndex, renderSpec, searchSpecs, verifyAddendum, verifyDrafts } from "./specs.ts";
 export type { AddendumMeta, VerifiedAddendum, VerifiedChange } from "./specs.ts";
+export { isTestFile, parseSpecClaims, traceability } from "./trace.ts";

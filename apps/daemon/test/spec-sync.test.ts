@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ApprovalView, NavarchEvent, ProjectView, RunDetail } from "@navarch/contracts";
+import type { ApprovalView, NavarchEvent, ProjectView, RunDetail, SpecAddendumRunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { fakeGitHub, type FakeGitHub } from "../../../packages/github/test/fake-github.ts";
@@ -134,6 +134,12 @@ describe("spec-sync Flow (ADR 0049)", () => {
     const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
     expect(events.find((e) => e.type === "spec.addendum.written")!.payload).toMatchObject({ pr_number: 7, changes: 2, confirmed: 1, inferred: 1, downgraded: 1, stale: 1, unmatched: 1 });
     expect(git(repo, "status", "--porcelain")).toBe("");
+
+    // The Specs screen reads the same write (ADR 0053).
+    const listed = (await api<SpecAddendumRunView[]>("GET", "/api/v1/specs/addenda")).body;
+    expect(listed).toHaveLength(1);
+    expect(listed[0]).toMatchObject({ run_id: created.body.id, repo: "acme/widgets", pr_number: 7, changes: 2, confirmed: 1, stale: 1, unmatched: 1, files: [".navarch/specs/addenda/pr-7.md"] });
+    expect(listed[0]!.run_name).toEqual(expect.any(String));
   });
 
   it("refuses a pull request that is not merged", async () => {

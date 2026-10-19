@@ -206,6 +206,17 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
+   * `spec-sync` after merges (ADR 0052). With `auto`, the daemon starts it itself for a pull request
+   * Navarch opened that was merged, in a project that already has specs, at most `daily_runs` a day
+   * in the PC's local time; otherwise the user starts it.
+   */
+  spec_sync: z
+    .object({
+      auto: z.boolean().default(false),
+      daily_runs: z.number().int().nonnegative().default(3),
+    })
+    .prefault({}),
+  /**
    * Away mode (ADR 0039): the approver reads approvals for the user while they are away. Without
    * `model`, profile `approver` is routed among the `native` entries of its tier.
    */

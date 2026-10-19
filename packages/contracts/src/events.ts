@@ -367,6 +367,8 @@ export const EventPayloads = {
   "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
   /** The user dismissed a CI failure. */
   "ci.failure.dismissed": z.object({ failure_id: z.string() }),
+  /** The daemon started a `spec-sync` run for a pull request of Navarch's that was merged (ADR 0052, `spec_sync.auto`). */
+  "spec.sync.auto_started": z.object({ repo: z.string(), number: z.number().int().positive(), project_id: z.string(), run_id: z.string() }),
   /** The user approved a rule for a project (ADR 0047); it is applied to later runs there. */
   "principle.added": z.object({ project_id: z.string(), principle_id: z.string(), text: z.string(), run_id: z.string().nullable() }),
   /** The user removed a rule. */

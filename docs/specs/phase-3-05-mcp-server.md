@@ -7,7 +7,7 @@ External agents read a project's code index, specs and compiled context through 
 ## Behavior
 
 - `navarch mcp [--project <id>]` serves MCP on stdio for one project (default: the one containing the current directory). Add it to an agent as a stdio server with command `navarch mcp`.
-- Tools, all read-only: `repo_map`, `repo_symbols {query, kind?}`, `repo_search {query}`, `specs_query {query}`, `context_compile {task}`. A failing call is a tool result with `isError`, a missing argument is `-32602`.
+- Tools, all read-only: `repo_map`, `repo_symbols {query, kind?}`, `repo_search {query}`, `specs_query {query}`, `traceability` (ADR 0054), `context_compile {task}`. A failing call is a tool result with `isError`, a missing argument is `-32602`.
 - API: `GET /api/v1/projects/:id/context?task=`, `GET /api/v1/projects/:id/specs?q=` (devices may read them); `searchSpecs` in `@navarch/knowledge`.
 
 ## Acceptance

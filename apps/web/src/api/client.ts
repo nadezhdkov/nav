@@ -30,6 +30,8 @@ import type {
   SetBudgetRequest,
   UsageView,
   MetricsView,
+  SpecRunView,
+  SpecAddendumRunView,
   StartInboxResult,
   SyncInboxResult,
   WorkItemStatus,
@@ -206,6 +208,8 @@ export const api = {
   metrics: (days = 30) => request<MetricsView>("GET", `/api/v1/metrics?days=${days}`),
   usage: (days = 30, profile?: string) =>
     request<UsageView>("GET", `/api/v1/usage?days=${days}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`),
+  specs: () => request<SpecRunView[]>("GET", "/api/v1/specs"),
+  specAddenda: () => request<SpecAddendumRunView[]>("GET", "/api/v1/specs/addenda"),
   away: () => request<AwayView>("GET", "/api/v1/away"),
   setAway: (body: SetAwayRequest) => request<AwayView>("PUT", "/api/v1/away", body),
   setBudget: (body: SetBudgetRequest) => request<BudgetView[]>("PUT", "/api/v1/budgets", body),
