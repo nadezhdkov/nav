@@ -41,6 +41,18 @@ describe("isolation (ADR 0035)", () => {
     // A project may still choose the host when the daemon defaults to containers.
     expect(resolveIsolation(ProjectConfig.parse({ isolation: "worktree" }), containers)).toBeUndefined();
     expect(() => ProjectConfig.parse({ container: { memory: "lots" } })).toThrow();
+    // L3 (ADR 0069): no network for checks, the agent's image and extra hosts come from the daemon, never the repository.
+    const l3 = Config.parse({ container: { agent_image: "agents:1", oci_runtime: "runsc", egress_allow: ["*.corp.test"] } });
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "hardened", container: { network: "bridge" } }), l3)).toEqual({
+      kind: "container", image: "node:22-bookworm-slim", network: "none", memory: "4g", cpus: 2, pids_limit: 1024,
+      hardened: { agent_image: "agents:1", oci_runtime: "runsc", egress_allow: ["*.corp.test"] },
+    });
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "hardened" }), Config.parse({}))?.hardened).toEqual({ agent_image: "navarch-agent:latest", egress_allow: [] });
+    // A repository cannot lower what the daemon sets for every project.
+    const strict = Config.parse({ security: { default_isolation: "hardened" } });
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "worktree" }), strict)?.hardened).toBeDefined();
+    expect(resolveIsolation(ProjectConfig.parse({ isolation: "container" }), strict)?.hardened).toBeDefined();
+    expect(() => Config.parse({ container: { egress_allow: ["bad host"] } })).toThrow();
     // An image that the runtime would read as a flag.
     expect(() => ProjectConfig.parse({ container: { image: "--privileged" } })).toThrow();
   });

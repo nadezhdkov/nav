@@ -242,6 +242,43 @@ describe("issue → verified draft PR", () => {
     expect(gh.pulls[0]!.body).toContain("Checks ran in a container (`navarch-test:1`, network `none`).");
   });
 
+  it("runs the agents in hardened containers, and read-only profiles cannot write the worktree (L3, ADR 0069)", async () => {
+    const docker = fakeDocker();
+    const { repo, gitUrl } = project(`isolation: hardened\n${VERIFY_OK}`);
+    const { api, gh, waitRun } = await start({ gitUrl, autonomy: 3, containerRuntime: docker.runtime });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7" });
+    expect(created.status).toBe(201);
+    await waitRun(created.body.id, (r) => r.status === "done");
+
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${created.body.id}/events`)).body;
+    expect(events.find((e) => e.type === "run.created")?.payload).toMatchObject({ isolation: { kind: "container", network: "none", hardened: { agent_image: "navarch-agent:latest", egress_allow: [] } } });
+    const agents = docker.calls().filter((c) => c[0] === "run" && c.includes("/opt/navarch/agent-entry.mjs"));
+    // Triage, plan, implement, review: each agent attempt is its own container.
+    expect(agents.length).toBeGreaterThanOrEqual(4);
+    for (const c of agents) {
+      expect(c).toEqual(expect.arrayContaining(["--network=none", "--cap-drop=ALL", "--read-only", "navarch-agent:latest"]));
+      expect(c.some((a) => a.startsWith("--env=") && /TOKEN|GITHUB|PATH=/.test(a))).toBe(false);
+    }
+    const worktreeMounts = agents.map((c) => c.find((a) => a.startsWith("--volume=") && a.includes("/worktrees/"))!.split(":").at(-1));
+    expect(worktreeMounts).toContain("rw");
+    expect(worktreeMounts).toContain("ro");
+    // Checks are in a container too, and the PR still opens.
+    expect(events.find((e) => e.type === "verification.completed")?.payload).toMatchObject({ passed: true, sandbox: { kind: "container" } });
+    expect(gh.pulls).toHaveLength(1);
+  });
+
+  it("refuses an agent that cannot run hardened instead of running it on the host (L3, ADR 0069)", async () => {
+    const docker = fakeDocker();
+    const { repo, gitUrl } = project(`isolation: hardened\n${VERIFY_OK}`);
+    const { api, waitRun } = await start({ gitUrl, autonomy: 3, containerRuntime: docker.runtime });
+    const created = await api<RunView>("POST", "/api/v1/runs", { repo_path: repo, issue: "acme/widgets#7", adapter: "copilot" });
+    expect(created.status).toBe(201);
+    const run = await waitRun(created.body.id, (r) => r.status === "failed");
+    const events = (await api<NavarchEvent[]>("GET", `/api/v1/runs/${run.id}/events`)).body;
+    expect(JSON.stringify(events)).toContain("cannot run in hardened isolation");
+    expect(docker.calls().filter((c) => c[0] === "run")).toEqual([]);
+  });
+
   it("verifies on the host when the project does not ask for a container", async () => {
     const docker = fakeDocker();
     const { repo, gitUrl } = project(VERIFY_OK);

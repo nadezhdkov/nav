@@ -31,6 +31,7 @@ export function containerArgs(spec: ContainerCommand, command: string): string[]
   if (spec.gitDir && !spec.worktree.startsWith(`${spec.gitDir}/`)) mounts.push(`--volume=${spec.gitDir}:${spec.gitDir}:ro`);
   return [
     "run", "--rm", "--init", `--name=${spec.name}`, "--pull=missing",
+    ...(isolation.hardened?.oci_runtime ? [`--runtime=${isolation.hardened.oci_runtime}`] : []),
     `--network=${spec.network ?? isolation.network}`,
     `--user=${spec.user.uid}:${spec.user.gid}`,
     "--cap-drop=ALL", "--security-opt=no-new-privileges",

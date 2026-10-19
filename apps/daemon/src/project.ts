@@ -17,7 +17,7 @@ export const ProjectConfig = z.object({
   allowlist: z.array(z.string().min(1)).default([]),
   protected_paths: z.array(z.string().min(1)).default([]),
   /** Spec §14.2: `container` runs the verify checks and setup commands in a container (L2, ADR 0035). */
-  isolation: z.enum(["worktree", "container"]).optional(),
+  isolation: z.enum(["worktree", "container", "hardened"]).optional(),
   /** Overrides the daemon's `container` defaults; `network` is the verify checks' (setup always has one). */
   container: z
     .object({
@@ -49,14 +49,21 @@ export async function loadProjectConfig(repoPath: string, commit: string): Promi
 
 /** The run's isolation, resolved once at creation: undefined runs on the host (L1). */
 export function resolveIsolation(project: ProjectConfig, config: Pick<Config, "security" | "container">): ContainerIsolation | undefined {
-  if ((project.isolation ?? config.security.default_isolation) !== "container") return undefined;
+  const level = project.isolation ?? config.security.default_isolation;
+  // A repository cannot lower what the operator set for every project: hardened by default stays hardened.
+  const hardened = level === "hardened" || config.security.default_isolation === "hardened";
+  if (level !== "container" && !hardened) return undefined;
   const c = project.container;
   return {
     kind: "container",
     image: c.image ?? config.container.image,
-    network: c.network,
+    // L3 has no network for checks; the project's `network: bridge` is for L2 only.
+    network: hardened ? "none" : c.network,
     memory: c.memory ?? config.container.memory,
     cpus: c.cpus ?? config.container.cpus,
     pids_limit: config.container.pids_limit,
+    ...(hardened
+      ? { hardened: { agent_image: config.container.agent_image, ...(config.container.oci_runtime ? { oci_runtime: config.container.oci_runtime } : {}), egress_allow: config.container.egress_allow } }
+      : {}),
   };
 }

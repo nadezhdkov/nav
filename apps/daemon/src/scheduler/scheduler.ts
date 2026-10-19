@@ -1,5 +1,6 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
 import { compileContext } from "@navarch/knowledge";
+import { HARDENED_ADAPTERS } from "@navarch/runner";
 import { canTransitionRun, IMPLEMENTING_PROFILES, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type CompiledContext, type NewEvent, type RunStatus } from "@navarch/contracts";
 import { Budgets } from "../budgets/budgets.ts";
 import { observedFor } from "../budgets/metrics.ts";
@@ -554,6 +555,7 @@ export class Scheduler {
       exhausted: this.store.exhaustedQuotas(),
       exclude,
       ...(prefer ? { prefer } : {}),
+      ...(run.isolation?.hardened ? { allowedAdapters: new Set<string>(HARDENED_ADAPTERS) } : {}),
       ...(earlier && prefer === earlier.model_id ? { preferredBy: "this competitor's earlier iteration" } : {}),
       ...(rivals.length ? { spread: [...new Set(rivals.map((t) => t.model_id!))] } : {}),
       // What running billed agents hold is not there to spend (ADR 0030).
