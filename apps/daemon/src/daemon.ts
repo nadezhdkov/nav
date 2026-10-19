@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { AntigravityAdapter, type AntigravityOptions } from "@navarch/adapter-antigravity";
 import { ClaudeCodeAdapter, type ClaudeCodeOptions } from "@navarch/adapter-claude-code";
@@ -367,8 +367,19 @@ export function buildAdapters(
 
 export function ensureToken(home: string): string {
   const file = join(home, "token");
-  if (existsSync(file)) return readFileSync(file, "utf8").trim();
+  const read = () => readFileSync(file, "utf8").trim();
+  try {
+    return read();
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+  }
   const token = randomBytes(32).toString("base64url");
-  writeFileSync(file, token + "\n", { mode: 0o600 });
-  return token;
+  // "wx" creates the file or fails: of two daemons starting together only one writes, the other reads its token.
+  try {
+    writeFileSync(file, token + "\n", { mode: 0o600, flag: "wx" });
+    return token;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    return read();
+  }
 }

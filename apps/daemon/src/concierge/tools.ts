@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { ConciergeTool } from "@navarch/concierge";
 import { ATTACHMENT_LIMITS, CreateRunRequest, SendRunMessage, type Actor, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView, type MetricsView } from "@navarch/contracts";
@@ -73,9 +73,17 @@ function readAttachments(paths: string[], roots: string[]): { name: string; cont
       return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
     });
     if (!inside) throw new Error(`cannot attach ${path}: it is outside the repository and the operator's directory`);
-    if (!statSync(real).isFile()) throw new Error(`cannot attach ${path}: not a file`);
-    if (statSync(real).size > ATTACHMENT_LIMITS.fileBytes) throw new Error(`cannot attach ${path}: each attachment is at most ${ATTACHMENT_LIMITS.fileBytes / 1000} kB`);
-    return { name: basename(real), content: readFileSync(real, "utf8") };
+    // Check and read through one open file, so a path swapped after the checks above cannot change what is read.
+    // O_NONBLOCK: a named pipe must not block the open; it is refused as "not a file" below.
+    const fd = openSync(real, constants.O_RDONLY | constants.O_NONBLOCK);
+    try {
+      const info = fstatSync(fd);
+      if (!info.isFile()) throw new Error(`cannot attach ${path}: not a file`);
+      if (info.size > ATTACHMENT_LIMITS.fileBytes) throw new Error(`cannot attach ${path}: each attachment is at most ${ATTACHMENT_LIMITS.fileBytes / 1000} kB`);
+      return { name: basename(real), content: readFileSync(fd, "utf8") };
+    } finally {
+      closeSync(fd);
+    }
   });
 }
 

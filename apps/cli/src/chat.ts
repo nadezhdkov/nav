@@ -2,6 +2,7 @@ import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import type { ConciergeTurn, ProposalDecision } from "@navarch/contracts";
 import { CliError } from "./client.ts";
+import { stripControls } from "./safe.ts";
 
 /**
  * `navarch` / `navarch chat`: a conversation with the concierge running in the daemon (ADR 0016).
@@ -49,15 +50,15 @@ export async function chat(api: ChatApi, io: { input: Readable; output: Writable
         out(`! ${err.message}\n`);
         continue;
       }
-      out(`${indent(turn.reply)}\n`);
+      out(`${indent(stripControls(turn.reply))}\n`);
 
       for (const proposal of turn.proposals) {
-        out(`\n  Proposed: ${proposal.summary}\n`);
+        out(`\n  Proposed: ${stripControls(proposal.summary)}\n`);
         const answer = await lines.next("  Confirm? [y/N] ");
         const decision = /^(y|yes|s|sim)$/i.test(answer?.trim() ?? "") ? "approve" : "reject";
         try {
           const decided = await api.request<ProposalDecision>("POST", `/api/v1/concierge/conversations/${conversation}/proposals/${proposal.id}`, { decision });
-          out(`  ${decided.reply}\n`);
+          out(`  ${stripControls(decided.reply)}\n`);
         } catch (err) {
           if (!(err instanceof CliError) || err.exitCode !== 1) throw err;
           out(`! ${err.message}\n`);

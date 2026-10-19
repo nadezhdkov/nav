@@ -13,11 +13,23 @@ export async function webUrl(api: WebApi): Promise<string> {
   return `${api.url}/#code=${code}`;
 }
 
-/** Opens a URL in the default browser; resolves false when no opener could start. */
+/**
+ * Opens a URL in the default browser; resolves false when no opener could start. Only http(s) URLs
+ * are opened, and each platform's opener gets the URL as one argument, never through a shell: on
+ * Windows `rundll32` takes it as is, where `cmd /c start` would read `&` and `|` as commands.
+ */
 export const openInBrowser: Opener = (url) =>
   new Promise((resolve) => {
+    let target: string;
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return resolve(false);
+      target = parsed.href;
+    } catch {
+      return resolve(false);
+    }
     const [cmd, args] =
-      process.platform === "darwin" ? ["open", [url]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : ["xdg-open", [url]];
+      process.platform === "darwin" ? ["open", [target]] : process.platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", target]] : ["xdg-open", [target]];
     const child = spawn(cmd, args, { detached: true, stdio: "ignore" });
     child.once("error", () => resolve(false));
     child.once("spawn", () => {

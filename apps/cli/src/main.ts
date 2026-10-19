@@ -45,6 +45,7 @@ import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
+import { printSafeLine, stripControls } from "./safe.ts";
 import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
@@ -199,7 +200,7 @@ async function main(argv: string[]): Promise<number> {
       const { id } = await api.request<{ id: string }>("POST", "/api/v1/concierge/conversations", { cwd: process.cwd() });
       const turn = await api.request<ConciergeTurn>("POST", `/api/v1/concierge/conversations/${id}/messages`, { text });
       if (json) return print(turn, json);
-      console.log(turn.reply);
+      console.log(stripControls(turn.reply));
       for (const p of turn.proposals) console.log(`\nProposed (not run): ${p.summary}\nUse \`navarch chat\` to confirm actions.`);
       return EXIT.ok;
     }
@@ -615,7 +616,7 @@ function required(value: string | undefined, what: string): string {
 }
 
 function print(value: unknown, json: boolean): number {
-  console.log(json || typeof value !== "string" ? JSON.stringify(value, null, 2) : value);
+  console.log(json || typeof value !== "string" ? JSON.stringify(value, null, 2) : stripControls(value));
   return EXIT.ok;
 }
 
@@ -629,9 +630,14 @@ async function runShow(id: string, json: boolean): Promise<number> {
   return print(json ? run : formatRunDetail(run), json);
 }
 
+function printEvent(event: NavarchEvent, json: boolean): void {
+  if (json) console.log(JSON.stringify(event));
+  else printSafeLine(formatEvent(event));
+}
+
 async function printEvents(api: ApiClient, id: string, json: boolean): Promise<number> {
   const events = await api.request<NavarchEvent[]>("GET", `/api/v1/runs/${id}/events`);
-  for (const event of events) console.log(json ? JSON.stringify(event) : formatEvent(event));
+  for (const event of events) printEvent(event, json);
   return EXIT.ok;
 }
 
@@ -643,7 +649,7 @@ async function follow(api: ApiClient, id: string, json: boolean): Promise<number
   const show = (event: NavarchEvent) => {
     if (event.seq <= lastSeq) return;
     lastSeq = event.seq;
-    console.log(json ? JSON.stringify(event) : formatEvent(event));
+    printEvent(event, json);
   };
   const ws = api.stream([`run:${id}`]);
   const ended = new Promise<number>((resolve, reject) => {

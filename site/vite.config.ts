@@ -13,10 +13,10 @@ import { defineConfig, type Plugin } from "vite";
 const base = process.env.SITE_BASE ?? "/";
 const docsDir = fileURLToPath(new URL("./src/docs", import.meta.url));
 
+/** A heading's anchor: letters, digits and hyphens only, so nothing from the text (`<`, `>`, quotes) reaches an id. */
 export const slugify = (text: string) =>
   text
     .toLowerCase()
-    .replace(/<[^>]+>/g, "")
     .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .trim()
     .replace(/\s+/g, "-");

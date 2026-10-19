@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { Actor, NavarchEvent, RunView } from "@navarch/contracts";
 import { subjectOf as awaySubject } from "../away/service.ts";
@@ -282,12 +282,35 @@ function toMinutes(hhmm: string): number {
 
 /** The daemon's VAPID key pair, created on first use (mode 0600). */
 function loadVapid(file: string): VapidKeys {
-  if (existsSync(file)) {
-    const keys = JSON.parse(readFileSync(file, "utf8")) as Partial<VapidKeys>;
-    if (keys.publicKey && keys.privateKey) return { publicKey: keys.publicKey, privateKey: keys.privateKey };
-  }
+  let missing = false;
+  const read = (): VapidKeys | undefined => {
+    let text: string;
+    try {
+      text = readFileSync(file, "utf8");
+      missing = false;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+      missing = true;
+      return undefined;
+    }
+    const keys = JSON.parse(text) as Partial<VapidKeys>;
+    return keys.publicKey && keys.privateKey ? { publicKey: keys.publicKey, privateKey: keys.privateKey } : undefined;
+  };
+  const existing = read();
+  if (existing) return existing;
   mkdirSync(dirname(file), { recursive: true, mode: 0o700 });
   const keys = generateVapidKeys();
-  writeFileSync(file, JSON.stringify(keys) + "\n", { mode: 0o600 });
-  return keys;
+  // Exclusive creation when there is no file; a file that is there without both keys is replaced.
+  // If another process made the keys first, use those.
+  try {
+    writeFileSync(file, JSON.stringify(keys) + "\n", { mode: 0o600, flag: missing ? "wx" : "w" });
+    // `mode` only applies when the file is created; a file that was there keeps its old permissions.
+    chmodSync(file, 0o600);
+    return keys;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    const winner = read();
+    if (!winner) throw err;
+    return winner;
+  }
 }

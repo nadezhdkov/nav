@@ -40,7 +40,7 @@ export async function pushBranch(spec: PushSpec): Promise<string> {
   const commit = (await git(spec.repoPath, ["rev-parse", "--verify", `${ref}^{commit}`])).trim();
   try {
     // --no-verify: repository hooks would run as the operator and see the token in the environment.
-    await git(spec.repoPath, ["push", "--no-verify", "--porcelain", remote.url, `${ref}:${ref}`], remote.auth(spec.token));
+    await git(spec.repoPath, ["push", "--no-verify", "--porcelain", "--", remote.url, `${ref}:${ref}`], remote.auth(spec.token));
   } catch (err) {
     throw remote.failure(`push failed for ${spec.branch}`, err, spec.token);
   }
@@ -58,7 +58,7 @@ const CHECK_BRANCH = "refs/heads/navarch/push-check";
 export async function checkPush(spec: { repoPath: string; repo: string; token: string; gitUrl?: string }): Promise<void> {
   const remote = remoteFor(spec.repo, spec.gitUrl);
   try {
-    await git(spec.repoPath, ["push", "--dry-run", "--no-verify", "--porcelain", remote.url, `HEAD:${CHECK_BRANCH}`], remote.auth(spec.token));
+    await git(spec.repoPath, ["push", "--dry-run", "--no-verify", "--porcelain", "--", remote.url, `HEAD:${CHECK_BRANCH}`], remote.auth(spec.token));
   } catch (err) {
     throw remote.failure(`cannot push to ${spec.repo}`, err, spec.token);
   }
@@ -75,7 +75,7 @@ export async function cloneRepo(spec: { repo: string; dest: string; token: strin
   if (existsSync(spec.dest)) throw new Error(`${spec.dest} already exists`);
   mkdirSync(dirname(spec.dest), { recursive: true });
   try {
-    await git(dirname(spec.dest), ["clone", "-q", "--template=", remote.url, spec.dest], remote.auth(spec.token));
+    await git(dirname(spec.dest), ["clone", "-q", "--template=", "--", remote.url, spec.dest], remote.auth(spec.token));
   } catch (err) {
     rmSync(spec.dest, { recursive: true, force: true });
     throw remote.failure(`clone of ${spec.repo} failed`, err, spec.token);
@@ -101,7 +101,7 @@ export async function fetchPullRequest(spec: { repoPath: string; repo: string; n
   try {
     await git(
       spec.repoPath,
-      ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote.url, `+refs/pull/${spec.number}/head:${refs.head}`, `+refs/heads/${spec.baseRef}:${refs.base}`],
+      ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--", remote.url, `+refs/pull/${spec.number}/head:${refs.head}`, `+refs/heads/${spec.baseRef}:${refs.base}`],
       remote.auth(spec.token),
     );
   } catch (err) {
@@ -127,7 +127,7 @@ export async function fetchMergedPullRequest(spec: { repoPath: string; repo: str
   const remote = remoteFor(spec.repo, spec.gitUrl);
   const ref = pullRequestRefs(spec.number).base;
   try {
-    await git(spec.repoPath, ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", remote.url, `+refs/heads/${spec.baseRef}:${ref}`], remote.auth(spec.token));
+    await git(spec.repoPath, ["-c", "core.hooksPath=/dev/null", "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--", remote.url, `+refs/heads/${spec.baseRef}:${ref}`], remote.auth(spec.token));
   } catch (err) {
     throw remote.failure(`fetch of ${spec.repo}#${spec.number} failed`, err, spec.token);
   }

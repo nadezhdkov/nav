@@ -152,7 +152,7 @@ function competeLines(c: NonNullable<PrBodyInput["compete"]>): string[] {
   const chosen = c.chosen_by === "user" ? "chosen by the user over the judge's ranking" : c.chosen_by === "only_finalist" ? "the only competitor whose checks passed" : `ranked first by the judge${c.judge ? ` (${c.judge})` : ""}`;
   const rows = [...c.competitors].sort((a, b) => (a.rank ?? 99) - (b.rank ?? 99)).map((x) => {
     const result = x.state === "finalist" ? (x.rank ? `#${x.rank}, ${x.score}/10: ${x.judge_reason ?? ""}` : "checks passed") : `out: ${x.reason ?? x.state}`;
-    return `| ${x.key}${x.key === c.winner ? " ✅" : ""} | ${x.agent ?? "?"} | ${result.replace(/\|/g, "\\|").replace(/\n/g, " ")} |`;
+    return `| ${x.key}${x.key === c.winner ? " ✅" : ""} | ${x.agent ?? "?"} | ${result.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r?\n/g, " ")} |`;
   });
   return [
     "## Compete",
