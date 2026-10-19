@@ -30,6 +30,12 @@ export type RelayOptions = {
   phonePerMinute?: number;
   /** Requests per address per minute for the loader's files (a phone loads four per visit). */
   fileRequestsPerMinute?: number;
+  /** Webhook requests per address per minute. */
+  hookRequestsPerMinute?: number;
+  /** Largest webhook body forwarded, in bytes. */
+  maxHookBytes?: number;
+  /** How long a webhook waits for the daemon's answer, in ms. */
+  hookTimeoutMs?: number;
   /** Where the built loader page and service worker are (`make relay-build`); defaults to `apps/relay/dist`. */
   phoneDir?: string;
   log?: (line: string) => void;
@@ -52,13 +58,15 @@ interface WebSocket {
 /** The loader page may run its own script and talk to this relay, nothing else. */
 const PHONE_CSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self' ws: wss:; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
+/** The headers of a GitHub delivery the daemon needs; the rest is dropped. */
+const HOOK_HEADERS = ["x-github-event", "x-github-delivery", "x-hub-signature-256", "content-type"];
 const ID = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_PAYLOAD = 2 * 1024 * 1024;
 const MAX_BUFFERED = 8 * 1024 * 1024;
 const AUTH_MS = 5_000;
 const PING_MS = 30_000;
 
-type Online = { socket: WebSocket; channels: Map<string, WebSocket> };
+type Online = { socket: WebSocket; channels: Map<string, WebSocket>; hooks: Map<string, (status: number, message: string) => void> };
 
 const hash = (s: string) => createHash("sha256").update(s).digest("hex");
 
@@ -71,6 +79,7 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
   const online = new Map<string, Online>();
   const recent = new Map<string, number[]>();
   let nextChannel = 1;
+  let nextHook = 1;
 
   const app: FastifyInstance = Fastify({ logger: false });
   await app.register(websocket, { options: { maxPayload: MAX_PAYLOAD } });
@@ -144,12 +153,17 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
         const previous = online.get(id);
         if (previous) previous.socket.close(4409, "replaced");
         relay = id;
-        online.set(id, { socket, channels: new Map() });
+        online.set(id, { socket, channels: new Map(), hooks: new Map() });
         log(`daemon online ${id.slice(0, 6)}…`);
         return socket.send(JSON.stringify({ t: "ready" }));
       }
       const entry = online.get(relay);
       if (!entry || entry.socket !== socket) return;
+      if (m.t === "hookres") {
+        const done = typeof m.h === "string" ? entry.hooks.get(m.h) : undefined;
+        if (done) done(Number.isInteger(m.status) ? Number(m.status) : 502, typeof m.message === "string" ? m.message.slice(0, 200) : "");
+        return;
+      }
       const phone = typeof m.c === "string" ? entry.channels.get(m.c) : undefined;
       if (!phone) return;
       if (m.t === "data" && typeof m.d === "string") {
@@ -166,6 +180,7 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
       if (entry?.socket !== socket) return;
       online.delete(relay);
       for (const phone of entry.channels.values()) phone.close(4404, "the daemon went offline");
+      for (const done of [...entry.hooks.values()]) done(503, "the daemon went offline");
       log(`daemon offline ${relay.slice(0, 6)}…`);
     });
   });
@@ -192,6 +207,39 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
       entry.channels.delete(c);
       if (entry.socket.readyState === 1) entry.socket.send(JSON.stringify({ t: "close", c }));
     });
+  });
+
+  // GitHub webhooks (ADR 0068): the body is passed to the daemon untouched, because only the daemon holds the
+  // secret that signs it. The relay stores nothing; an offline daemon answers 503 and GitHub can redeliver.
+  const maxHook = opts.maxHookBytes ?? 1024 * 1024;
+  const hookTimeout = opts.hookTimeoutMs ?? 8_000;
+  const hookLimit = { config: { rateLimit: { max: opts.hookRequestsPerMinute ?? 120, timeWindow: "1 minute" } } };
+  app.addContentTypeParser("application/json", { parseAs: "buffer", bodyLimit: maxHook }, (_req, body, done) => done(null, body));
+  app.post("/w/:id", { ...hookLimit, bodyLimit: maxHook }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const entry = ID.test(id) ? online.get(id) : undefined;
+    if (!entry || entry.socket.readyState !== 1) return reply.code(503).send({ message: "the daemon is offline" });
+    if (entry.hooks.size >= 16) return reply.code(429).send({ message: "busy" });
+    const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (entry.socket.bufferedAmount > MAX_BUFFERED) return reply.code(503).send({ message: "the daemon is slow" });
+    const h = String(nextHook++);
+    const headers: Record<string, string> = {};
+    for (const name of HOOK_HEADERS) {
+      const v = req.headers[name];
+      if (typeof v === "string") headers[name] = v.slice(0, 200);
+    }
+    const answer = await new Promise<{ status: number; message: string }>((resolve) => {
+      const timer = setTimeout(() => finish(504, "the daemon did not answer"), hookTimeout);
+      const finish = (status: number, message: string) => {
+        clearTimeout(timer);
+        entry.hooks.delete(h);
+        resolve({ status, message });
+      };
+      entry.hooks.set(h, finish);
+      entry.socket.send(JSON.stringify({ t: "hook", h, headers, body: body.toString("base64url") }));
+    });
+    const status = answer.status >= 200 && answer.status < 600 ? answer.status : 502;
+    return reply.code(status).send({ message: answer.message });
   });
 
   await app.listen({ port: opts.port ?? 8787, host: opts.host ?? "127.0.0.1" });

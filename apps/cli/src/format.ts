@@ -1,4 +1,4 @@
-import type { ScheduleView, ScheduleDay, CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView, AutoMergeStatus } from "@navarch/contracts";
+import type { ScheduleView, ScheduleDay, CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AuditVerifyView, RunAudit, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, WebhookStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView, AutoMergeStatus } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -161,6 +161,21 @@ function table(header: string[], rows: (string | undefined)[][]): string {
   const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => (r[i] ?? "").length)));
   const line = (cells: (string | undefined)[]) => cells.map((c, i) => (c ?? "").padEnd(widths[i] ?? 0)).join("  ").trimEnd();
   return [line(header), ...rows.map(line)].join("\n");
+}
+
+/** `navarch webhook`: where GitHub posts and what is still missing (ADR 0068). */
+export function formatWebhook(s: WebhookStatus): string {
+  if (!s.url) return "webhooks need a relay: set daemon.remote.mode: relay and daemon.remote.relay_url in config.yaml";
+  const lines = [
+    `payload URL: ${s.url}`,
+    `relay: ${s.reachable ? "connected" : "not connected (the daemon retries on its own)"}`,
+    `secret: ${s.configured ? "stored" : "not stored; pick a long random string and run: navarch secret set github/webhook_secret"}`,
+    `received ${s.received}, rejected ${s.rejected}${s.last_at ? `, last at ${s.last_at}` : ""}`,
+  ];
+  if (!s.configured || s.received === 0) {
+    lines.push("", "In the repository's Settings → Webhooks → Add webhook: that payload URL, content type application/json, the same secret,", "and the events Issues, Pull requests, Check runs and Check suites.");
+  }
+  return lines.join("\n");
 }
 
 /** `navarch remote status`: what the phone opens and what is missing (ADR 0020). */
