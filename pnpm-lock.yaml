@@ -241,6 +241,9 @@ importers:
       '@navarch/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@navarch/knowledge':
+        specifier: workspace:*
+        version: link:../../packages/knowledge
       '@navarch/runner':
         specifier: workspace:*
         version: link:../../packages/runner
@@ -455,6 +458,15 @@ importers:
       '@navarch/contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/knowledge:
+    dependencies:
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@navarch/explorer':
+        specifier: workspace:*
+        version: link:../explorer
 
   packages/model-router: {}
 

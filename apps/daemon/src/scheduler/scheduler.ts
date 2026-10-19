@@ -1,11 +1,12 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
-import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { compileContext } from "@navarch/knowledge";
+import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type CompiledContext, type NewEvent, type RunStatus } from "@navarch/contracts";
 import { Budgets } from "../budgets/budgets.ts";
 import { observedFor } from "../budgets/metrics.ts";
 import type { Config } from "../config.ts";
 import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import { runStatus, taskStatus } from "../orchestrator/orchestrator.ts";
-import { buildInstructions, implementer, leadTurnPrompt, parseComplexity, PROFILES, resumeWithInstructions } from "../orchestrator/profiles.ts";
+import { buildInstructions, implementer, leadTurnPrompt, parseComplexity, PROFILES, resumeWithInstructions, type Profile } from "../orchestrator/profiles.ts";
 import { ownsWorktree, ownWorktreeKey } from "../orchestrator/worktrees.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 
@@ -14,6 +15,9 @@ const RETRYABLE = new Set(["transient", "interrupted"]);
 const RESET_MARGIN_MS = 5_000;
 /** The smallest cap a billed agent starts with; below it the agent waits for running ones (ADR 0030). */
 const MIN_SHARE = 0.01;
+/** Profiles whose prompt carries the compiled context (ADR 0043). */
+const CONTEXT_PROFILES: ReadonlySet<string> = new Set(["triager", "planner", "implementer", "researcher", "lead"]);
+
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
 /** Ready tasks in dispatch order: already-attempted tasks first, FIFO within each group. */
@@ -182,6 +186,31 @@ export class Scheduler {
     while (this.active.size) await Promise.allSettled([...this.active.values()]);
   }
 
+  /**
+   * The compiled context block of an agent task (ADR 0043), recorded as `context.compiled`. It never
+   * fails the task: any problem means the agent runs without the block.
+   */
+  private async compileContext(run: RunRecord, task: TaskRecord, profile: Profile, attempt: number): Promise<CompiledContext | undefined> {
+    const cfg = this.config.knowledge.context;
+    if (!cfg.enabled || !CONTEXT_PROFILES.has(profile.id)) return undefined;
+    try {
+      const context = await compileContext({ root: run.repo_path, task: run.prompt, maxTokens: cfg.max_tokens });
+      if (!context) return undefined;
+      this.store.append([
+        {
+          type: "context.compiled",
+          run_id: run.id,
+          task_id: task.id,
+          actor: scheduler,
+          payload: { chars: context.chars, est_tokens: context.est_tokens, max_tokens: context.max_tokens, sources: context.sources.slice(0, 50), ms: context.ms, attempt },
+        },
+      ]);
+      return context;
+    } catch {
+      return undefined;
+    }
+  }
+
   private dispatch(queued: TaskRecord): void {
     const run = this.store.getRunRecord(queued.run_id);
     // A paused run keeps its ready tasks until it is resumed (ADR 0020).
@@ -296,7 +325,7 @@ export class Scheduler {
     if (billed) this.budgets.reserve(run, task.id, budgetRemaining);
     const execution = executor
       ? executor.execute({ run, task, attempt, signal: abort.signal })
-      : this.runtime.execute({
+      : this.compileContext(run, task, profile!, attempt).then((context) => this.runtime.execute({
         runId: run.id,
         taskId: task.id,
         nodeId: task.node_id,
@@ -307,7 +336,7 @@ export class Scheduler {
         ...(sandboxSlug ? { sandboxSlug } : {}),
         ...(own ? { forkFrom: runSlug } : {}),
         profile: profile!,
-        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id)),
+        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id), context),
         ...(task.model ? { model: task.model } : {}),
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.
@@ -326,7 +355,7 @@ export class Scheduler {
         ...(!task.resume_token && leadSession ? { resumeToken: leadSession, resumePrompt: leadTurnPrompt(task.inputs, texts) } : {}),
         ...(sandboxId ? { sandboxId } : {}),
         signal: abort.signal,
-      });
+      }));
     const work = execution
       .then(
         (outcome) => this.finish(task, attempt, outcome),

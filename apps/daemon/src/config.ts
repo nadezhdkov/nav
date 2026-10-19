@@ -182,6 +182,20 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
+   * The Knowledge Engine (ADR 0043). `context.enabled` puts a compiled context block in the prompts
+   * of triager, planner, implementer, researcher and lead tasks; off until the go/no-go measures it.
+   */
+  knowledge: z
+    .object({
+      context: z
+        .object({
+          enabled: z.boolean().default(false),
+          max_tokens: z.number().int().positive().default(4_000),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
+  /**
    * CI failures noticed on open pull requests (ADR 0041). With `auto`, the daemon starts a `ci-fix`
    * run itself, at most `daily_runs` a day in the PC's local time; otherwise the user starts it.
    */

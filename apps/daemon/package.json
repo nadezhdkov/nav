@@ -29,6 +29,7 @@
     "@navarch/contracts": "workspace:*",
     "@navarch/explorer": "workspace:*",
     "@navarch/flow-engine": "workspace:*",
+    "@navarch/knowledge": "workspace:*",
     "@navarch/github": "workspace:*",
     "@navarch/runner": "workspace:*",
     "@navarch/verification": "workspace:*",
