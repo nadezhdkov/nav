@@ -24,4 +24,5 @@ The Merge policy (AGENTS.md, spec §11.1) says merge is never automatic, with on
 - 🟡 A repository without CI never auto-merges: `require_ci_green` cannot be disabled and zero checks are not green. Legacy commit statuses are not read.
 - 🟡 The token needs Pull requests: write and Contents: write on the repository.
 - 🟡 The reviewer's counts are the model's word. They add a gate; they do not replace the checks.
-- 🔴 No Web UI toggle yet (CLI and API only), no WebAuthn, `strategy` other than squash is accepted but little tested.
+- The Web UI toggle and the security-key touch came with ADR 0062.
+- 🔴 `strategy` other than squash is accepted but little tested.

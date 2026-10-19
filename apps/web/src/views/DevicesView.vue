@@ -67,6 +67,7 @@ async function revoke(d: DeviceView) {
   <section class="max-w-4xl space-y-6 p-6 max-md:p-4">
     <h1 class="text-xl font-semibold">{{ t("nav.settings") }} · {{ t("devices.title") }}</h1>
     <p v-if="error" class="tone-danger text-sm" style="color: var(--tone)" role="alert">{{ error }}</p>
+    <RouterLink to="/settings/security" class="inline-block text-sm text-accent hover:underline">{{ t("security.title") }} →</RouterLink>
 
     <div v-if="remote" class="rounded-lg border border-line bg-surface p-4">
       <h2 class="mb-3 font-medium">{{ t("devices.remote") }}</h2>

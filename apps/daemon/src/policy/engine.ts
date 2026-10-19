@@ -221,6 +221,12 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "principles.set", effect: "deny", reason: "only the user changes a project's rules, and not from a paired phone or an agent" },
   {
+    match: (r) => r.action === "webauthn.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user registers and uses security keys, from the desktop (ADR 0062)",
+  },
+  { match: (r) => r.action === "webauthn.set", effect: "deny", reason: "only the user manages and uses security keys, and not from a paired phone or an agent" },
+  {
     match: (r) => r.action === "automerge.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
     effect: "allow",
     reason: "the user turns auto-merge on and off for a repository, from the desktop or the CLI (ADR 0060)",

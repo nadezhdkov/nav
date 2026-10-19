@@ -36,5 +36,7 @@ export const SetAutoMergeRequest = z.object({
   /** To turn it on: the repository's `owner/name`, typed by the user after reading the conditions. */
   confirm: z.string().optional(),
   strategy: AutoMergeStrategy.optional(),
+  /** A single-use token from a security key (WebAuthn), needed to turn it on when the user has registered one (ADR 0062). */
+  reauth: z.string().optional(),
 });
 export type SetAutoMergeRequest = z.infer<typeof SetAutoMergeRequest>;

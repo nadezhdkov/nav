@@ -40,6 +40,9 @@ import {
   CiFailureStatus,
   StartInboxRequest,
   SyncInboxRequest,
+  RegisterKeyRequest,
+  ReauthOptionsRequest,
+  ReauthVerifyRequest,
   SetAutoMergeRequest,
   SetAwayRequest,
   AddPrincipleRequest,
@@ -65,6 +68,7 @@ import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { PrinciplesError } from "../principles/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
+import { WebAuthnServiceError } from "../webauthn/service.ts";
 import { AutoMergeError } from "../github/automerge.ts";
 import { CiError } from "../github/ci.ts";
 
@@ -78,7 +82,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return caller.kind === "device" ? { kind: "user", via: "mobile", device_id: caller.deviceId } : { kind: "user", via: viaOf(req.headers) };
   };
   await app.register(websocket);
-  // Off everywhere but the routes that scan the whole event log: they opt in with `config.rateLimit`.
+  // Off everywhere but the routes that opt in with `config.rateLimit`.
   await app.register(rateLimit, { global: false });
 
   // Who is calling: the local token (CLI, desktop UI) or a paired device's access token (ADR 0020).
@@ -353,6 +357,61 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
 
+  // Security keys and re-authentication (WebAuthn, ADR 0062). The desktop and the CLI only: a phone is refused by the Policy Engine and the route allowlist.
+  const originOf = (req: FastifyRequest): string | undefined => {
+    if (typeof req.headers.origin === "string") return req.headers.origin;
+    // A same-origin GET carries no Origin: rebuild it from Host, which is http on localhost and https behind `tailscale serve`.
+    const host = req.headers.host;
+    return host ? `${/^localhost(:\d+)?$/.test(host) ? "http" : "https"}://${host}` : undefined;
+  };
+  const keyError = (reply: FastifyReply, err: unknown) => {
+    if (!(err instanceof WebAuthnServiceError)) throw err;
+    return reply.code({ bad_request: 400, forbidden: 403, not_found: 404, conflict: 409, reauth_required: 403 }[err.code]).send({ error: err.code, message: err.message });
+  };
+  app.get("/api/v1/security-keys", async (req) => daemon.webauthn.view(originOf(req)));
+  app.post("/api/v1/security-keys/register/options", async (req, reply) => {
+    try {
+      return daemon.webauthn.registrationOptions(originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/security-keys/register", async (req, reply) => {
+    const parsed = RegisterKeyRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.register(parsed.data, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/security-keys/:id/remove", async (req, reply) => {
+    try {
+      daemon.webauthn.remove((req.params as { id: string }).id, (req.body as { reauth?: string } | undefined)?.reauth, actorOf(req));
+      return daemon.webauthn.view(originOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/reauth/options", { config: { rateLimit: REAUTH_LIMIT } }, async (req, reply) => {
+    const parsed = ReauthOptionsRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.reauthOptions(parsed.data.purpose, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/reauth/verify", { config: { rateLimit: REAUTH_LIMIT } }, async (req, reply) => {
+    const parsed = ReauthVerifyRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.reauthVerify(parsed.data, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+
   // The event log's hash chain and the per-run audit export (spec §10.3, ADR 0061). Desktop and CLI only.
   app.get("/api/v1/audit", { config: { rateLimit: AUDIT_LIMIT } }, async (req) => {
     const expect = (req.query as { expect?: string }).expect;
@@ -372,7 +431,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     try {
       return await daemon.autoMerge.set((req.params as { id: string }).id, parsed.data, actorOf(req));
     } catch (err) {
-      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400 }[err.code]).send({ error: err.code, message: err.message });
+      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400, reauth_required: 403 }[err.code]).send({ error: err.code, message: err.message });
       throw err;
     }
   });
@@ -747,6 +806,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
 const WEB_CODE_TTL_MS = 60_000;
 
+/** A touch is a human gesture: a few a minute is plenty, and a loop of attempts is not one. */
+const REAUTH_LIMIT = { max: 20, timeWindow: "1 minute" };
 /** Verifying the chain reads every event, so a loop of requests could keep the daemon busy. */
 const AUDIT_LIMIT = { max: 30, timeWindow: "1 minute" };
 
