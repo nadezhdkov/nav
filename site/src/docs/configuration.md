@@ -63,6 +63,11 @@ ci_fix:
   auto: false               # true: start ci-fix on a newly failing pull request by itself
   daily_runs: 3             # most automatic starts per local day
 
+summary:
+  enabled: false            # true: once a day, sync and send a morning summary notification
+  at: "08:00"               # local time of the PC
+  stalled_days: 3           # draft PRs of Navarch's open this long are listed as stalled
+
 spec_sync:
   auto: false               # true: start spec-sync when a pull request Navarch opened is merged
   daily_runs: 3             # most automatic starts per local day

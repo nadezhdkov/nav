@@ -64,6 +64,7 @@ Run options:
 | `navarch inbox [--all] [--project <id>]` | triaged issues with estimates |
 | `navarch inbox start <item>... [--flow <name>] [--budget <usd>]` | start one run per item |
 | `navarch inbox dismiss <item> \| restore <item>` | hide or bring back an item |
+| `navarch summary [--now]` | the morning summary: new issues, CI failures, stalled PRs and suggested runs; `--now` syncs and makes one |
 | `navarch ci [--all]` | failing checks noticed on your projects' open pull requests |
 | `navarch ci fix <failure> [--budget <usd>]` | start a `ci-fix` run on that pull request |
 | `navarch ci dismiss <failure>` | stop showing a failure |

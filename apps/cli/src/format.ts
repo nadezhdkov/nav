@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -234,6 +234,21 @@ export function formatCiFailures(failures: CiFailureView[]): string {
     "",
     "fix it: navarch ci fix <failure> · dismiss: navarch ci dismiss <failure>",
   ].join("\n");
+}
+
+/** `navarch summary`: the morning summary; titles are untrusted text, kept on one line. */
+export function formatSummary(s: MorningSummary | null): string {
+  if (!s) return "no summary yet; make one with: navarch summary --now (or turn on summary.enabled)";
+  const item = (i: MorningSummary["new_items"][number]) =>
+    `  ${i.repo}#${i.number} ${truncate(oneLine(i.title), 60)}` +
+    (i.complexity === null ? " (not triaged)" : ` [${i.kind}, complexity ${i.complexity}${i.estimate_usd === null ? "" : `, ~$${i.estimate_usd.toFixed(2)}`}]`);
+  const lines = [`Morning summary · ${s.generated_at} (since ${s.since})`, ""];
+  lines.push(`New or changed issues: ${s.new_total}${s.duplicates ? ` · ${s.duplicates} possible duplicates` : ""}`, ...s.new_items.map(item));
+  if (s.ci_failures.length) lines.push("", `CI failing: ${s.ci_failures.length}`, ...s.ci_failures.map((f) => `  ${f.repo}#${f.number} ${truncate(oneLine(f.title), 60)}  (navarch ci fix ${f.id})`));
+  if (s.stalled_prs.length) lines.push("", `Stalled draft PRs: ${s.stalled_prs.length}`, ...s.stalled_prs.map((p) => `  ${p.repo}#${p.number} open ${p.days} days`));
+  lines.push("", `Approvals waiting: ${s.approvals_waiting} · runs finished: ${s.runs_finished} (${s.runs_failed} failed) · billed $${s.billed_usd.toFixed(2)}`);
+  if (s.suggestions.length) lines.push("", `Worth a run (estimate $${s.suggestions_estimate_usd.toFixed(2)}):`, ...s.suggestions.map(item), "  start with: navarch inbox start <item>...");
+  return lines.join("\n");
 }
 
 /** `navarch inbox`: one line per item; titles are untrusted text, kept on one line. */
