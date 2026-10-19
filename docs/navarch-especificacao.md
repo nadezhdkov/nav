@@ -1122,6 +1122,7 @@ O Navarch expõe ferramentas aos agentes por um servidor MCP interno e também p
 - Todo evento com `actor` e motivo.
 - Exportação de auditoria por Run (JSON + resumo legível).
 - Hash encadeado opcional no event store para detectar adulteração.
+  - *Implementação (ADR 0061):* sempre ativo (uma chave deixaria lacunas na cadeia); eventos anteriores ficam sem hash; o usuário guarda o `head` (`navarch audit`) para notar o corte dos eventos mais novos.
 
 ---
 

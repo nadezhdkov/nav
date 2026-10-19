@@ -19,3 +19,4 @@ export * from "./explorer.ts";
 export * from "./specs.ts";
 export * from "./principles.ts";
 export * from "./summary.ts";
+export * from "./audit.ts";
