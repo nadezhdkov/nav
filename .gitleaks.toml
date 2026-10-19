@@ -16,3 +16,10 @@ description = "Usage table column id"
 condition = "AND"
 paths = ['''apps/web/src/views/UsageView\.vue''']
 regexes = ['''^p50_duration_ms$''']
+
+# The redaction tests spell out PEM headers ("-----BEGIN PRIVATE KEY-----" and
+# its END line) with a dummy body, to prove `redact` removes them.
+[[allowlists]]
+description = "Fake PEM blocks in the redact tests"
+paths = ['''packages/contracts/test/contracts\.test\.ts''']
+targetRules = ["private-key"]
