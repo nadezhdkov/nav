@@ -209,6 +209,8 @@ Planned layout (§13): `apps/{daemon,web,cli}`, `packages/{contracts,flow-engine
 - Dark theme by default, contrast AA, keyboard navigation (including the graph canvas), never color alone for status (icon + text), large touch targets on mobile.
 - Any approval, merge or other sensitive action in the UI must show what will happen, why, the diff/plan and the cost, and respect re-authentication (WebAuthn) when the policy requires it.
 - After a visible UI change, take a screenshot (`ctk shoot web`) and check it before calling the work done.
+  - Shoot the **Vite dev server**, not the daemon's port. `navarchd` serves the SPA with a strict CSP (`style-src 'self'`), which blocks the inline style `ctk shoot` injects, and the CSP must not be loosened for tooling.
+  - Start a daemon (`make daemon`, or a test daemon with a fake agent and a held task to show a mid-run state), then `NAVARCH_URL=http://127.0.0.1:<port> make web-dev`, and shoot `http://127.0.0.1:5173/<route>#token=<daemon token>` (`#token=` signs the page in; the token is in `<NAVARCH_HOME>/token`). Use `--delay 3500` for pages that load over the API, and `--dark` for the default theme.
 
 ## Security
 
