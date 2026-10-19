@@ -792,6 +792,23 @@ export class EventStore {
     return Number((this.db.prepare("SELECT COUNT(*) AS n FROM ci_failures WHERE auto = 1 AND started_at >= ?").get(since) as { n: number }).n);
   }
 
+  /** How many `spec-sync` runs the daemon started by itself since `since` (ISO), for the daily limit (ADR 0052). */
+  autoSpecSyncsSince(since: string): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE type = 'spec.sync.auto_started' AND ts >= ?").get(since) as { n: number }).n);
+  }
+
+  /** Whether the daemon already started `spec-sync` for this pull request. */
+  hasAutoSpecSync(repo: string, number: number): boolean {
+    return !!this.db.prepare("SELECT 1 FROM events WHERE type = 'spec.sync.auto_started' AND lower(json_extract(payload, '$.repo')) = lower(?) AND json_extract(payload, '$.number') = ? LIMIT 1").get(repo, number);
+  }
+
+  /** Whether a run in this clone wrote specs or an addendum: the project is one that keeps specs with Navarch. */
+  projectHasSpecs(repoPath: string): boolean {
+    return !!this.db
+      .prepare("SELECT 1 FROM events e JOIN runs r ON r.id = e.run_id WHERE e.type IN ('spec.generated', 'spec.addendum.written') AND r.repo_path = ? LIMIT 1")
+      .get(repoPath);
+  }
+
   /** The latest observation of every quota window, by adapter (Home, ADR 0021). */
   quotas(now = Date.now()): QuotaView[] {
     const latest = new Map<string, QuotaView>();

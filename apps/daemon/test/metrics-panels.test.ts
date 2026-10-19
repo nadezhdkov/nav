@@ -263,6 +263,34 @@ describe("PR watcher (ADR 0037)", () => {
     expect(gh.requests.map((r) => r.path)).toEqual(["/repos/o/acme/pulls/21"]);
   });
 
+  it("tells onMerged about a merged PR only, and a failure there does not stop the watcher", async () => {
+    const gh = await fakeGitHub();
+    closers.push(gh.close);
+    gh.repos.set("o/acme", { default_branch: "main", issues: new Map() });
+    const config = Config.parse({ github: { api_url: gh.apiUrl } });
+    const vault = new Vault({ env: { NAVARCH_SECRET_GITHUB_TOKEN: gh.token } });
+    const store = newStore();
+    const merged: number[] = [];
+    const watcher = new PrWatcher({
+      config,
+      store,
+      github: new GitHubIntegration(config, vault, new PolicyEngine()),
+      onMerged: async (pr) => {
+        merged.push(pr.number);
+        throw new Error("boom");
+      },
+    });
+    for (const [i, n] of [41, 42, 43].entries()) {
+      seedRun(store, `run_${i}`, "/acme");
+      openPr(store, `run_${i}`, n, "a".repeat(40));
+    }
+    gh.pullRequests.set("o/acme#41", pull({ state: "closed", merged: true, closed_at: "2026-10-16T10:00:00Z" }));
+    gh.pullRequests.set("o/acme#42", pull({ state: "closed", merged: false }));
+    gh.pullRequests.set("o/acme#43", pull({ state: "closed", merged: true, closed_at: "2026-10-16T11:00:00Z" }));
+    expect(await watcher.check()).toBe(3);
+    expect(merged).toEqual([41, 43]);
+  });
+
   it("gives up on a PR that is not found three polls in a row", async () => {
     const { store, watcher } = await setup();
     seedRun(store, "run_a", "/acme");
