@@ -12,7 +12,7 @@ A **lead** agent works in turns. Each turn it looks at the task and at what its 
 
 - a short summary and whether the work is done;
 - an optional **question** for you, which pauses the team until you answer with `navarch say`;
-- the **members** it wants next, each with a key, a brief, a profile (`planner`, `researcher`, `implementer` or `reviewer`), an optional preferred agent, and the members it depends on.
+- the **members** it wants next, each with a key, a brief, a profile (`planner`, `researcher`, `implementer`, `reviewer`, or a role: `architecture`, `frontend`, `backend`, `devops` or `qa`), an optional preferred agent, and the members it depends on.
 
 Navarch then runs the members in dependency order. By default, members whose dependencies are done start **in parallel**, up to three at once, each in its own worktree. When an implementer member succeeds, Navarch commits its work and merges it into the team's shared worktree. A merge conflict gets its own resolver agent. Checks run after every turn, and the first plan waits for your approval below autonomy level 3.
 

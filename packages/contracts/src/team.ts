@@ -7,8 +7,20 @@ import { z } from "zod";
  * grants, budgets or merging.
  */
 
+/**
+ * Role profiles (ADR 0050): implementers specialised by discipline. They edit files like the
+ * `implementer`, with their own working rules, so a lead can staff a team by role.
+ */
+export const IMPLEMENTING_ROLES = ["frontend", "backend", "devops", "qa"] as const;
+
+/** Profiles that implement: change files in a worktree and are merged back like the `implementer`. */
+export const IMPLEMENTING_PROFILES: readonly string[] = ["implementer", ...IMPLEMENTING_ROLES];
+
+/** Every role a lead can staff; `architecture` is read-only, like the `planner`. */
+export const ROLE_PROFILES = ["architecture", ...IMPLEMENTING_ROLES] as const;
+
 /** Profiles a lead may give a member. */
-export const TeamMemberProfile = z.enum(["planner", "researcher", "implementer", "reviewer"]);
+export const TeamMemberProfile = z.enum(["planner", "researcher", "implementer", ...ROLE_PROFILES, "reviewer"]);
 export type TeamMemberProfile = z.infer<typeof TeamMemberProfile>;
 
 export const TeamMemberKey = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "member keys are 1–32 lowercase letters, digits and -");

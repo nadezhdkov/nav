@@ -409,6 +409,8 @@ flowchart TB
 | `ci-fixer` | Diagnosticar e corrigir falhas de CI. | logs de CI, edição, comandos | `tier: standard` → `expert` em retry |
 | `judge` | Comparar implementações concorrentes. | leitura de diffs e relatórios | `tier: expert` |
 | `spec-writer` | Gerar/atualizar especificações rastreáveis. | leitura, escrita em `.navarch/specs/` | `tier: standard` |
+| `architecture` | Membro de equipe: desenhar a solução técnica e as interfaces (ADR 0050). | leitura | `tier: expert` |
+| `frontend`, `backend`, `devops`, `qa` | Membros de equipe: implementadores por disciplina; `qa` só edita testes e `devops` nunca publica nem faz deploy (ADR 0050). | leitura, edição, comandos permitidos | `tier: standard` |
 
 **Regras de trabalho dos perfis (Fase 1).** As instruções dos perfis seguem as mesmas regras das skills do próprio repositório do Navarch (`.claude/skills/`, adaptadas de mattpocock/skills, MIT):
 

@@ -1,5 +1,5 @@
 import type { FleetAgent, NavarchEvent, RunMessage, TaskView, TeamView } from "@navarch/contracts";
-import { Bot, ClipboardList, Hammer, ScanSearch, SearchCheck } from "@lucide/vue";
+import { Bot, ClipboardList, Compass, Container, FlaskConical, Hammer, Palette, ScanSearch, SearchCheck, Server } from "@lucide/vue";
 import type { Component } from "vue";
 
 /** One icon per agent profile; unknown profiles get a generic agent. */
@@ -7,6 +7,11 @@ export const profileIcon: Record<string, Component> = {
   triager: ScanSearch,
   planner: ClipboardList,
   implementer: Hammer,
+  architecture: Compass,
+  frontend: Palette,
+  backend: Server,
+  devops: Container,
+  qa: FlaskConical,
   reviewer: SearchCheck,
 };
 

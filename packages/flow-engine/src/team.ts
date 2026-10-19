@@ -1,4 +1,4 @@
-import { parseTeamPlan, type FlowNode, type TeamMemberSpec, type TeamPlan } from "@navarch/contracts";
+import { IMPLEMENTING_PROFILES, parseTeamPlan, type FlowNode, type TeamMemberSpec, type TeamPlan } from "@navarch/contracts";
 import { evaluate, parseExpr, truthy, type Scope } from "./expr.ts";
 import type { NodeToStart, RunContext, Step, TaskState } from "./flow.ts";
 
@@ -28,7 +28,7 @@ export type TeamMember = TeamMemberSpec & {
 };
 
 /** Members whose work is merged back in a parallel team; the other profiles are read-only. */
-const EDITS = new Set(["implementer"]);
+const EDITS = new Set(IMPLEMENTING_PROFILES);
 
 /** What a team node's tasks say so far (ADR 0022). Pure, so the UI projection and the engine agree. */
 export type TeamState = {
