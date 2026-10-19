@@ -107,6 +107,11 @@ export const defaultRules: PolicyRule[] = [
     reason: "merging a team member's work requires approval below autonomy level 2",
   },
   {
+    match: (r) => r.action === "spec.write",
+    effect: "allow",
+    reason: "writing verified specs only touches .navarch/specs/ in the run's own worktree (ADR 0045)",
+  },
+  {
     match: (r) => r.action === "compete.compare",
     effect: "allow",
     reason: "comparing competitors only reads their branches (ADR 0031)",

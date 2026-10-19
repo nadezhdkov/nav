@@ -16,3 +16,4 @@ export * from "./studio.ts";
 export * from "./away.ts";
 export * from "./ci.ts";
 export * from "./explorer.ts";
+export * from "./specs.ts";

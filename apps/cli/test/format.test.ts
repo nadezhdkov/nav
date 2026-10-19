@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatHits, formatRepoMap, formatSymbols } from "../src/format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatSpecs, formatHits, formatRepoMap, formatSymbols } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -317,5 +317,13 @@ describe("exploration output (ADR 0042)", () => {
     expect(text).toContain("3 files");
     expect(text).toContain("Frameworks and tools: vue");
     expect(text).toContain("Entry points: none found");
+  });
+});
+
+describe("formatSpecs (ADR 0045)", () => {
+  it("lists each reverse-spec run with its green share and the claims lowered", () => {
+    const text = formatSpecs([{ run_id: "run_1", run_name: "brave-frigate", ts: "2026-10-19T10:00:00Z", components: 2, claims: 10, confirmed: 7, inferred: 2, gap: 1, downgraded: 1, green_rate: 0.7, branch: "navarch/run_1/reverse-spec", files: [] }]);
+    expect(text).toMatch(/brave-frigate\s+2026-10-19 10:00\s+2\s+10\s+7\s+2\s+1\s+70 %\s+1\s+navarch\/run_1\/reverse-spec/);
+    expect(formatSpecs([])).toContain("navarch run --flow reverse-spec");
   });
 });

@@ -1,0 +1,29 @@
+# Reverse-engineer traceable specs from the code (spec §6.8.1, §6.9.2, ADR 0045). The run's prompt
+# names the scope (a module, a directory, or the whole repository). The spec-writer reads the code
+# and makes claims with evidence; `spec.write` checks every quote against the code, writes
+# `.navarch/specs/` and commits it on the run's branch. No PR: the user pushes the branch if wanted.
+apiVersion: navarch/v1
+kind: Flow
+metadata:
+  name: reverse-spec
+  description: Read the code in a scope and write verified, traceable specs to .navarch/specs/ on the run's branch.
+params:
+  max_attempts: { type: int, default: 2 }
+
+nodes:
+  - id: spec_loop
+    type: loop
+    max_iterations: ${{ params.max_attempts }}
+    until: ${{ nodes.save.outputs.saved }}
+    body:
+      - id: write
+        type: agent
+        profile: spec-writer
+        inputs:
+          previous_failures: ${{ nodes.save.outputs.errors }}
+      - id: save
+        type: action
+        uses: spec.write
+
+edges:
+  - spec_loop

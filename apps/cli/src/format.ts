@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -369,6 +369,16 @@ export function formatMetrics(m: MetricsView): string {
     lines.push("", "success by model:", table(["MODEL", "TASKS", "OK", "ERR 24H"], m.quality.models.map((x) => [x.id, String(x.tasks), pct(x.success_rate), pct(x.error_rate_24h)])));
   }
   return lines.join("\n");
+}
+
+/** `navarch specs`: what each reverse-spec run wrote and how much of it is 🟢 after the evidence check (ADR 0045). */
+export function formatSpecs(runs: SpecRunView[]): string {
+  if (!runs.length) return "no specs written yet; run `navarch run --flow reverse-spec \"<scope>\"`";
+  const pct = (n: number | null) => (n === null ? "-" : `${Math.round(n * 100)} %`);
+  return table(
+    ["RUN", "WHEN", "COMPONENTS", "CLAIMS", "🟢", "🟡", "🔴", "🟢 SHARE", "LOWERED", "BRANCH"],
+    runs.map((r) => [r.run_name ?? r.run_id, r.ts.slice(0, 16).replace("T", " "), String(r.components), String(r.claims), String(r.confirmed), String(r.inferred), String(r.gap), pct(r.green_rate), String(r.downgraded), r.branch]),
+  );
 }
 
 /** `navarch flow list`: built-in and Studio Flows (ADR 0033). */

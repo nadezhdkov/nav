@@ -109,3 +109,5 @@ export async function compileContext(opts: { root: string; task: string; maxToke
   const text = parts.join("\n\n");
   return { text, sources, chars: text.length, est_tokens: Math.ceil(text.length / CHARS_PER_TOKEN), max_tokens: maxTokens, ms: Date.now() - started };
 }
+
+export { renderIndex, renderSpec, verifyDrafts } from "./specs.ts";

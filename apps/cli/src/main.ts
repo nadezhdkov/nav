@@ -33,6 +33,7 @@ import {
   type SetBudgetRequest,
   type UsageView,
   type MetricsView,
+  type SpecRunView,
   type FlowDetail,
   type FlowSummary,
   type ValidateFlowResponse,
@@ -40,7 +41,7 @@ import {
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -106,6 +107,7 @@ Usage:
                                          change a limit; raising one releases tasks waiting on it
   navarch usage [--days <n>] [--profile <name>]
                                          spend today and this month, tokens, success and cost per model
+  navarch specs                            specs written by reverse-spec runs and their share of confirmed (🟢) claims
   navarch metrics [--days <n>]             cost by day, project, profile and model; success rates, accepted PRs, rework
   navarch flow list                        built-in Flows and the Flows published in Flow Studio (Web UI → Flows)
   navarch flow show <name> [--version <n>] [--draft]
@@ -373,6 +375,10 @@ async function main(argv: string[]): Promise<number> {
     case "metrics": {
       const metrics = await new ApiClient(home).request<MetricsView>("GET", `/api/v1/metrics${values.days ? `?days=${encodeURIComponent(values.days)}` : ""}`);
       return print(json ? metrics : formatMetrics(metrics), json);
+    }
+    case "specs": {
+      const specs = await new ApiClient(home).request<SpecRunView[]>("GET", "/api/v1/specs");
+      return print(json ? specs : formatSpecs(specs), json);
     }
     case "map":
     case "symbols":

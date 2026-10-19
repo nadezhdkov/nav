@@ -12,6 +12,7 @@ A Flow defines what a run does. Navarch ships with six built-in Flows, and you c
 | `compete` | an issue or a prompt | the same task for 2–5 agents, a judge ranks them, you pick ([Compete mode](/docs/team-and-compete)) |
 | `review-pr` | a pull request | a read-only reviewer drafts one review, posted as a comment after approval |
 | `ci-fix` | a pull request with failing checks | diagnoses the failure; fixes code failures in a draft PR into the branch, or comments on flaky and infra ones |
+| `reverse-spec` | a prompt naming the scope | reads the code and writes specs to `.navarch/specs/` on the run's branch, each claim marked 🟢 confirmed, 🟡 inferred or 🔴 gap |
 
 Pick one with `--flow`:
 
@@ -23,6 +24,15 @@ navarch run --pr owner/repo#17 --flow ci-fix
 ```
 
 A run may set its Flow's parameters with `--param name=value`, for example `--param competitors=4`.
+
+### Specs from the code
+
+```bash
+navarch run --flow reverse-spec "document the packages/runner module"
+navarch specs
+```
+
+The agent describes what the code does as claims, each with a confidence and its evidence: the file, the line and a quote of the code. Navarch checks every quote against the code before writing anything. A claim the agent calls 🟢 keeps it only when the file, line and quote are really there; otherwise it becomes 🟡 and the spec says why. The files (one per component, an index and a coverage summary) are committed on the run's branch, `navarch/<run>/reverse-spec`, and nothing is pushed or changed in your clone. `navarch specs` shows each run's share of 🟢 claims. If the agent's answer is unusable, it is told what was wrong and tries once more.
 
 ### Failing checks are noticed for you
 

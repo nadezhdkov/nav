@@ -42,6 +42,7 @@ import {
   SetAwayRequest,
   SetBudgetRequest,
   WorkItemStatus,
+  type SpecRunView,
   type SyncInboxResult,
 } from "@navarch/contracts";
 import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
@@ -330,6 +331,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!Number.isInteger(days) || days < 1 || days > 365) return badRequest(reply, "days must be a whole number from 1 to 365");
     return daemon.metrics({ days });
   });
+
+  // Specs written by reverse-spec runs, with their coverage (ADR 0045); devices may read them.
+  app.get("/api/v1/specs", async (): Promise<SpecRunView[]> =>
+    daemon.store.eventsOfType("spec.generated", 20).map((e) => ({
+      ...(e.payload as NavarchEvent<"spec.generated">["payload"]),
+      run_id: e.run_id ?? "",
+      run_name: e.run_id ? (daemon.store.getRun(e.run_id)?.name ?? null) : null,
+      ts: e.ts,
+    })),
+  );
 
   // Away mode (ADR 0039): paired phones may read it, to show the banner; only the desktop and the CLI change it.
   app.get("/api/v1/away", async () => daemon.away.view());
@@ -685,6 +696,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/quotas",
   "GET /api/v1/usage",
   "GET /api/v1/metrics",
+  "GET /api/v1/specs",
   "GET /api/v1/budgets",
   "GET /api/v1/away",
   "POST /api/v1/stop",

@@ -78,6 +78,7 @@ Run options:
 | `navarch budget set --project <id> --daily <usd\|none>` | a project's daily limit |
 | `navarch budget set --run <run> <usd>` | one run's budget |
 | `navarch usage [--days N] [--profile P]` | spend, tokens, success and cost per model |
+| `navarch specs` | the specs written by `reverse-spec` runs and their share of confirmed (🟢) claims |
 | `navarch metrics [--days N]` | cost by day, project, profile and model; success rates |
 | `navarch secret set <name>` | store a secret in the OS keychain, read from stdin |
 | `navarch secret status <name>` | whether a secret is set |

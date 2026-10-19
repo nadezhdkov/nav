@@ -233,6 +233,19 @@ export const EventPayloads = {
     ms: z.number().int().nonnegative(),
     attempt: z.number().int().positive(),
   }),
+  /** `spec.write` verified the agent's claims against the code and wrote `.navarch/specs/` (ADR 0045). */
+  "spec.generated": z.object({
+    components: z.number().int().nonnegative(),
+    claims: z.number().int().nonnegative(),
+    confirmed: z.number().int().nonnegative(),
+    inferred: z.number().int().nonnegative(),
+    gap: z.number().int().nonnegative(),
+    downgraded: z.number().int().nonnegative(),
+    green_rate: z.number().min(0).max(1).nullable(),
+    branch: z.string(),
+    /** Repository-relative files written under `.navarch/specs/`. */
+    files: z.array(z.string()),
+  }),
   /** An instruction from the user to a run's agents (ADR 0019); `task_id` targets one task. */
   "run.message": z.object({
     message_id: z.string(),

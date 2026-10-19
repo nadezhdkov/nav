@@ -7,6 +7,7 @@ import { DEFAULT_SCRUB_ENV, scrubbedEnv } from "@navarch/adapter-kit";
 import {
   newId,
   parseReviewDraft,
+  parseSpecDrafts,
   redact,
   VerificationReport,
   type Actor,
@@ -17,6 +18,7 @@ import {
   type SandboxHandle,
   type WorkItem,
 } from "@navarch/contracts";
+import { renderIndex, renderSpec, verifyDrafts } from "@navarch/knowledge";
 import { changedFiles, commitAll, concludeMerge, createWorktree, diffRightLines, fullPullRequestDiff, mergeBranch, worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { matchesPath, verify } from "@navarch/verification";
 import type { Config } from "../config.ts";
@@ -36,6 +38,7 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
   return new Map([
     ["verification.run", verifyNode(deps)],
     ["pr.create", openPrNode(deps)],
+    ["spec.write", specWriteNode(deps)],
     ["pr.review", reviewPrNode(deps)],
     ["pr.comment", commentPrNode(deps)],
     ["team.integrate", integrateNode(deps)],
@@ -66,6 +69,52 @@ function approvalNode(deps: Deps): ActionExecutor {
       const choice = task.choices?.length ? (deps.store.decidedChoice(task.id) ?? task.choices[0]) : undefined;
       const outputs = { approved: true, ...(choice !== undefined ? { choice } : {}) };
       return { status: "succeeded", summary: choice !== undefined ? `approved: ${choice}` : "approved", artifacts: [], claims: [], usage: [], outputs, cost: 0, durationMs: 0 };
+    },
+  };
+}
+
+/**
+ * Checks the spec-writer's claims against the code and writes `.navarch/specs/` into the run's
+ * worktree, committed on its branch (spec §6.8.1, ADR 0045). The only files it writes are the
+ * spec files, whatever the agent asked for. Unusable drafts do not fail the task: the Flow's
+ * loop sends the errors back to the writer.
+ */
+function specWriteNode(deps: Deps): ActionExecutor {
+  return {
+    action: "spec.write",
+    describe: () => "Check the spec-writer's claims against the code and write the verified specs to .navarch/specs/ in the run's worktree.",
+    async execute({ run, task }) {
+      const started = Date.now();
+      try {
+        const sandbox = sharedSandbox(deps.store, run);
+        const { drafts, errors } = parseSpecDrafts(latestSummary(deps.store, run.id, "spec-writer") ?? "");
+        if (!drafts.length) {
+          const reason = `no usable spec: ${errors.join("; ")}`;
+          return { status: "succeeded", summary: reason, artifacts: [], claims: [], usage: [], outputs: { saved: false, errors: errors.join("\n") }, cost: 0, durationMs: Date.now() - started };
+        }
+        const specs = await verifyDrafts(sandbox.path, drafts);
+        const generatedAt = new Date().toISOString();
+        const meta = { runId: run.id, generatedAt };
+        const dir = join(sandbox.path, ".navarch", "specs");
+        await mkdir(dir, { recursive: true });
+        const files: string[] = [];
+        for (const spec of specs) {
+          await writeFile(join(dir, `${spec.component}.md`), renderSpec(spec, meta));
+          files.push(`.navarch/specs/${spec.component}.md`);
+        }
+        const index = renderIndex(specs, meta);
+        await writeFile(join(dir, "index.md"), index.markdown);
+        await writeFile(join(dir, "index.json"), index.json);
+        files.push(".navarch/specs/index.md", ".navarch/specs/index.json");
+        await commitAll(sandbox, `docs(specs): verified specs for ${specs.map((s) => s.component).join(", ")}\n\nWritten by Navarch for run ${run.id}.`);
+        const c = index.coverage;
+        publish(deps.store, run.id, task.id, runner, "spec.generated", { ...c, branch: sandbox.branch, files });
+        const pct = c.green_rate === null ? "-" : `${Math.round(c.green_rate * 100)} %`;
+        const summary = `${c.components} component(s), ${c.claims} claims: ${c.confirmed} confirmed (${pct}), ${c.inferred} inferred, ${c.gap} gaps; ${c.downgraded} lowered after the evidence check. Written to ${sandbox.branch}.`;
+        return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { saved: true, green_rate: c.green_rate ?? 0, claims: c.claims, errors: errors.join("\n") }, cost: 0, durationMs: Date.now() - started };
+      } catch (err) {
+        return failed("fatal", redact(err instanceof Error ? err.message : String(err)), started);
+      }
     },
   };
 }
