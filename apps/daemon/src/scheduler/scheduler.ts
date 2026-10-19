@@ -16,7 +16,7 @@ const RESET_MARGIN_MS = 5_000;
 /** The smallest cap a billed agent starts with; below it the agent waits for running ones (ADR 0030). */
 const MIN_SHARE = 0.01;
 /** Profiles whose prompt carries the compiled context (ADR 0043). */
-const CONTEXT_PROFILES: ReadonlySet<string> = new Set(["triager", "planner", ...IMPLEMENTING_PROFILES, "researcher", "lead"]);
+const CONTEXT_PROFILES: ReadonlySet<string> = new Set(["triager", "planner", ...IMPLEMENTING_PROFILES, "researcher", "lead", "sublead"]);
 
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
@@ -342,7 +342,8 @@ export class Scheduler {
         baseCommit: run.base_commit,
         adapter: task.adapter,
         ...(sandboxSlug ? { sandboxSlug } : {}),
-        ...(own ? { forkFrom: runSlug } : {}),
+        // A sub-lead's member forks from the sub-lead's worktree, everything else from the run's (ADR 0058).
+        ...(own ? { forkFrom: task.team?.sub && task.team.role === "member" ? `${runSlug}-${task.team.sub}` : runSlug } : {}),
         profile: profile!,
         instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id), context, rules),
         ...(task.model ? { model: task.model } : {}),
@@ -655,5 +656,5 @@ function describeBudget(b: BudgetView): string {
 
 /** Tasks whose failure the Flow engine weighs instead of failing the run at once. */
 function flowDecidesFailure(task: TaskRecord): boolean {
-  return task.team?.role === "member" || task.team?.role === "integrate" || task.compete?.role === "competitor" || task.parallel !== null;
+  return task.team?.role === "member" || task.team?.role === "integrate" || task.team?.sub !== undefined || task.compete?.role === "competitor" || task.parallel !== null;
 }

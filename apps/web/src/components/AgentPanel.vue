@@ -110,7 +110,7 @@ const fileLook: Record<WorktreeFile["status"], { letter: string; tone: string }>
 };
 
 const look = computed(() => nodeLook[props.agent.status]);
-const lead = computed(() => props.agent.team_role === "lead" && props.run.team !== null);
+const lead = computed(() => props.agent.team_role === "lead" && !props.agent.team_sub && props.run.team !== null);
 const thread = computed(() =>
   lead.value && props.run.team
     ? buildLeadThread(events.value, messages.value, tasks.value, props.run.team)

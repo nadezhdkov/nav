@@ -11,6 +11,8 @@ import {
   type CompeteTaskRef,
   type CompeteView,
   type TeamTaskRef,
+  type SubTeamView,
+  type TeamMemberView,
   type TeamView,
   type RepoView,
   type FleetView,
@@ -332,21 +334,10 @@ export class EventStore {
       max_turns: maxTurns,
       lead_task_id: lead?.id ?? null,
       members: state.members.map((m) => {
-        const task = rows.filter((t) => t.node_id === teamTaskId.member(node.id, m.key)).at(-1);
-        return {
-          key: m.key,
-          title: m.title,
-          profile: m.profile,
-          prefer: m.prefer ?? null,
-          depends_on: m.depends_on,
-          group: m.group ?? null,
-          turn: m.turn,
-          task_id: task?.id ?? null,
-          status: m.skipped ? "skipped" : m.status,
-          summary: m.summary ?? null,
-          merge: m.merge ?? null,
-          branch: task?.team?.own_worktree ? (task.branch ?? null) : null,
-        };
+        const sub = m.profile === "sublead" ? subTeamView(`${node.id}.${m.key}`, rows) : null;
+        const view = memberView(node.id, m, rows);
+        // A sub-lead's card says what its team decided, not the raw answer of its own lead turn.
+        return { ...view, summary: sub?.summary ?? view.summary, sub };
       }),
       question: lead?.status === "blocked" && lastPlan?.question ? lastPlan.question : null,
       summary: state.summary ?? null,
@@ -529,9 +520,10 @@ export class EventStore {
           last_activity: activity ?? (fallback ? { text: firstLine(fallback), ts: task.updated_at } : null),
           waiting,
           resumable: resumable(task.adapter),
-          pending_messages: pending.filter((m) => m.task_id === task.id || (m.task_id === null && (!team || team.role === "lead") && !isTerminalTask(task.status))).length,
+          pending_messages: pending.filter((m) => m.task_id === task.id || (m.task_id === null && (!team || (team.role === "lead" && !team.sub)) && !isTerminalTask(task.status))).length,
           team_role: team?.role === "lead" || team?.role === "member" ? team.role : null,
           team_key: team?.key ?? null,
+          team_sub: team?.sub ?? null,
         };
       });
       const flowText = (this.db.prepare("SELECT flow FROM runs WHERE id = ?").get(run.id) as { flow: string | null }).flow;
@@ -1073,6 +1065,34 @@ function toRunView(row: Row): RunView {
     flow: row.flow ? (JSON.parse(String(row.flow)) as RunFlow).definition.metadata.name : null,
     autonomy_level: row.autonomy_level === null || row.autonomy_level === undefined ? null : Number(row.autonomy_level),
   };
+}
+
+type MemberState = ReturnType<typeof teamState>["members"][number];
+
+/** One member of the team `teamId`, from its own task (`<team>.<key>`). */
+function memberView(teamId: string, m: MemberState, rows: TaskRecord[]): Omit<TeamMemberView, "sub"> {
+  const task = rows.filter((t) => t.node_id === teamTaskId.member(teamId, m.key)).at(-1);
+  return {
+    key: m.key,
+    title: m.title,
+    profile: m.profile,
+    prefer: m.prefer ?? null,
+    depends_on: m.depends_on,
+    group: m.group ?? null,
+    turn: m.turn,
+    task_id: task?.id ?? null,
+    status: m.skipped ? "skipped" : m.status,
+    summary: m.summary ?? null,
+    merge: m.merge ?? null,
+    branch: task?.team?.own_worktree ? (task.branch ?? null) : null,
+  };
+}
+
+/** The team a sub-lead leads (ADR 0058): tasks `<team>.<key>.…`, one level deep, always parallel. */
+function subTeamView(subId: string, rows: TaskRecord[]): SubTeamView {
+  const state = teamState(subId, rows.map((t) => ({ node_id: t.node_id, iteration: t.iteration, status: t.status, outputs: t.outputs })), true, true);
+  const lead = rows.filter((t) => t.node_id === teamTaskId.lead(subId)).sort((a, b) => b.iteration - a.iteration)[0];
+  return { turn: state.turns.length, lead_task_id: lead?.id ?? null, summary: state.summary ?? null, members: state.members.map((m) => memberView(subId, m, rows)) };
 }
 
 function toTaskView(row: Row): TaskView {

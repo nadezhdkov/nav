@@ -145,7 +145,7 @@ describe("team runs (ADR 0022)", () => {
     );
     expect(blocked.body.status).not.toBe("failed");
     expect(blocked.body.team).toMatchObject({ turn: 2, question: "Which file name?" });
-    const fleet = await api<FleetView>("GET", "/api/v1/fleet");
+    const fleet = await api<FleetView>("GET", "/api/v1/fleet?window=24h");
     const lead = fleet.body.runs.find((r) => r.id === run.id)!.agents.find((a) => a.team_role === "lead")!;
     expect(lead).toMatchObject({ status: "blocked", waiting: { kind: "question" }, iteration: 2 });
 
@@ -223,5 +223,38 @@ describe("team runs (ADR 0022)", () => {
     const shared = (await api<{ path: string }>("GET", `/api/v1/runs/${run.id}/worktree`)).body;
     expect(readFileSync(join(shared.path, "shared.txt"), "utf8")).toBe("from a and b\n");
     expect(git(shared.path, "status", "--porcelain")).toBe("");
+  });
+
+  it("a sub-lead leads its own members in worktrees of their own and its work merges into the lead's (ADR 0058)", async () => {
+    const { api, claude } = await start("lead-sublead");
+    const run = (await api<RunView>("POST", "/api/v1/runs", { repo_path: repo("test -f x.txt && test -f y.txt"), prompt: "add x.txt and y.txt", flow: "team" })).body;
+    const detail = (await waitFor(() => api<RunDetail>("GET", `/api/v1/runs/${run.id}`), (r) => ["done", "failed"].includes(r.body.status))).body;
+    expect(detail.status, JSON.stringify(detail.tasks.map((t) => [t.node_id, t.iteration, t.status, t.error]))).toBe("done");
+
+    const ids = detail.tasks.map((t) => t.node_id);
+    expect(ids).toEqual(expect.arrayContaining(["team.lead", "team.svc.lead", "team.svc.x", "team.svc.y", "team.svc.x.integrate", "team.svc.y.integrate", "team.svc.verify", "team.svc", "team.verify"]));
+    expect(detail.tasks.find((t) => t.node_id === "team.svc.lead")).toMatchObject({ profile: "sublead", status: "succeeded" });
+
+    // The sub-lead works in a worktree of its own, forked from the run's; its members fork from that.
+    const cwd = (needle: string) => claude.calls().find((c) => c.prompt.includes(needle))!.cwd;
+    expect(cwd("The service")).toMatch(new RegExp(`${run.id}-team-svc$`));
+    expect(cwd("Create x.txt")).toMatch(new RegExp(`${run.id}-team-svc\\.x$`));
+    expect(cwd("Create y.txt")).toMatch(new RegExp(`${run.id}-team-svc\\.y$`));
+
+    // Both members reached the run's worktree through the sub-lead's.
+    const shared = (await api<{ branch: string; files: { path: string }[] }>("GET", `/api/v1/runs/${run.id}/worktree`)).body;
+    expect(shared.branch).toBe(`navarch/${run.id}/team`);
+    expect(shared.files.map((f) => f.path).sort()).toEqual(["x.txt", "y.txt"]);
+    expect(detail.team!.members.find((m) => m.key === "svc")).toMatchObject({ profile: "sublead", status: "succeeded" });
+    // The sub-team reaches the API as the sub-lead's member view; its tasks are not the team's lead.
+    const svc = detail.team!.members.find((m) => m.key === "svc")!;
+    expect(svc.sub).toMatchObject({ turn: 2, lead_task_id: detail.tasks.filter((t) => t.node_id === "team.svc.lead").at(-1)!.id });
+    expect(svc.sub!.members.map((m) => [m.key, m.status, m.merge])).toEqual([["x", "succeeded", "merged"], ["y", "succeeded", "merged"]]);
+    expect(detail.team!.lead_task_id).toBe(detail.tasks.filter((t) => t.node_id === "team.lead").at(-1)!.id);
+    const fleet = (await api<FleetView>("GET", "/api/v1/fleet?window=24h")).body;
+    const agents = fleet.runs.find((r) => r.id === run.id)!.agents;
+    expect(agents.find((a) => a.node_id === "team.svc.lead")).toMatchObject({ team_role: "lead", team_sub: "svc" });
+    expect(agents.find((a) => a.node_id === "team.svc.x")).toMatchObject({ team_role: "member", team_key: "x", team_sub: "svc" });
+    expect(agents.find((a) => a.node_id === "team.lead")).toMatchObject({ team_sub: null });
   });
 });

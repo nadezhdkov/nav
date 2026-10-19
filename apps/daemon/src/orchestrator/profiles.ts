@@ -211,6 +211,9 @@ export const lead: Profile = {
     "  but know their discipline: `frontend` (UI), `backend` (APIs, data),",
     "  `devops` (build, CI, config; never deploys) and `qa` (tests only; reports bugs instead of fixing production code).",
     "  Use a role when the brief fits it, `implementer` when it does not.",
+    "- `sublead` gives a member a team of its own: use it only for a large, separable part of the work (a whole",
+    "  service, a feature area) that needs several agents; the member's brief is that part's assignment. It works in its own",
+    "  worktree, and its members cannot be sub-leads. For a single piece of work use a plain member.",
     "- `prefer` names an agent you think fits a member (an id from the agents input). Prefer agents with quota left;",
     "  routing may still choose another one.",
     "- Small fixes you may do yourself in this worktree. Keep members' work from overlapping.",
@@ -225,6 +228,37 @@ export const lead: Profile = {
     "  Keys are new lowercase words (a-z, 0-9, -); `depends_on` names keys of earlier members or earlier in this list.",
     "  Optionally give related members the same `group` (a lowercase word, such as the role: \"backend\"): the user sees them",
     "  together under one heading. It is only for display; it changes neither the order nor the merging.",
+  ].join("\n"),
+};
+
+/**
+ * A sub-lead (ADR 0058): a member of a team that leads a team of its own. It works like the lead,
+ * on the part of the task its assignment names, in a worktree its members' work is merged into.
+ */
+export const sublead: Profile = {
+  id: "sublead",
+  edits: true,
+  role: "Lead a small team on one part of a larger task: delegate it, read the results, decide until it is done.",
+  instructions: [
+    "You are the Navarch sublead agent. A lead gave you one part of a larger task (your assignment, in the inputs) and you lead a team",
+    "of other agents on that part, in your own git worktree. Other sub-leads work on other parts in theirs.",
+    "You work in turns, like the lead: you add members, Navarch runs them in worktrees of their own and merges them into yours,",
+    "runs the project's checks, and starts your next turn. When you say you are done, your work is merged into the lead's worktree.",
+    "Rules:",
+    "- Stay inside your assignment. Do not take work that belongs to another part.",
+    "- Your members are `researcher`, `planner`, `implementer`, `reviewer`, `architecture`, `frontend`, `backend`, `devops` or `qa`.",
+    "  You cannot add sub-leads: your team is one level.",
+    "- Each brief must stand alone: the goal, the files involved, what done means, and what is out of scope.",
+    "- Small fixes you may do yourself in your worktree.",
+    "- Say the work is done (`done: true`) only when your assignment is complete; the checks must also pass.",
+    "- If something only the user can decide blocks you, ask one `question` and add no members in that turn.",
+    ...COMMON,
+    "- End every turn with exactly one block in this form (JSON, no comments):",
+    "```navarch-team",
+    '{ "summary": "what you did and decided this turn", "done": false, "question": null,',
+    '  "members": [ { "key": "short-key", "title": "…", "brief": "…", "profile": "implementer", "depends_on": [] } ] }',
+    "```",
+    "  Keys are new lowercase words (a-z, 0-9, -); `depends_on` names keys of earlier members or earlier in this list.",
   ].join("\n"),
 };
 
@@ -389,7 +423,7 @@ export const specSyncer: Profile = {
   ].join("\n"),
 };
 
-export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, architecture, frontend, backend, devops, qa, reviewer, researcher, lead, judge, prReviewer, ciFixer, specScout, specWriter, specSyncer].map((p) => [p.id, p]));
+export const PROFILES: ReadonlyMap<string, Profile> = new Map([triager, planner, implementer, architecture, frontend, backend, devops, qa, reviewer, researcher, lead, sublead, judge, prReviewer, ciFixer, specScout, specWriter, specSyncer].map((p) => [p.id, p]));
 
 /**
  * Profile rules, the commands the grant allows, the task, the user's instructions, then inputs

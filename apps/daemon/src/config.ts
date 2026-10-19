@@ -75,7 +75,7 @@ const Routing = z
         expert: z.array(z.string()).default(["claude-code", "copilot"]),
       })
       .prefault({}),
-    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", architecture: "expert", frontend: "standard", backend: "standard", devops: "standard", qa: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", approver: "standard", lead: "expert", researcher: "fast", judge: "expert", "pr-reviewer": "standard", "ci-fixer": "standard", "spec-scout": "standard", "spec-writer": "standard", "spec-syncer": "standard" }),
+    profiles: z.record(z.string(), Tier).default({ triager: "fast", planner: "expert", implementer: "standard", architecture: "expert", frontend: "standard", backend: "standard", devops: "standard", qa: "standard", reviewer: "standard", concierge: "fast", inbox: "fast", approver: "standard", lead: "expert", sublead: "expert", researcher: "fast", judge: "expert", "pr-reviewer": "standard", "ci-fixer": "standard", "spec-scout": "standard", "spec-writer": "standard", "spec-syncer": "standard" }),
     simple_max_complexity: z.number().int().min(0).max(5).default(2),
     different_provider: z.array(z.string()).default(["reviewer", "judge"]),
     /** A candidate whose quota window is at least this used goes after the others in its tier (ADR 0023). */

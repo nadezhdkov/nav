@@ -18,7 +18,9 @@ Navarch then runs the members in dependency order. By default, members whose dep
 
 The team ends when the lead says it is done and the checks pass. It fails after 8 turns or 12 members. Members get only their brief and short summaries of their dependencies, which keeps their context small.
 
-In the Fleet tree the lead sits above its members, with "delegates", "after" and "reports" links, and **lead chat** shows the conversation across turns.
+For a large, separable part of the work the lead may give a member the profile `sublead`. A **sub-lead** leads a small team of its own on that part, in its own worktree: its members work in worktrees forked from the sub-lead's and are merged into it, and when its team is done the sub-lead's work is merged into the run's like any editing member. A sub-team goes one level deep (a sub-lead cannot add sub-leads) and is bounded: at most three sub-leads per team, and four turns and six members per sub-team. A sub-lead may ask you a question like the lead.
+
+In the Fleet tree the lead sits above its members (and a sub-lead above its own), with "delegates", "after" and "reports" links, and **lead chat** shows the conversation across turns.
 
 ## Compete mode
 

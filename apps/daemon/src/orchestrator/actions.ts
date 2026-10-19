@@ -27,7 +27,7 @@ import type { EventStore, RunRecord, TaskRecord } from "../events/store.ts";
 import type { GitHubIntegration } from "../github/integration.ts";
 import type { ActionExecutor } from "../scheduler/scheduler.ts";
 import { prBody, prTitle, type PrBodyInput } from "./issue.ts";
-import { ownsWorktree } from "./worktrees.ts";
+import { ownsWorktree, ownWorktreeKey } from "./worktrees.ts";
 
 type Deps = { home: string; config: Config; store: EventStore; github: GitHubIntegration };
 
@@ -45,6 +45,7 @@ export function buildActions(deps: Deps): Map<string, ActionExecutor> {
     ["pr.review", reviewPrNode(deps)],
     ["pr.comment", commentPrNode(deps)],
     ["team.integrate", integrateNode(deps)],
+    ["team.subteam", subteamNode()],
     ["compete.compare", compareNode(deps)],
     ["compete.adopt", adoptNode(deps)],
     ["approval", approvalNode(deps)],
@@ -278,8 +279,8 @@ function verifyNode(deps: Deps): ActionExecutor {
     describe: (run) => `Run ${run.verify.length} verify command(s) ${run.isolation ? `in a container (${run.isolation.image}, network ${run.isolation.network}) on` : "in"} the run's worktree: ${run.verify.map((c) => c.run).join("; ")}`,
     async execute({ run, task, attempt, signal }) {
       const started = Date.now();
-      // A competitor's checks run in its own worktree (ADR 0031).
-      const sandbox = task.compete?.key ? competitorSandbox(deps.store, run, task.compete) : implementSandbox(deps.store, run);
+      // A competitor's checks run in its own worktree (ADR 0031), a sub-lead team's in the sub-lead's (ADR 0058).
+      const sandbox = task.compete?.key ? competitorSandbox(deps.store, run, task.compete) : task.team?.sub ? ownSandbox(deps.store, run, task.team.sub) : implementSandbox(deps.store, run);
       const log = await openLog(deps.home, run.id, task.id, attempt);
       try {
         const files = await changedFiles(sandbox);
@@ -328,13 +329,15 @@ function verifyNode(deps: Deps): ActionExecutor {
 function integrateNode(deps: Deps): ActionExecutor {
   return {
     action: "team.integrate",
-    describe: (run, task) => `Merge team member ${task.inputs.member ?? "?"}'s branch into the run's worktree (${sharedSandbox(deps.store, run).branch}).`,
+    describe: (run, task) => `Merge team member ${task.inputs.member ?? "?"}'s branch into ${task.team?.sub ? `sub-lead ${task.team.sub}'s` : "the run's"} worktree (${integrationTarget(deps.store, run, task).branch}).`,
     async execute({ run, task }) {
       const started = Date.now();
       const key = task.team?.key ?? task.inputs.member;
-      const member = deps.store.taskRecordsOfRun(run.id).filter((t) => task.team && t.node_id === `${task.team.node_id}.${key}` && t.sandbox_path && t.branch).at(-1);
+      // A member's work is in the worktree it owns; a sub-lead's is the one its team shares (ADR 0058).
+      const slug = task.team?.sub ? `${task.team.sub}.${key}` : key;
+      const member = deps.store.taskRecordsOfRun(run.id).filter((t) => ownWorktreeKey(t) === slug && t.sandbox_path && t.branch).at(-1);
       if (!key || !member) return failed("fatal", `no worktree for team member ${key}`, started);
-      const target = sharedSandbox(deps.store, run);
+      const target = integrationTarget(deps.store, run, task);
       const source = { path: member.sandbox_path!, branch: member.branch! };
       try {
         const result = task.iteration > 1
@@ -345,6 +348,23 @@ function integrateNode(deps: Deps): ActionExecutor {
       } catch (err) {
         return failed("fatal", redact(err instanceof Error ? err.message : String(err)), started);
       }
+    },
+  };
+}
+
+/**
+ * Closes a sub-lead's team (ADR 0058): the task the main team reads as the sub-lead's work. It
+ * does nothing itself; it records that the sub-team ended, and fails when the sub-team could not finish.
+ */
+function subteamNode(): ActionExecutor {
+  return {
+    action: "team.subteam",
+    describe: (_run, task) => `Close sub-lead ${task.inputs.member ?? "?"}'s team.`,
+    async execute({ task }) {
+      const started = Date.now();
+      if (task.inputs.failed) return failed("fatal", `sub-team ${task.inputs.member ?? "?"} did not finish: ${task.inputs.failed}`, started);
+      const summary = String(task.inputs.team_summary ?? "the sub-team finished");
+      return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { summary }, cost: 0, durationMs: Date.now() - started };
     },
   };
 }
@@ -684,6 +704,18 @@ function agentOfTask(store: EventStore, runId: string, task: TaskRecord): string
 function implementSandbox(store: EventStore, run: RunRecord): SandboxHandle {
   const task = implementTask(store, run);
   return { id: task.sandbox_id ?? "", kind: "worktree", path: task.sandbox_path!, branch: task.branch!, baseCommit: run.base_commit };
+}
+
+/** The worktree a task owns (a sub-lead's, ADR 0058), found through the tasks that worked in it. */
+function ownSandbox(store: EventStore, run: RunRecord, slug: string): SandboxHandle {
+  const task = store.taskRecordsOfRun(run.id).find((t) => ownWorktreeKey(t) === slug && t.sandbox_path && t.branch);
+  if (!task) throw new Error(`run ${run.id} has no worktree ${slug}`);
+  return { id: task.sandbox_id ?? "", kind: "worktree", path: task.sandbox_path!, branch: task.branch!, baseCommit: run.base_commit };
+}
+
+/** Where a member's merge lands: the sub-lead's worktree for its team's members, else the run's shared one. */
+function integrationTarget(store: EventStore, run: RunRecord, task: TaskRecord): SandboxHandle {
+  return task.team?.sub ? ownSandbox(store, run, task.team.sub) : sharedSandbox(store, run);
 }
 
 /** The run's shared worktree: the first agent's, never a parallel member's own. */

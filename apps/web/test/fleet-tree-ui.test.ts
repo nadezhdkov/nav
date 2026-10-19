@@ -19,7 +19,7 @@ function agent(over: Partial<FleetAgent> = {}): FleetAgent {
     id: "task_impl", run_id: "run_1", node_id: "implement", type: "agent", status: "running", attempt: 1, max_attempts: 3,
     profile: "implementer", adapter: "claude-code", model: "sonnet", sandbox_path: "/w", branch: "navarch/run_1/task", cost: 0.1, plan_cost: 0, summary: null,
     error: null, not_before: null, updated_at: "2026-10-15T01:00:00Z", iteration: 1, last_activity: null, waiting: null, resumable: true,
-    pending_messages: 1, team_role: null, team_key: null, ...over,
+    pending_messages: 1, team_role: null, team_key: null, team_sub: null, ...over,
   };
 }
 function run(over: Partial<FleetRun> = {}): FleetRun {
@@ -81,7 +81,7 @@ describe("Chat threads (slice 10)", () => {
   it("joins every lead turn, the members each added, the question and the user's instructions to the run", () => {
     const team: TeamView = {
       node_id: "team", turn: 2, max_turns: 8, lead_task_id: "lead_2", question: "Which database?", summary: null, plan_errors: [],
-      members: [{ key: "api", title: "API", profile: "implementer", prefer: null, depends_on: [], group: null, turn: 1, task_id: "m1", status: "succeeded", summary: "ok", merge: null, branch: null }],
+      members: [{ key: "api", title: "API", profile: "implementer", prefer: null, depends_on: [], group: null, turn: 1, task_id: "m1", status: "succeeded", summary: "ok", merge: null, branch: null, sub: null }],
       subagents: [],
     };
     const tasks = [{ id: "lead_1", node_id: "team.lead", iteration: 1 }, { id: "lead_2", node_id: "team.lead", iteration: 2 }, { id: "m1", node_id: "team.api", iteration: 1 }] as TaskView[];

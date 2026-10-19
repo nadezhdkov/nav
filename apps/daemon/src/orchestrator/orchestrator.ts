@@ -344,7 +344,7 @@ export class Orchestrator {
           // A node's own `adapter` pins it; otherwise a routed run lets the Model Router choose at dispatch.
           // Team members are routed whenever routing is on, so the lead's preference counts (ADR 0022),
           // and so are competitors, which must differ (ADR 0031).
-          const routed = agent && !node.adapter && (run.routing === "auto" || ((team?.role === "member" || compete?.role === "competitor") && this.config.routing.enabled));
+          const routed = agent && !node.adapter && (run.routing === "auto" || ((team?.role === "member" || team?.sub !== undefined || compete?.role === "competitor") && this.config.routing.enabled));
           const inputs = node.type === "approval"
             ? Object.fromEntries(step.start.show.flatMap(({ path, value }) => (renderValue(value) ? [[path, renderValue(value)!]] : [])))
             : renderInputs(step.start.inputs);

@@ -106,7 +106,7 @@ export const RunFlow = z.object({
 export type RunFlow = z.infer<typeof RunFlow>;
 
 /** A member of a team as the run's tasks show it (ADR 0022). */
-export const TeamMemberView = z.object({
+const TeamMemberBase = z.object({
   key: z.string(),
   title: z.string(),
   profile: z.string(),
@@ -124,6 +124,22 @@ export const TeamMemberView = z.object({
   merge: z.enum(["pending", "merging", "resolving", "merged", "conflict"]).nullable(),
   /** The member's own branch in a parallel team. */
   branch: z.string().nullable(),
+});
+
+/** What a sub-lead's own team looks like (ADR 0058): its members, one level deep. */
+export const SubTeamView = z.object({
+  turn: z.number().int(),
+  /** The sub-lead's latest lead turn. */
+  lead_task_id: z.string().nullable(),
+  /** The summary of the sub-lead's latest valid plan. */
+  summary: z.string().nullable(),
+  members: z.array(TeamMemberBase),
+});
+export type SubTeamView = z.infer<typeof SubTeamView>;
+
+export const TeamMemberView = TeamMemberBase.extend({
+  /** The team a `sublead` member leads; null for every other member. */
+  sub: SubTeamView.nullable(),
 });
 export type TeamMemberView = z.infer<typeof TeamMemberView>;
 
@@ -375,6 +391,8 @@ export const FleetAgent = TaskView.extend({
   /** Its part in a team (ADR 0022), and the member key. */
   team_role: z.enum(["lead", "member"]).nullable(),
   team_key: z.string().nullable(),
+  /** The sub-lead whose team it belongs to (ADR 0058); null in the main team. */
+  team_sub: z.string().nullable(),
 });
 export type FleetAgent = z.infer<typeof FleetAgent>;
 

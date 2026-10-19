@@ -20,7 +20,7 @@ export const IMPLEMENTING_PROFILES: readonly string[] = ["implementer", ...IMPLE
 export const ROLE_PROFILES = ["architecture", ...IMPLEMENTING_ROLES] as const;
 
 /** Profiles a lead may give a member. */
-export const TeamMemberProfile = z.enum(["planner", "researcher", "implementer", ...ROLE_PROFILES, "reviewer"]);
+export const TeamMemberProfile = z.enum(["planner", "researcher", "implementer", ...ROLE_PROFILES, "reviewer", "sublead"]);
 export type TeamMemberProfile = z.infer<typeof TeamMemberProfile>;
 
 export const TeamMemberKey = z.string().regex(/^[a-z0-9][a-z0-9-]{0,31}$/, "member keys are 1–32 lowercase letters, digits and -");
@@ -65,8 +65,16 @@ export const TeamTaskRef = z.object({
   key: z.string().optional(),
   /** A parallel member works in its own worktree, forked from the run's (ADR 0029). */
   own_worktree: z.boolean().optional(),
+  /**
+   * The sub-lead whose team this task belongs to (ADR 0058). `node_id` is still the main team's; the
+   * sub-lead's work lives in the worktree `<sub>`, and its members' in `<sub>.<key>`.
+   */
+  sub: TeamMemberKey.optional(),
 });
 export type TeamTaskRef = z.infer<typeof TeamTaskRef>;
+
+/** Names of the tasks a team makes for itself (`<team>.lead`, `.verify`, …); a member key cannot take them. */
+export const RESERVED_KEYS: readonly string[] = ["lead", "verify", "approve_plan", "approve-plan", "integrate", "resolve"];
 
 const BLOCK = /```navarch-team[ \t]*\r?\n([\s\S]*?)```/g;
 
@@ -74,7 +82,7 @@ const BLOCK = /```navarch-team[ \t]*\r?\n([\s\S]*?)```/g;
  * Reads the last `navarch-team` block of a lead turn's summary. `earlierKeys` are the members
  * added by earlier turns: new keys must differ from them, and dependencies may name them.
  */
-export function parseTeamPlan(summary: string, earlierKeys: readonly string[] = []): { ok: true; plan: TeamPlan } | { ok: false; error: string } {
+export function parseTeamPlan(summary: string, earlierKeys: readonly string[] = [], options: { nested?: boolean } = {}): { ok: true; plan: TeamPlan } | { ok: false; error: string } {
   const blocks = [...summary.matchAll(BLOCK)];
   const raw = blocks.at(-1)?.[1];
   if (raw === undefined) return { ok: false, error: "no ```navarch-team block at the end of the turn" };
@@ -93,6 +101,8 @@ export function parseTeamPlan(summary: string, earlierKeys: readonly string[] = 
   if (plan.question && plan.members.length) return { ok: false, error: "a turn that asks a question adds no members; ask first, delegate after the answer" };
   const known = new Set(earlierKeys);
   for (const m of plan.members) {
+    if (RESERVED_KEYS.includes(m.key)) return { ok: false, error: `member key "${m.key}" is reserved; pick another` };
+    if (options.nested && m.profile === "sublead") return { ok: false, error: `member "${m.key}": a sub-lead's team cannot have sub-leads` };
     if (known.has(m.key)) return { ok: false, error: `member key "${m.key}" is already used; pick a new key` };
     const missing = m.depends_on.find((d) => !known.has(d));
     if (missing) return { ok: false, error: `member "${m.key}" depends on "${missing}", which is not an earlier member` };
