@@ -163,6 +163,7 @@ export const de: Messages = {
     resolves: "Merge-Konflikt von {key} lösen",
     internal: "{n} interne(r) Sub-Agent(en)",
     internalTag: "intern",
+    group: "{n} Agent(en)",
     subStarted: "arbeitet",
     subFinished: "fertig",
     delegates: "delegiert · Runde {turn}",

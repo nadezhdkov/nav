@@ -163,6 +163,7 @@ export const es: Messages = {
     resolves: "Resolver el conflicto de {key}",
     internal: "{n} subagente(s) interno(s)",
     internalTag: "interno",
+    group: "{n} agente(s)",
     subStarted: "trabajando",
     subFinished: "terminado",
     delegates: "delega · turno {turn}",

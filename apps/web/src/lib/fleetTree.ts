@@ -7,7 +7,7 @@ import type { NodeState } from "./graph.ts";
  * the lead's internal sub-agents. Grouping and layout only; every state comes from `FleetView`.
  */
 
-export type TreeNodeKind = "project" | "run" | "agent" | "subagents" | "subagent";
+export type TreeNodeKind = "project" | "run" | "agent" | "group" | "subagents" | "subagent";
 
 type Base = { id: string; parent: string | null; children: string[]; position: { x: number; y: number }; width: number; height: number };
 
@@ -25,6 +25,8 @@ export type TreeNode =
       /** The member key whose merge conflict this agent resolves, in a parallel team (ADR 0029). */
       resolves?: string;
     })
+  /** A heading over the members the lead put in one group (ADR 0051); presentation only. */
+  | (Base & { kind: "group"; run: FleetRun; name: string; members: TeamMemberView[]; worst: NodeState | null })
   | (Base & { kind: "subagents"; run: FleetRun; count: number; expanded: boolean })
   | (Base & { kind: "subagent"; run: FleetRun; subagent: TeamView["subagents"][number] });
 
@@ -38,6 +40,7 @@ export const SIZE: Record<TreeNodeKind | "lead", { width: number; height: number
   run: { width: 300, height: 128 },
   agent: { width: 264, height: 196 },
   lead: { width: 320, height: 236 },
+  group: { width: 220, height: 56 },
   subagents: { width: 220, height: 40 },
   subagent: { width: 220, height: 60 },
 };
@@ -49,6 +52,7 @@ const SEVERITY: NodeState[] = ["failed", "blocked", "waiting_approval", "interru
 
 export const runNodeId = (runId: string) => `run:${runId}`;
 export const agentNodeId = (runId: string, nodeId: string) => `agent:${runId}:${nodeId}`;
+export const groupNodeId = (runId: string, name: string) => `group:${runId}:${name}`;
 export const subagentsNodeId = (runId: string) => `subagents:${runId}`;
 
 const trim = (path: string) => path.replace(/\/+$/, "");
@@ -131,12 +135,27 @@ export function buildFleetTree(
     if (!team) return;
     const leadId = lead ? agentNodeId(run.id, lead.node_id) : id;
 
+    // Members the lead grouped hang under a heading, which hangs under the lead; the others stay under the lead.
+    const headings = new Map<string, string>();
     for (const member of team.members) {
       const agent = memberAgents.get(member.key) ?? null;
       const nodeId = agentNodeId(run.id, `${team.node_id}.${member.key}`);
-      add({ kind: "agent", ...base(nodeId, leadId, SIZE.agent), run, agent, role: "member", member, team });
+      let parentId = leadId;
+      if (member.group) {
+        parentId = headings.get(member.group) ?? "";
+        if (!parentId) {
+          parentId = groupNodeId(run.id, member.group);
+          headings.set(member.group, parentId);
+          const grouped = team.members.filter((m) => m.group === member.group);
+          const statuses = grouped.map((m) => (memberAgents.get(m.key)?.status ?? "not_started") as NodeState);
+          const worst = SEVERITY.find((s) => statuses.includes(s)) ?? null;
+          add({ kind: "group", ...base(parentId, leadId, SIZE.group), run, name: member.group, members: grouped, worst });
+          link(leadId, parentId, lead ? "delegates" : "tree", grouped.some((m) => memberAgents.get(m.key)?.status === "running"), lead ? member.turn : undefined);
+        }
+      }
+      add({ kind: "agent", ...base(nodeId, parentId, SIZE.agent), run, agent, role: "member", member, team });
       const running = agent?.status === "running";
-      link(leadId, nodeId, lead ? "delegates" : "tree", running, lead ? member.turn : undefined);
+      link(parentId, nodeId, member.group ? "tree" : lead ? "delegates" : "tree", running, !member.group && lead ? member.turn : undefined);
       if (lead && (member.status === "succeeded" || member.status === "failed")) link(nodeId, leadId, "reports", false);
     }
     for (const [agentId, key] of resolvers) {

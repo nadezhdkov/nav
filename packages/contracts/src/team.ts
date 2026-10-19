@@ -35,6 +35,11 @@ export const TeamMemberSpec = z.strictObject({
   prefer: z.string().min(1).max(80).optional(),
   /** Members (of this or earlier turns) that must finish first. */
   depends_on: z.array(TeamMemberKey).default([]),
+  /**
+   * A label that clusters members under one heading in the Fleet tree (ADR 0051), such as the role's
+   * key. Presentation only: it changes neither the order members run in nor how they are merged.
+   */
+  group: TeamMemberKey.optional(),
 });
 export type TeamMemberSpec = z.infer<typeof TeamMemberSpec>;
 

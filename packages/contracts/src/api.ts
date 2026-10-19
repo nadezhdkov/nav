@@ -112,6 +112,8 @@ export const TeamMemberView = z.object({
   profile: z.string(),
   prefer: z.string().nullable(),
   depends_on: z.array(z.string()),
+  /** The group the lead put it in, drawn as one heading over its members (ADR 0051). */
+  group: z.string().nullable(),
   /** The lead turn that added it. */
   turn: z.number().int(),
   task_id: z.string().nullable(),

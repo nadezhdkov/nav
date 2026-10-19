@@ -80,7 +80,7 @@ switch (scenario) {
       out({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: "toolu_lead1", content: "small repo" }] } });
       const plan = scenario === "lead-question"
         ? { summary: "I need to ask first.", done: false, question: "Which file name?" }
-        : { summary: "One member adds the file.", done: false, members: [{ key: "api", title: "Add codex.txt", brief: "Create codex.txt.", profile: "implementer", prefer: "codex" }] };
+        : { summary: "One member adds the file.", done: false, members: [{ key: "api", title: "Add codex.txt", brief: "Create codex.txt.", profile: "implementer", prefer: "codex", group: "backend" }] };
       result(true, "Planning the team.\n" + team(plan));
     } else {
       result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);

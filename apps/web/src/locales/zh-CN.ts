@@ -163,6 +163,7 @@ export const zhCN: Messages = {
     resolves: "解决 {key} 的合并冲突",
     internal: "{n} 个内部子智能体",
     internalTag: "内部",
+    group: "{n} 个智能体",
     subStarted: "工作中",
     subFinished: "已完成",
     delegates: "委派 · 第 {turn} 轮",
