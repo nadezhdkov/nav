@@ -4,17 +4,36 @@
 # `.navarch/specs/` and commits it on the run's branch. `pr.specs` then pushes that branch and opens
 # a draft PR (ADR 0048); below autonomy level 3 it waits for the user's approval first.
 # Needs a registered project; `--param open_pr=false` keeps the specs on the branch only.
+#
+# Modes (ADR 0055). Autonomous is the default and asks nothing. `--param interview=true` adds a
+# scout that proposes the components and asks its questions up front, then waits for you: answer
+# with `navarch say <run> "<answers>"` and approve. `--param review=true` also waits for your
+# approval of the written specs before the PR. Both together are the guided mode.
 apiVersion: navarch/v1
 kind: Flow
 metadata:
   name: reverse-spec
-  description: Read the code in a scope, write verified, traceable specs to .navarch/specs/ on the run's branch and open a draft PR with them.
+  description: Read the code in a scope, write verified, traceable specs to .navarch/specs/ on the run's branch and open a draft PR with them; optionally interview you first and wait for your review.
 params:
   max_attempts: { type: int, default: 2 }
   # false keeps the specs on the run's branch and opens no PR (--param open_pr=false).
   open_pr: { type: bool, default: true }
+  # true: a scout proposes the components and asks its questions, and the run waits for your answers.
+  interview: { type: bool, default: false }
+  # true: the run waits for your approval of the written specs before the PR.
+  review: { type: bool, default: false }
 
 nodes:
+  - id: scout
+    type: agent
+    profile: spec-scout
+    when: ${{ params.interview }}
+
+  - id: approve_scope
+    type: approval
+    when: ${{ params.interview }}
+    show: [nodes.scout.outputs.summary]
+
   - id: spec_loop
     type: loop
     max_iterations: ${{ params.max_attempts }}
@@ -24,10 +43,16 @@ nodes:
         type: agent
         profile: spec-writer
         inputs:
+          scope: ${{ nodes.scout.outputs.summary }}
           previous_failures: ${{ nodes.save.outputs.errors }}
       - id: save
         type: action
         uses: spec.write
+
+  - id: approve_specs
+    type: approval
+    when: ${{ params.review }}
+    show: [nodes.save.outputs.summary]
 
   - id: open_pr
     type: github
@@ -36,4 +61,7 @@ nodes:
     with: { draft: true }
 
 edges:
-  - spec_loop -> open_pr
+  - scout -> approve_scope
+  - approve_scope -> spec_loop
+  - spec_loop -> approve_specs
+  - approve_specs -> open_pr

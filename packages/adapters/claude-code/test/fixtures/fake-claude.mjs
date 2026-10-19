@@ -191,6 +191,9 @@ switch (scenario) {
         };
         result(true, `Done.\n\n\`\`\`navarch-addendum\n${JSON.stringify(addendum)}\n\`\`\``);
       }
+    } else if (prompt.includes("Navarch spec-scout agent")) {
+      // The spec-scout (ADR 0055): one component and one question for the user.
+      result(true, "Components\n- auth: login and sessions, in src/auth.ts\n\nQuestions\n1. Should login lock the account after repeated failures?");
     } else if (!prompt.includes("Navarch spec-writer agent")) {
       result(true, "ok");
     } else if (!prompt.includes('<input name="previous_failures">')) {
