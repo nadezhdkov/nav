@@ -92,8 +92,11 @@ export type RouteDecision = {
   skipped: { id: string; reason: string }[];
 };
 
-const ESCALATED_PROFILES = new Set(["implementer"]);
-const SIMPLE_PROFILES = new Set(["planner", "implementer"]);
+// The router has no dependencies; the role names mirror IMPLEMENTING_PROFILES in `@navarch/contracts`
+// (a test keeps them equal).
+const IMPLEMENTING = ["implementer", "frontend", "backend", "devops", "qa"];
+const ESCALATED_PROFILES = new Set(IMPLEMENTING);
+const SIMPLE_PROFILES = new Set(["planner", ...IMPLEMENTING]);
 
 export function tierFor(config: RouterConfig, req: Pick<RouteRequest, "profile" | "complexity" | "iteration">): { tier: Tier; why: string } {
   let tier: Tier = config.profiles[req.profile] ?? "standard";

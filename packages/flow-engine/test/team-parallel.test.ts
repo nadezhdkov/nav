@@ -49,6 +49,15 @@ describe("parallel team members (ADR 0029)", () => {
     expect(startAll(tasks)).toEqual(["team.b.integrate#1", "team.d#1"]);
   });
 
+  it("merges an editing role back like an implementer, and a read-only role is not merged", () => {
+    const tasks = [task("team.lead", plan({ members: [member("ui", { profile: "frontend" }), member("t", { profile: "qa" }), member("design", { profile: "architecture" })] }))];
+    expect(startAll(tasks)).toEqual(["team.ui#1", "team.t#1", "team.design#1"]);
+    for (const key of ["ui", "t", "design"]) finish(tasks, `team.${key}`, { summary: `${key} done` });
+    expect(startAll(tasks)).toEqual(["team.ui.integrate#1"]);
+    finish(tasks, "team.ui.integrate", { merged: true });
+    expect(startAll(tasks)).toEqual(["team.t.integrate#1"]);
+  });
+
   it("merges each editing member back one at a time; a dependant waits for its dependency's merge", () => {
     const tasks = [task("team.lead", plan({ members: [member("a"), member("b"), member("c", { depends_on: ["a"] })] }))];
     expect(startAll(tasks)).toEqual(["team.a#1", "team.b#1"]);

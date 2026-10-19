@@ -1,6 +1,6 @@
 import { NativeAdapter, ModelError, chat } from "@navarch/adapter-native";
 import type { AgentRuntime } from "@navarch/agent-runtime";
-import type { Actor, ApprovalView, AwayDelegate, AwayView, SetAwayRequest } from "@navarch/contracts";
+import { IMPLEMENTING_PROFILES, type Actor, type ApprovalView, type AwayDelegate, type AwayView, type SetAwayRequest } from "@navarch/contracts";
 import type { Config } from "../config.ts";
 import type { EventStore, TaskRecord } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
@@ -251,7 +251,7 @@ export class AwayService {
       prompt,
       ...optional("triage", summary((t) => t.profile === "triager")),
       ...optional("plan", summary((t) => t.profile === "planner" || t.profile === "lead")),
-      ...(subject === "pr" ? optional("implementation", summary((t) => t.profile === "implementer")) : {}),
+      ...(subject === "pr" ? optional("implementation", summary((t) => IMPLEMENTING_PROFILES.includes(t.profile))) : {}),
       ...(subject === "pr" ? optional("verification", summary((t) => t.node_id === "verify" || t.uses === "verification.run")) : {}),
       ...(subject === "pr" ? optional("review", summary((t) => t.profile === "reviewer")) : {}),
       canRevise: subject === "plan" && revisions < maxRevisions,

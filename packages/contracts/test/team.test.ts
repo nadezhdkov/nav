@@ -22,6 +22,14 @@ describe("team plan (ADR 0022)", () => {
     });
   });
 
+  it("accepts the role profiles for members, and nothing else", () => {
+    const roles = ["architecture", "frontend", "backend", "devops", "qa"];
+    const parsed = parseTeamPlan(block({ summary: "s", done: false, members: roles.map((r) => member(r, { profile: r })) }));
+    expect(parsed.ok && parsed.plan.members.map((m) => m.profile)).toEqual(roles);
+    const bad = parseTeamPlan(block({ summary: "s", done: false, members: [member("x", { profile: "cto" })] }));
+    expect(bad.ok).toBe(false);
+  });
+
   it("allows depending on members of earlier turns", () => {
     expect(parseTeamPlan(block({ summary: "s", done: false, members: [member("fix", { depends_on: ["api"] })] }), ["api"]).ok).toBe(true);
   });

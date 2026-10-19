@@ -1,6 +1,6 @@
 import type { AgentRuntime, TaskOutcome } from "@navarch/agent-runtime";
 import { compileContext } from "@navarch/knowledge";
-import { canTransitionRun, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type CompiledContext, type NewEvent, type RunStatus } from "@navarch/contracts";
+import { canTransitionRun, IMPLEMENTING_PROFILES, INSTRUCTION_INTERRUPT, isTerminalRun, PAUSE_INTERRUPT, newId, type Actor, type BudgetView, type CompiledContext, type NewEvent, type RunStatus } from "@navarch/contracts";
 import { Budgets } from "../budgets/budgets.ts";
 import { observedFor } from "../budgets/metrics.ts";
 import type { Config } from "../config.ts";
@@ -16,7 +16,7 @@ const RESET_MARGIN_MS = 5_000;
 /** The smallest cap a billed agent starts with; below it the agent waits for running ones (ADR 0030). */
 const MIN_SHARE = 0.01;
 /** Profiles whose prompt carries the compiled context (ADR 0043). */
-const CONTEXT_PROFILES: ReadonlySet<string> = new Set(["triager", "planner", "implementer", "researcher", "lead"]);
+const CONTEXT_PROFILES: ReadonlySet<string> = new Set(["triager", "planner", ...IMPLEMENTING_PROFILES, "researcher", "lead"]);
 
 const scheduler: Actor = { kind: "system", component: "scheduler" };
 
@@ -511,7 +511,7 @@ export class Scheduler {
     const triage = tasks.filter((t) => t.profile === "triager" && t.status === "succeeded").at(-1);
     const complexity = typeof triage?.outputs?.complexity === "number" ? triage.outputs.complexity : undefined;
     const implementerProviders = [
-      ...new Set(tasks.filter((t) => t.profile === "implementer" && t.status === "succeeded").map((t) => this.providerOf(t))),
+      ...new Set(tasks.filter((t) => IMPLEMENTING_PROFILES.includes(t.profile) && t.status === "succeeded").map((t) => this.providerOf(t))),
     ];
     // Budget left, quota headroom and observed failures and costs adjust the order (ADR 0023).
     const now = Date.now();
