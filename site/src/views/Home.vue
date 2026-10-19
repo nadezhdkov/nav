@@ -19,6 +19,7 @@ import AgentMarquee from "../components/AgentMarquee.vue";
 import HeroFlow from "../components/HeroFlow.vue";
 import InstallBlock from "../components/InstallBlock.vue";
 import Showcase from "../components/Showcase.vue";
+import TeamSample from "../components/TeamSample.vue";
 import TerminalDemo from "../components/TerminalDemo.vue";
 import { reveal as vReveal } from "../lib/reveal.ts";
 import { asset, GITHUB } from "../lib/site.ts";
@@ -152,6 +153,19 @@ const PHONES = [
       <p class="mx-auto mt-4 max-w-2xl text-muted" v-reveal="120">Served by the daemon on your machine, updated over its event stream, in five languages, usable by keyboard.</p>
     </div>
     <div class="mt-10" v-reveal="160"><Showcase /></div>
+  </section>
+
+  <!-- Teams of teams -->
+  <section class="mx-auto max-w-6xl px-4 py-24 sm:px-6" aria-labelledby="teams-title">
+    <div class="grid items-center gap-12 lg:grid-cols-[0.85fr_1.15fr]">
+      <div class="min-w-0" v-reveal>
+        <p class="eyebrow">Team mode</p>
+        <h2 id="teams-title" class="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">A lead, sub-leads and their teams.</h2>
+        <p class="mt-4 text-muted">The lead splits the job. It can hand a whole area, such as the front end or the API, to a sub-lead that runs a small team of its own: frontend, backend, QA. Each sub-team works in its own worktree and merges up, so a failed part never takes the rest with it.</p>
+        <RouterLink to="/docs/team-and-compete" class="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent hover:underline">How teams work <ArrowRight :size="16" aria-hidden="true" /></RouterLink>
+      </div>
+      <div class="min-w-0" v-reveal="120"><TeamSample /></div>
+    </div>
   </section>
 
   <!-- Phone -->

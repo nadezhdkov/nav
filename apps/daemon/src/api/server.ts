@@ -61,7 +61,7 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import type { Daemon } from "../daemon.ts";
 import { OrchestratorError } from "../orchestrator/orchestrator.ts";
 import { ownsWorktree } from "../orchestrator/worktrees.ts";
-import { ConciergeError } from "../concierge/service.ts";
+import { ConciergeError, type Origin } from "../concierge/service.ts";
 import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
 import { isRunName } from "../orchestrator/names.ts";
@@ -80,6 +80,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   const actorOf = (req: FastifyRequest): Actor => {
     const caller = callerOf(req);
     return caller.kind === "device" ? { kind: "user", via: "mobile", device_id: caller.deviceId } : { kind: "user", via: viaOf(req.headers) };
+  };
+  const conciergeOriginOf = (req: FastifyRequest): Origin => {
+    const caller = callerOf(req);
+    return caller.kind === "device" ? { via: "mobile", deviceId: caller.deviceId } : { via: viaOf(req.headers) };
   };
   await app.register(websocket);
   // Off everywhere but the routes that opt in with `config.rateLimit`.
@@ -656,20 +660,20 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/concierge/conversations", async (req, reply) => {
     const parsed = CreateConversationRequest.safeParse(req.body ?? {});
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
-    return reply.code(201).send(daemon.concierge.create(parsed.data.cwd, viaOf(req.headers)));
+    return reply.code(201).send(daemon.concierge.create(parsed.data.cwd, conciergeOriginOf(req)));
   });
 
   app.post("/api/v1/concierge/conversations/:id/messages", async (req, reply) => {
     const parsed = ConciergeMessageRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
-    return daemon.concierge.send((req.params as { id: string }).id, parsed.data.text, viaOf(req.headers));
+    return daemon.concierge.send((req.params as { id: string }).id, parsed.data.text, conciergeOriginOf(req));
   });
 
   app.post("/api/v1/concierge/conversations/:id/proposals/:pid", async (req, reply) => {
     const parsed = DecideProposalRequest.safeParse(req.body);
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const { id, pid } = req.params as { id: string; pid: string };
-    return daemon.concierge.decide(id, pid, parsed.data.decision, viaOf(req.headers));
+    return daemon.concierge.decide(id, pid, parsed.data.decision, conciergeOriginOf(req));
   });
 
   // Secrets are write-only through the API (ADR 0007): values are never returned.
@@ -818,7 +822,7 @@ const PUBLIC_ROUTES = new Set(["POST /api/v1/web/exchange", "POST /api/v1/device
 
 /**
  * What a paired device may call (ADR 0020). An allowlist, so a new route stays desktop-only until
- * it is added here. Secrets, pairing, sign-in codes, other devices and the concierge are not.
+ * it is added here. Secrets, pairing, sign-in codes and other devices are not. The concierge is (ADR 0063), limited to its own conversations.
  */
 const DEVICE_ROUTES = new Set([
   "GET /api/v1/health",
@@ -839,6 +843,9 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/approvals/:id",
   "GET /api/v1/artifacts/:id",
   "GET /api/v1/stream",
+  "POST /api/v1/concierge/conversations",
+  "POST /api/v1/concierge/conversations/:id/messages",
+  "POST /api/v1/concierge/conversations/:id/proposals/:pid",
   "GET /api/v1/repos",
   "GET /api/v1/projects",
   "GET /api/v1/projects/:id/map",

@@ -9,6 +9,8 @@ Run `navarch` with no arguments (or `navarch chat`) and ask in plain language:
 
 The **concierge** is an agent that runs inside the daemon and reads Navarch's state on its own: runs, events, approvals, the Inbox, usage.
 
+In a terminal, `navarch` greets you with a small ship and its helmsman, in colour when your terminal supports it (set `NO_COLOR` to turn colour off). Without a terminal, such as in a pipe, it prints one plain line. The same chat is on your phone: see [On your phone](/docs/phone).
+
 ## It proposes, you decide
 
 Read tools run at once. Anything that **changes something** (starting, cancelling, pausing or resuming a run, sending an instruction to its agents, approving or rejecting) becomes a **single-use proposal**. It runs, as you, only after you type `y`.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FileCheck, ScrollText, Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
+import { FileCheck, MessageSquare, ScrollText, Hand, House, ShieldCheck, Inbox, Languages, ListChecks, RefreshCw, Settings, Ship, Smartphone, Wallet, Wifi, WifiOff, Workflow } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { authorized, client, pendingPair, reachable } from "./api/client.ts";
@@ -56,7 +56,7 @@ const items = computed(() => {
   const runsItem = { to: "/runs", label: t("nav.runs"), icon: ListChecks, badge: 0, tone: "neutral" };
   const fleetItem = { to: "/fleet", label: t("nav.fleet"), icon: Ship, badge: fleet.running, tone: "info" };
   const approvalsItem = { to: "/approvals", label: t("nav.approvals"), icon: Hand, badge: approvals.pending.length, tone: "warning" };
-  if (mobile.value) return [home, approvalsItem, runsItem, fleetItem, { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }];
+  if (mobile.value) return [home, { to: "/chat", label: t("nav.chat"), icon: MessageSquare, badge: 0, tone: "neutral" }, approvalsItem, runsItem, fleetItem, { to: "/device", label: t("nav.device"), icon: Smartphone, badge: 0, tone: "neutral" }];
   // The Inbox is a desktop tab; phones reach it from Home.
   const inboxItem = { to: "/inbox", label: t("nav.inbox"), icon: Inbox, badge: inbox.open.length, tone: "info" };
   // Usage is a desktop tab too; phones reach it from Home's cost card.

@@ -27,6 +27,11 @@ export type ToolDeps = {
   actor: () => Actor;
   /** The operator's working directory: the default repository for `start_run`. */
   cwd?: string;
+  /**
+   * Set when a paired phone is talking (ADR 0063): `start_run` then holds to what `POST /runs` lets a
+   * device do, a prompt in a known repository with the daemon's defaults and no attachments.
+   */
+  device?: { knownRepos: () => string[] };
 };
 
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: "object", properties, required, additionalProperties: false });
@@ -276,6 +281,15 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
         return `start a ${flow} run in ${repo}${agent ? ` on ${agent}` : " (routed)"}${competitors}${budget}: ${what}${attach.length ? `, attaching ${attach.join(", ")}` : ""}`;
       },
       run: async (args) => {
+        if (deps.device) {
+          const extra = Object.keys(args).filter((k) => k !== "prompt" && k !== "repo_path" && args[k] !== undefined);
+          if (extra.length) throw new Error(`a paired device cannot set ${extra.join(", ")}`);
+          if (!optionalText(args, "prompt")) throw new Error("a paired device starts runs from a prompt");
+          const asked = optionalText(args, "repo_path");
+          if (!asked || !deps.device.knownRepos().includes(asked)) {
+            throw new Error("a paired device can start runs only in registered projects or repositories of earlier runs");
+          }
+        }
         const repoPath = optionalText(args, "repo_path") ?? deps.cwd;
         const attach = textList(args, "attach");
         const attachments = attach.length ? readAttachments(attach, [repoPath, deps.cwd].filter((r): r is string => !!r)) : undefined;
