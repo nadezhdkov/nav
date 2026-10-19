@@ -90,6 +90,15 @@ const metrics: MetricsView = {
       ],
     },
   },
+  knowledge: {
+    target_reduction: 0.3,
+    min_attempts: 3,
+    context: { attempts: 0, median_est_tokens: null },
+    profiles: [],
+    overall: { with: { attempts: 0, succeeded: 0, success_rate: null, median_input_tokens: null }, without: { attempts: 0, succeeded: 0, success_rate: null, median_input_tokens: null }, reduction: null },
+    pull_requests: { with: { closed: 0, merged: 0, acceptance_rate: null }, without: { closed: 0, merged: 0, acceptance_rate: null } },
+    verdict: "insufficient",
+  },
 };
 
 const global = { plugins: [i18n], stubs: { RouterLink: RouterLinkStub } };
