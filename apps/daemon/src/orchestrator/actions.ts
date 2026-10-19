@@ -114,7 +114,7 @@ function specWriteNode(deps: Deps): ActionExecutor {
         publish(deps.store, run.id, task.id, runner, "spec.generated", { ...c, branch: sandbox.branch, files });
         const pct = c.green_rate === null ? "-" : `${Math.round(c.green_rate * 100)} %`;
         const summary = `${c.components} component(s), ${c.claims} claims: ${c.confirmed} confirmed (${pct}), ${c.inferred} inferred, ${c.gap} gaps; ${c.downgraded} lowered after the evidence check. Written to ${sandbox.branch}.`;
-        return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { saved: true, green_rate: c.green_rate ?? 0, claims: c.claims, errors: errors.join("\n") }, cost: 0, durationMs: Date.now() - started };
+        return { status: "succeeded", summary, artifacts: [], claims: [], usage: [], outputs: { saved: true, summary, green_rate: c.green_rate ?? 0, claims: c.claims, errors: errors.join("\n") }, cost: 0, durationMs: Date.now() - started };
       } catch (err) {
         return failed("fatal", redact(err instanceof Error ? err.message : String(err)), started);
       }
