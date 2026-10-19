@@ -196,6 +196,12 @@ export const defaultRules: PolicyRule[] = [
     effect: "allow",
     reason: "the user turns Away mode on and off, from the desktop or the CLI (ADR 0039)",
   },
+  {
+    match: (r) => r.action === "principles.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user approves and removes a project's rules, from the desktop or the CLI (ADR 0047)",
+  },
+  { match: (r) => r.action === "principles.set", effect: "deny", reason: "only the user changes a project's rules, and not from a paired phone or an agent" },
   { match: (r) => r.action === "away.set", effect: "deny", reason: "only the user turns Away mode on or off, and not from a paired phone" },
   {
     match: (r) => r.action === "approval.delegate" && r.actor.kind === "agent" && r.actor.profile === "approver" && r.context.away?.active === true && r.context.away.delegated === true,

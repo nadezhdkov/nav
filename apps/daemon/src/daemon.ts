@@ -15,6 +15,7 @@ import { Budgets, spends } from "./budgets/budgets.ts";
 import { modelMetrics } from "./budgets/metrics.ts";
 import { ConciergeService } from "./concierge/service.ts";
 import { AwayService } from "./away/service.ts";
+import { PrinciplesService } from "./principles/service.ts";
 import { InboxService } from "./inbox/service.ts";
 import { CiWatcher } from "./github/ci.ts";
 import { PrWatcher } from "./github/outcomes.ts";
@@ -73,6 +74,7 @@ export class Daemon {
   readonly notifier: Notifier;
   readonly inbox: InboxService;
   readonly away: AwayService;
+  readonly principles: PrinciplesService;
   readonly prs: PrWatcher;
   readonly ci: CiWatcher;
   readonly budgets: Budgets;
@@ -112,6 +114,7 @@ export class Daemon {
       const crossed = this.budgets.thresholdEvents(run);
       if (crossed.length) this.store.append(crossed);
     });
+    this.principles = new PrinciplesService({ store: this.store, policy, autonomyLevel: this.config.autonomy_level });
     this.scheduler = new Scheduler({
       store: this.store,
       runtime,
@@ -124,6 +127,7 @@ export class Daemon {
       actions: buildActions({ home: this.home, config: this.config, store: this.store, github }),
       onSucceeded: (runId) => this.orchestrator.advance(runId),
       billingOf: (adapter) => adapters.get(adapter)?.capabilities().billing ?? "metered",
+      principles: (run) => this.principles.forRun(run),
     });
     this.devices = new DeviceService(this.store, join(this.home, "device-key"));
     this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });

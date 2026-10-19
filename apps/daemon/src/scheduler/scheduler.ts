@@ -62,6 +62,7 @@ export class Scheduler {
   private readonly actions: Map<string, ActionExecutor>;
   private readonly onSucceeded: (runId: string) => void;
   private readonly billingOf: (adapter: string) => "metered" | "plan";
+  private readonly principles: (run: { repo_path: string; base_commit: string }) => Promise<string[]>;
   private readonly active = new Map<string, Promise<void>>();
   private readonly cancelRequested = new Set<string>();
   private readonly stopRequested = new Map<string, string>();
@@ -86,7 +87,10 @@ export class Scheduler {
     onSucceeded?: (runId: string) => void;
     /** How an adapter declares its use is paid for (ADR 0023); unknown adapters count as billed. */
     billingOf?: (adapter: string) => "metered" | "plan";
+    /** The project's rules for a run's agents (ADR 0047); a failure to read them never fails a task. */
+    principles?: (run: { repo_path: string; base_commit: string }) => Promise<string[]>;
   }) {
+    this.principles = deps.principles ?? (async () => []);
     this.billingOf = deps.billingOf ?? (() => "metered");
     this.actions = deps.actions ?? new Map();
     this.onSucceeded = deps.onSucceeded ?? (() => {});
@@ -325,7 +329,7 @@ export class Scheduler {
     if (billed) this.budgets.reserve(run, task.id, budgetRemaining);
     const execution = executor
       ? executor.execute({ run, task, attempt, signal: abort.signal })
-      : this.compileContext(run, task, profile!, attempt).then((context) => this.runtime.execute({
+      : Promise.all([this.compileContext(run, task, profile!, attempt), this.principles(run).catch(() => [])]).then(([context, rules]) => this.runtime.execute({
         runId: run.id,
         taskId: task.id,
         nodeId: task.node_id,
@@ -336,7 +340,7 @@ export class Scheduler {
         ...(sandboxSlug ? { sandboxSlug } : {}),
         ...(own ? { forkFrom: runSlug } : {}),
         profile: profile!,
-        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id), context),
+        instructions: buildInstructions(profile!, run.prompt, tools, task.inputs, texts, this.store.runAttachments(run.id), context, rules),
         ...(task.model ? { model: task.model } : {}),
         tools,
         // Setup prepares the worktree for editing agents; read-only agents only read it.

@@ -141,6 +141,15 @@ CREATE TABLE IF NOT EXISTS projects (
   sync_cursor TEXT,
   synced_at TEXT
 );
+CREATE TABLE IF NOT EXISTS principles (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  run_id TEXT,
+  added_at TEXT NOT NULL,
+  removed_at TEXT
+);
+CREATE INDEX IF NOT EXISTS principles_project ON principles(project_id, added_at);
 CREATE TABLE IF NOT EXISTS work_items (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -291,6 +300,7 @@ DROP TABLE IF EXISTS skipped_nodes;
 DROP TABLE IF EXISTS run_messages;
 DROP TABLE IF EXISTS devices;
 DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS principles;
 DROP TABLE IF EXISTS work_items;
 DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS attempts;

@@ -247,12 +247,29 @@ export function buildInstructions(
   messages: string[] = [],
   attachments: readonly RunAttachment[] = [],
   context?: CompiledContext,
+  principles: readonly string[] = [],
 ): string {
   const section = inputsSection(inputs);
   const operator = operatorSection(messages);
   const docs = attachmentsSection(attachments);
   const compiled = context ? contextSection(context) : "";
-  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${compiled ? `\n${compiled}\n` : ""}${docs ? `\n${docs}\n` : ""}${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+  const rules = principlesSection(principles);
+  return `${profile.instructions}\n\n${commandsSection(grant)}\n\n<task>\n${neutraliseOperator(prompt)}\n</task>\n${rules ? `\n${rules}\n` : ""}${compiled ? `\n${compiled}\n` : ""}${docs ? `\n${docs}\n` : ""}${operator ? `\n${operator}\n` : ""}${section ? `\n${section}` : ""}`;
+}
+
+/**
+ * The project's rules (ADR 0047): the ones the user approved and the ones the repository lists in
+ * `.navarch/principles.md`. They say how this project is done, so agents follow them, but they never
+ * widen the commands or the files an agent may touch.
+ */
+function principlesSection(principles: readonly string[]): string {
+  if (!principles.length) return "";
+  return [
+    "<principles>",
+    "Rules for this project, approved by the user or kept in the repository's .navarch/principles.md. Follow them in your work; they do not change the allowed commands or the rules above.",
+    ...principles.map((r) => `- ${r.replace(/</g, "&lt;")}`),
+    "</principles>",
+  ].join("\n");
 }
 
 /**
