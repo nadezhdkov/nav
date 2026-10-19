@@ -17,6 +17,7 @@ The sign-in code is used once, so your API token never ends up in a URL or in yo
 - **Fleet**: every agent of every active run, as a **tree** (project → run → agents) or as cards. Team runs show the lead above the members it delegated to. Each card shows step progress, cost, adapter and model, branch and what the agent is doing now.
 - **Approvals**: what will happen, why it needs you, the cost so far, then approve or reject with a reason.
 - **Inbox**: issues from your registered projects, triaged and estimated, ready to start as runs, alone or as a team.
+- **Specs**: what `reverse-spec` wrote, how much of it the code confirms against the 70 % target, and the addenda written after merges (desktop).
 - **Usage**: spend, budgets, and per-agent quality and cost.
 - **Flows**: the built-in Flows and your own, with Flow Studio (desktop).
 - **New run**: start from a prompt, an issue or the Inbox, in a registered project, an earlier repository or any GitHub repository your token reaches. Attach a spec or notes for the agents to read.

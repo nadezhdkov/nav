@@ -4,6 +4,8 @@ import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import type { GitHubIntegration } from "./integration.ts";
 
+import type { PullRequestRecord } from "../events/store.ts";
+
 const watcher: Actor = { kind: "system", component: "github" };
 const TICK_MS = 60_000;
 /** A pull request that answers 404 this many polls in a row is no longer followed. */
@@ -14,7 +16,14 @@ const MAX_NOT_FOUND = 3;
  * through the GitHub Integration on the Inbox's schedule, and records how it ended. It only reads.
  */
 export class PrWatcher {
-  private readonly deps: { config: Config; store: EventStore; github: GitHubIntegration; now?: () => number };
+  private readonly deps: {
+    config: Config;
+    store: EventStore;
+    github: GitHubIntegration;
+    now?: () => number;
+    /** Called after a pull request is recorded as merged; a failure here never stops the watcher. */
+    onMerged?: (pr: PullRequestRecord) => Promise<void>;
+  };
   private readonly notFound = new Map<string, number>();
   private lastPoll = 0;
   private polling: Promise<number> | undefined;
@@ -58,6 +67,7 @@ export class PrWatcher {
         if (!outcome) continue;
         this.deps.store.append([{ type: "github.pr.closed", run_id: pr.run_id, task_id: null, actor: watcher, payload: { repo: pr.repo, number: pr.number, ...outcome } }]);
         closed++;
+        if (outcome.merged) await this.deps.onMerged?.(pr).catch(() => {});
       } catch (err) {
         if (err instanceof GitHubError && err.status === 404) {
           const misses = (this.notFound.get(key) ?? 0) + 1;
