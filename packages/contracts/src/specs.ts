@@ -197,6 +197,68 @@ export function parseAddendumDraft(text: string): { draft?: AddendumDraft; error
   return { draft, errors: [] };
 }
 
+// --- traceability matrices (ADR 0054) ---
+
+/** How a test was tied to a code file: the same name (`auth.test.ts` for `auth.ts`), or it imports the module. */
+export const TraceVia = z.enum(["name", "import"]);
+export type TraceVia = z.infer<typeof TraceVia>;
+
+export const TraceTest = z.object({ file: z.string(), via: TraceVia });
+export type TraceTest = z.infer<typeof TraceTest>;
+
+/** A claim of the specs that cites a code file. */
+export const TraceClaimRef = z.object({ component: z.string(), claim: z.string(), confidence: SpecConfidence, line: z.number().int().positive() });
+export type TraceClaimRef = z.infer<typeof TraceClaimRef>;
+
+/** `code ↔ spec`: a code file the specs cite, with the claims that cite it and the tests tied to it. */
+export const CodeSpecRow = z.object({ file: z.string(), claims: z.array(TraceClaimRef), tests: z.array(TraceTest) });
+export type CodeSpecRow = z.infer<typeof CodeSpecRow>;
+
+/** `spec ↔ test`: a claim, the code files it cites and the tests tied to them (inferred, never confirmed). */
+export const SpecTestRow = z.object({
+  component: z.string(),
+  claim: z.string(),
+  confidence: SpecConfidence,
+  files: z.array(z.string()),
+  tests: z.array(TraceTest),
+});
+export type SpecTestRow = z.infer<typeof SpecTestRow>;
+
+export const TraceComponent = z.object({
+  component: z.string(),
+  claims: z.number().int().nonnegative(),
+  /** Claims citing at least one code file that exists. */
+  claims_with_files: z.number().int().nonnegative(),
+  claims_with_tests: z.number().int().nonnegative(),
+  files: z.number().int().nonnegative(),
+});
+export type TraceComponent = z.infer<typeof TraceComponent>;
+
+export const TraceabilityView = z.object({
+  /** False when the project has no `.navarch/specs/` yet. */
+  has_specs: z.boolean(),
+  components: z.array(TraceComponent),
+  code_spec: z.array(CodeSpecRow),
+  /** Source files no claim cites, capped; `uncovered_total` counts them all. */
+  uncovered: z.array(z.string()),
+  uncovered_total: z.number().int().nonnegative(),
+  spec_test: z.array(SpecTestRow),
+  /** Citations whose file or line is not in the code any more. */
+  broken: z.array(z.object({ component: z.string(), claim: z.string(), file: z.string(), line: z.number().int().positive() })),
+  totals: z.object({
+    source_files: z.number().int().nonnegative(),
+    cited_files: z.number().int().nonnegative(),
+    /** Cited source files over all source files; null with no source files. */
+    cited_share: z.number().min(0).max(1).nullable(),
+    claims: z.number().int().nonnegative(),
+    claims_with_files: z.number().int().nonnegative(),
+    claims_with_tests: z.number().int().nonnegative(),
+    /** Claims with a tied test over claims with a file; null with none. */
+    tested_share: z.number().min(0).max(1).nullable(),
+  }),
+});
+export type TraceabilityView = z.infer<typeof TraceabilityView>;
+
 /** One finished `spec-sync` write, newest first (`GET /api/v1/specs/addenda`, ADR 0053). */
 export const SpecAddendumRunView = z.object({
   run_id: z.string(),

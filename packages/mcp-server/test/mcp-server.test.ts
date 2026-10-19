@@ -32,6 +32,12 @@ describe("MCP server", () => {
     expect((res!.result as { content: { text: string }[] }).content[0]!.text).toContain("a.ts");
   });
 
+  it("serves the traceability matrices without arguments", async () => {
+    calls.length = 0;
+    await handleMessage(api, { jsonrpc: "2.0", id: 7, method: "tools/call", params: { name: "traceability", arguments: {} } });
+    expect(calls).toEqual(["/traceability"]);
+  });
+
   it("reports a failing call as a tool error and a missing argument as invalid params", async () => {
     const failed = await handleMessage(api, { jsonrpc: "2.0", id: 4, method: "tools/call", params: { name: "repo_search", arguments: { query: "boom" } } });
     expect(failed!.result).toMatchObject({ isError: true });

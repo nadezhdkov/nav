@@ -2,7 +2,7 @@ import type { CodeSymbol, SymbolKind } from "@navarch/contracts";
 import { listFiles, readText, treeKey } from "./files.ts";
 import { extractorFor } from "./symbols.ts";
 
-export { readText } from "./files.ts";
+export { listFiles, readText } from "./files.ts";
 export { repoMap } from "./map.ts";
 export { searchText } from "./search.ts";
 export { extractorFor, EXTRACTORS, type SymbolExtractor } from "./symbols.ts";
