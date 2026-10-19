@@ -96,6 +96,18 @@ export const ContainerIsolation = z.object({
   memory: z.string().regex(/^\d+[kmg]?$/i),
   cpus: z.number().positive(),
   pids_limit: z.number().int().positive(),
+  /**
+   * L3, the hardened level (ADR 0069): the agent itself runs in a container without a network interface,
+   * reaching only its provider through an egress allowlist; `oci_runtime` names a stronger runtime (gVisor's `runsc`).
+   */
+  hardened: z
+    .object({
+      agent_image: ContainerImage,
+      oci_runtime: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/i).optional(),
+      /** Extra hosts the agent may reach over HTTPS, on top of its provider's. */
+      egress_allow: z.array(z.string().regex(/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i)).default([]),
+    })
+    .optional(),
 });
 export type ContainerIsolation = z.infer<typeof ContainerIsolation>;
 

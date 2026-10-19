@@ -5,3 +5,5 @@ export * from "./status.ts";
 export * from "./integrate.ts";
 export * from "./pulls.ts";
 export * from "./container.ts";
+export * from "./egress.ts";
+export * from "./agent-container.ts";

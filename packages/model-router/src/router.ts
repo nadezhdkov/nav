@@ -61,6 +61,8 @@ export type RouteRequest = {
   exclude?: string[];
   /** Only entries of this adapter can serve the request, e.g. `native` for work without a worktree. */
   onlyAdapter?: string;
+  /** Only these adapters can serve the request, e.g. the ones that run in a hardened container (ADR 0069). */
+  allowedAdapters?: ReadonlySet<string>;
   /** A team lead's preference for this member (ADR 0022): a catalog id or an adapter, tried first when usable. */
   prefer?: string;
   /** Who prefers it, for the reason; "the lead" by default. */
@@ -127,6 +129,8 @@ function unusable(config: RouterConfig, req: RouteRequest, id: string): string |
         ? `adapter ${entry.adapter} not enabled`
         : req.onlyAdapter && entry.adapter !== req.onlyAdapter
           ? `${entry.adapter} is not a ${req.onlyAdapter} entry`
+          : req.allowedAdapters && !req.allowedAdapters.has(entry.adapter)
+            ? `${entry.adapter} cannot run in the run's isolation`
           : req.exclude?.includes(id)
             ? "rate limited"
             : quota

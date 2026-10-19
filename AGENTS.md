@@ -165,9 +165,11 @@ Slice 7b, [the phone's loader](docs/specs/phase-4-08-relay-loader.md) (ADR 0067)
 
 Slice 9, [GitHub webhooks](docs/specs/phase-4-09-webhooks.md) (ADR 0068): the relay's `POST /w/<id>` passes a GitHub delivery's raw body and four headers to the daemon, which checks `X-Hub-Signature-256` against `secret://github/webhook_secret` (`WebhookService`, `apps/daemon/src/webhooks/`) and answers GitHub through the relay (503 without the secret or when offline, 401 bad signature, 413 over 1 MiB). A signed `issues`, `pull_request`, `check_run` or `check_suite` for a registered project records `webhook.received` and, after a 2 s debounce, runs the existing Inbox sync, PR watcher or CI watcher: a webhook only nudges and polling stays. `navarch webhook` (`GET /api/v1/webhooks`, desktop only) prints the payload URL and counters.
 
+**Phase 5**: Slice 1, [L3: agents in hardened containers](docs/specs/phase-5-01-hardened-agents.md) (ADR 0069): `isolation: hardened` (project, or `security.default_isolation`, which a repository cannot lower) runs each agent process of `claude-code` and `codex` in `docker run` of `container.agent_image` (`make agent-image`) with `--network=none`, no capabilities, a read-only root, the worktree read-only for a profile without `editFiles`, and a home of its own seeded with the agent's login files. The only way out is a unix socket to a per-process CONNECT proxy (`packages/runner/src/egress.ts`) that tunnels port 443 to the adapter's provider hosts (`DEFAULT_EGRESS`) plus `container.egress_allow` and refuses private addresses; `agent-entry.mjs` bridges it inside. `useCliSandbox` in `@navarch/adapter-kit` is the hook (`CliProcesses`), `AgentRuntime.hardenAgent` registers it, the router skips other adapters (`RouteRequest.allowedAdapters`) and a pinned one fails the task. `container.oci_runtime` (e.g. `runsc`) applies to every container of a hardened run. Checked against the real Docker (`NAVARCH_TEST_DOCKER=1`).
+
 Not yet: sub-leads of sub-leads, user-defined profiles, the Archaeologist/Detective/Reviewer roles of reverse-spec, call and module graphs, semantic search, specs and ADRs as sources, balancing the campaign's tasks, acting MCP tools, REA.
 
-Not yet: editing parallel branches, L3 (hardened containers, egress allowlist) and agents inside containers, label triggers, a concierge tool for CI failures, starting PR runs from the Web UI, relay.
+Not yet: editing parallel branches, hardened agents beyond `claude-code` and `codex`, label triggers, a concierge tool for CI failures, starting PR runs from the Web UI, relay.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
@@ -188,6 +190,7 @@ Commands (all through the root `Makefile`; run long ones with `ctk runq -- make 
 | `make ci` | verify + web-build + site-build + audit + secrets + lint-workflows, everything CI runs |
 | `make daemon` | run `navarchd` in the foreground, warning first when the dependencies are older than `pnpm-lock.yaml` |
 | `make relay` | run the relay (`navarch-relay`) in the foreground; it speaks plain HTTP/WebSocket, so put a TLS proxy in front (`PORT`, `HOST`, `RELAY_STATE`) |
+| `make agent-image` | build the image hardened agents run in (`navarch-agent:latest`, needs Docker) |
 | `make relay-build` | build the phone loader and service worker the relay serves (`apps/relay/dist`), needed before phones can use a relay |
 | `make cli ARGS="…"` | run the `navarch` CLI, e.g. `ARGS="run list"` |
 | `make chat` | talk to the concierge (`navarch chat`) |

@@ -2,7 +2,7 @@
 # Targets are thin wrappers over pnpm; Node >= 22.18 runs the TypeScript sources directly.
 
 .DEFAULT_GOAL := help
-.PHONY: help install typecheck test verify web-build web-dev web site-build site-dev audit secrets lint-workflows ci daemon relay relay-build cli chat doctor clean
+.PHONY: help install typecheck test verify web-build web-dev web site-build site-dev audit secrets lint-workflows ci daemon relay relay-build agent-image cli chat doctor clean
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  make %-10s %s\n", $$1, $$2}'
@@ -53,6 +53,9 @@ relay: ## Run the relay (navarch-relay) in the foreground; put a TLS proxy in fr
 
 relay-build: ## Build the phone loader the relay serves (apps/relay/dist)
 	pnpm build:relay
+
+agent-image: ## Build the image hardened agents run in (navarch-agent:latest; IMAGE=, RUNTIME= to change)
+	$(or $(RUNTIME),docker) build -t $(or $(IMAGE),navarch-agent:latest) docker/agent
 
 cli: ## Run the CLI: make cli ARGS="run list"
 	node apps/cli/src/main.ts $(ARGS)

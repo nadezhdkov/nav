@@ -143,6 +143,15 @@ describe("route", () => {
   });
 });
 
+describe("route: allowed adapters (ADR 0069)", () => {
+  it("skips entries whose adapter cannot run in the run's isolation, and says so", () => {
+    const d = route(config, req({ profile: "triager", allowedAdapters: new Set(["claude-code"]) }));
+    expect(d.chosen?.id).toBe("claude-code");
+    expect(d.skipped).toContainEqual({ id: "copilot", reason: "copilot cannot run in the run's isolation" });
+    expect(route(config, req({ allowedAdapters: new Set(["codex"]) })).chosen).toBeUndefined();
+  });
+});
+
 describe("route: budget and observed metrics (ADR 0023)", () => {
   const withBudget: RouterConfig = {
     ...config,
