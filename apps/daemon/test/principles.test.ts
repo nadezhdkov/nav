@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { PrincipleView, PrinciplesView, ProjectView, RunDetail, RunView } from "@navarch/contracts";
+import type { NewEvent, PrincipleView, PrinciplesView, ProjectView, RunDetail, RunView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { fakeClaude } from "../../../packages/adapters/claude-code/test/fake.ts";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
@@ -130,5 +130,69 @@ describe("project principles (ADR 0047)", () => {
     expect(decide({ kind: "user", via: "mobile", device_id: "dev_x" } as never)).toBe("forbidden");
     expect(decide({ kind: "agent", task_id: "task_x" } as never)).toBe("forbidden");
     expect(decide({ kind: "user", via: "cli" } as never)).toBe("not_found");
+  });
+
+  it("records what a planner or reviewer proposes, and the user accepts or dismisses it (ADR 0056)", async () => {
+    const { api, daemon } = await start();
+    const dir = repo();
+    const project = (await api<ProjectView>("POST", "/api/v1/projects", { path: dir })).body;
+    const base = `/api/v1/projects/${project.id}/principles`;
+    const run = { id: "run_1", repo_path: dir };
+    const summary = (...rules: string[]) => "Verdict: approve.\n```navarch-principles\n" + JSON.stringify({ rules: rules.map((text) => ({ text, reason: `why: ${text}` })) }) + "\n```";
+    const record = (profile: string, text: string, taskId = "task_1") => {
+      const events: NewEvent[] = daemon.principles.proposalsFrom(run, { id: taskId, profile }, text);
+      if (events.length) daemon.store.append(events);
+      return events;
+    };
+
+    // Only planner and reviewer proposals count; an implementer's block is ignored.
+    expect(record("implementer", summary("use tabs"))).toEqual([]);
+    expect(record("reviewer", summary("use Pest, not PHPUnit", "keep functions short"))).toHaveLength(2);
+    // A run outside a registered project proposes nothing.
+    expect(daemon.principles.proposalsFrom({ id: "run_2", repo_path: "/elsewhere" }, { id: "task_2", profile: "planner" }, summary("another rule"))).toEqual([]);
+    // The same rule again, in other letters, is not proposed twice.
+    expect(record("planner", summary("USE PEST, NOT PHPUNIT"), "task_3")).toEqual([]);
+
+    const view = (await api<PrinciplesView>("GET", base)).body;
+    expect(view.principles).toEqual([]);
+    expect(view.proposals.map((p) => [p.text, p.reason, p.run_id])).toEqual([
+      ["use Pest, not PHPUnit", "why: use Pest, not PHPUnit", "run_1"],
+      ["keep functions short", "why: keep functions short", "run_1"],
+    ]);
+
+    const [first, second] = view.proposals;
+    const accepted = await api<PrincipleView>("POST", `${base}/proposals/${first!.id}/accept`);
+    expect(accepted.status).toBe(201);
+    expect(accepted.body).toMatchObject({ source: "user", text: "use Pest, not PHPUnit", run_id: "run_1" });
+    expect((await api("POST", `${base}/proposals/${second!.id}/dismiss`)).status).toBe(204);
+    const after = (await api<PrinciplesView>("GET", base)).body;
+    expect(after.principles.map((p) => p.text)).toEqual(["use Pest, not PHPUnit"]);
+    expect(after.proposals).toEqual([]);
+
+    // Decided proposals cannot be decided again, and a dismissed rule is not proposed again.
+    expect((await api("POST", `${base}/proposals/${first!.id}/accept`)).status).toBe(404);
+    expect((await api("POST", `${base}/proposals/${second!.id}/dismiss`)).status).toBe(404);
+    expect(record("reviewer", summary("keep functions short"), "task_4")).toEqual([]);
+    expect((await api("POST", `${base}/proposals/${second!.id}/frobnicate`)).status).toBe(404);
+  });
+
+  it("keeps at most ten proposals waiting per project, and only the user decides them", async () => {
+    const { api, daemon } = await start();
+    const dir = repo();
+    const project = (await api<ProjectView>("POST", "/api/v1/projects", { path: dir })).body;
+    const run = { id: "run_1", repo_path: dir };
+    const many = (from: number) => "```navarch-principles\n" + JSON.stringify({ rules: [0, 1, 2].map((i) => ({ text: `rule number ${from + i}`, reason: "r" })) }) + "\n```";
+    for (let i = 0; i < 5; i++) {
+      const events = daemon.principles.proposalsFrom(run, { id: `task_${i}`, profile: "reviewer" }, many(i * 3));
+      if (events.length) daemon.store.append(events);
+    }
+    expect(daemon.store.principleProposals(project.id, "pending")).toHaveLength(10);
+
+    const pending = daemon.store.principleProposals(project.id, "pending")[0]!;
+    for (const actor of [{ kind: "user", via: "mobile", device_id: "dev_x" }, { kind: "agent", task_id: "task_x" }]) {
+      expect(() => daemon.principles.accept(project.id, pending.id, actor as never)).toThrow(expect.objectContaining({ code: "forbidden" }));
+      expect(() => daemon.principles.dismiss(project.id, pending.id, actor as never)).toThrow(expect.objectContaining({ code: "forbidden" }));
+    }
+    expect(daemon.store.principleProposals(project.id, "pending")).toHaveLength(10);
   });
 });

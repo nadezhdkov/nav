@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatSpecs, formatHits, formatRepoMap, formatSymbols } from "../src/format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatSpecs, formatHits, formatRepoMap, formatSymbols, formatPrinciples } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -337,5 +337,22 @@ describe("formatSpecs (ADR 0045)", () => {
     const text = formatSpecs([{ run_id: "run_1", run_name: "brave-frigate", ts: "2026-10-19T10:00:00Z", components: 2, claims: 10, confirmed: 7, inferred: 2, gap: 1, downgraded: 1, green_rate: 0.7, branch: "navarch/run_1/reverse-spec", files: [] }]);
     expect(text).toMatch(/brave-frigate\s+2026-10-19 10:00\s+2\s+10\s+7\s+2\s+1\s+70 %\s+1\s+navarch\/run_1\/reverse-spec/);
     expect(formatSpecs([])).toContain("navarch run --flow reverse-spec");
+  });
+});
+
+describe("formatPrinciples (ADR 0047, 0056)", () => {
+  const base = { project_id: "prj_1", truncated: false, principles: [{ id: "prin_1", text: "Use Pest", source: "user" as const, added_at: "2026-10-19T10:00:00Z", run_id: null }] };
+
+  it("lists the rules, and the proposals apart with how to decide them", () => {
+    const text = formatPrinciples({ ...base, proposals: [{ id: "prop_1", text: "Keep functions short", reason: "reviewers asked for it three times", run_id: "run_1", proposed_at: "2026-10-19T11:00:00Z" }] });
+    expect(text).toMatch(/prin_1\s+you\s+Use Pest/);
+    expect(text).toContain("proposed by agents (not applied until you accept");
+    expect(text).toMatch(/prop_1\s+run_1\s+Keep functions short\s+reviewers asked for it three times/);
+    expect(text).toContain("navarch principles accept <id>");
+  });
+
+  it("says nothing of proposals when there are none", () => {
+    expect(formatPrinciples({ ...base, proposals: [] })).not.toContain("proposed");
+    expect(formatPrinciples({ ...base, principles: [], proposals: [] })).toContain("no rules yet");
   });
 });

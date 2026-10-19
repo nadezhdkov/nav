@@ -384,9 +384,16 @@ export function formatSpecs(runs: SpecRunView[]): string {
 
 /** `navarch principles`: the rules agents get in this project's runs (ADR 0047). */
 export function formatPrinciples(view: PrinciplesView): string {
-  if (!view.principles.length) return "no rules yet; add one with `navarch principles add \"<rule>\"` or list bullets in .navarch/principles.md";
-  const rows = table(["ID", "FROM", "RULE"], view.principles.map((p) => [p.id, p.source === "user" ? "you" : "repository file", p.text]));
-  return view.truncated ? `${rows}\n(only the first rules reach agents)` : rows;
+  const out: string[] = [];
+  if (!view.principles.length) out.push("no rules yet; add one with `navarch principles add \"<rule>\"` or list bullets in .navarch/principles.md");
+  else out.push(table(["ID", "FROM", "RULE"], view.principles.map((p) => [p.id, p.source === "user" ? "you" : "repository file", p.text])));
+  if (view.truncated) out.push("(only the first rules reach agents)");
+  if (view.proposals.length) {
+    out.push("", "proposed by agents (not applied until you accept; the reasons are the agents' own words):");
+    out.push(table(["ID", "RUN", "RULE", "REASON"], view.proposals.map((p) => [p.id, p.run_id ?? "-", p.text, truncate(p.reason, 70)])));
+    out.push("accept one with `navarch principles accept <id>`, or `navarch principles dismiss <id>`");
+  }
+  return out.join("\n");
 }
 
 /** The Phase 3 token goal: input tokens with and without the compiled context (ADR 0044). */

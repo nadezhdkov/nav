@@ -91,6 +91,8 @@ Rules such as "use Pest, not PHPUnit" or "never touch `legacy/`" reach every age
 
 Yours come first; at most 30 reach an agent. Rules do not widen the commands an agent may run.
 
+Planner and reviewer agents may also suggest a rule when they see a convention the repository does not state. A suggestion is only recorded: it reaches no agent until you accept it with `navarch principles accept <id>` (or drop it with `dismiss`), and `navarch principles` lists the ones waiting, with the run each came from. At most 10 wait per project, and a rule you dismissed is not suggested again.
+
 ## Runtime state
 
 Everything lives in `~/.navarch`: the event store, worktrees, logs, the device key and the push keys. Set `NAVARCH_HOME` to use another directory. Secrets are not there: they are in your OS keychain.

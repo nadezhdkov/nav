@@ -150,6 +150,18 @@ CREATE TABLE IF NOT EXISTS principles (
   removed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS principles_project ON principles(project_id, added_at);
+CREATE TABLE IF NOT EXISTS principle_proposals (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  run_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  proposed_at TEXT NOT NULL,
+  decided_at TEXT
+);
+CREATE INDEX IF NOT EXISTS principle_proposals_project ON principle_proposals(project_id, status, proposed_at);
 CREATE TABLE IF NOT EXISTS work_items (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL,
@@ -301,6 +313,7 @@ DROP TABLE IF EXISTS run_messages;
 DROP TABLE IF EXISTS devices;
 DROP TABLE IF EXISTS projects;
 DROP TABLE IF EXISTS principles;
+DROP TABLE IF EXISTS principle_proposals;
 DROP TABLE IF EXISTS work_items;
 DROP TABLE IF EXISTS usage;
 DROP TABLE IF EXISTS attempts;

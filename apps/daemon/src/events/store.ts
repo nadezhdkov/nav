@@ -66,7 +66,7 @@ export class EventStore {
     this.db.exec(eventsTable);
     // A projection table added later starts empty: fill it from the log.
     const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles"));
+    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles")) || (tableExists("runs") && !tableExists("principle_proposals"));
     this.db.exec(projectionTables);
     this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
@@ -595,6 +595,12 @@ export class EventStore {
     return rows.map((r) => ({ id: String(r.id), project_id: String(r.project_id), text: String(r.text), run_id: (r.run_id as string | null) ?? null, added_at: String(r.added_at) }));
   }
 
+  /** Proposals of agents for a project (ADR 0056): the pending ones, oldest first, or all of any status for dedupe. */
+  principleProposals(projectId: string, status?: "pending"): PrincipleProposalRecord[] {
+    const rows = this.db.prepare(`SELECT * FROM principle_proposals WHERE project_id = ?${status ? " AND status = 'pending'" : ""} ORDER BY proposed_at, rowid`).all(projectId) as Row[];
+    return rows.map((r) => ({ id: String(r.id), project_id: String(r.project_id), text: String(r.text), reason: String(r.reason), run_id: String(r.run_id), status: String(r.status) as PrincipleProposalRecord["status"], proposed_at: String(r.proposed_at) }));
+  }
+
   /** The active project registered for a clone path, if any. */
   projectByPath(path: string): ProjectRecord | undefined {
     const trim = (p: string) => p.replace(/\/+$/, "");
@@ -907,6 +913,8 @@ export type AttemptRecord = {
   /** Estimated tokens of the compiled context block the attempt carried, null without one (ADR 0043). */
   context_tokens: number | null;
 };
+
+export type PrincipleProposalRecord = { id: string; project_id: string; text: string; reason: string; run_id: string; status: "pending" | "accepted" | "dismissed"; proposed_at: string };
 
 export type PrincipleRecord = { id: string; project_id: string; text: string; run_id: string | null; added_at: string };
 

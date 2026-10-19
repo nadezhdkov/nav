@@ -128,6 +128,7 @@ export class Daemon {
       onSucceeded: (runId) => this.orchestrator.advance(runId),
       billingOf: (adapter) => adapters.get(adapter)?.capabilities().billing ?? "metered",
       principles: (run) => this.principles.forRun(run),
+      proposals: (run, task, summary) => this.principles.proposalsFrom(run, task, summary),
     });
     this.devices = new DeviceService(this.store, join(this.home, "device-key"));
     this.notifier = new Notifier({ store: this.store, devices: this.devices, policy, config: this.config, vapidFile: join(this.home, "push", "vapid.json") });

@@ -89,7 +89,8 @@ Usage:
   navarch project clone <owner/name>       clone a GitHub repository the token reaches into the Navarch home and add it
   navarch project list | remove <project-id>
   navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
-  navarch principles [add <rule> [--run <run>] | remove <id>] [--project <project-id>]
+  navarch principles [add <rule> [--run <run>] | remove <id> | accept <proposal> | dismiss <proposal>] [--project <project-id>]
+                                         rules for the project; agents may propose some, you accept or dismiss them
   navarch map | symbols <name> | where <text> [--project <project-id>]
   navarch mcp [--project <project-id>]    (Navarch as an MCP server on stdio, read-only tools for one project)
                                          explore the project of the current directory: languages and entry points,
@@ -394,7 +395,12 @@ async function main(argv: string[]): Promise<number> {
         await api.request("DELETE", `${base}/${encodeURIComponent(required(rest[1], "a rule id (see `navarch principles`)"))}`);
         return print(json ? { removed: rest[1] } : `removed ${rest[1]}`, json);
       }
-      if (rest.length) throw new CliError("usage: navarch principles [--project <id>] [add <rule> [--run <id>] | remove <id>]", EXIT.usage);
+      if (rest[0] === "accept" || rest[0] === "dismiss") {
+        const id = required(rest[1], "a proposal id (see `navarch principles`)");
+        const res = await api.request<PrincipleView | undefined>("POST", `${base}/proposals/${encodeURIComponent(id)}/${rest[0]}`);
+        return print(json ? (res ?? { dismissed: id }) : res ? `accepted as ${res.id}: ${res.text}` : `dismissed ${id}`, json);
+      }
+      if (rest.length) throw new CliError("usage: navarch principles [--project <id>] [add <rule> [--run <id>] | remove <id> | accept <proposal> | dismiss <proposal>]", EXIT.usage);
       const view = await api.request<PrinciplesView>("GET", base);
       return print(json ? view : formatPrinciples(view), json);
     }
