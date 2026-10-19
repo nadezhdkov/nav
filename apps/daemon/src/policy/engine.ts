@@ -192,6 +192,12 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "ci.auto_fix", effect: "deny", reason: "the daemon starts ci-fix on its own only within ci_fix.daily_runs" },
   {
+    match: (r) => r.action === "spec.auto_sync" && r.actor.kind === "system" && r.context.cap?.items !== undefined && r.context.usage !== undefined && r.context.usage.items < r.context.cap.items,
+    effect: "allow",
+    reason: "the daemon starts spec-sync within its daily limit (ADR 0052)",
+  },
+  { match: (r) => r.action === "spec.auto_sync", effect: "deny", reason: "the daemon starts spec-sync on its own only within spec_sync.daily_runs" },
+  {
     match: (r) => r.action === "away.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
     effect: "allow",
     reason: "the user turns Away mode on and off, from the desktop or the CLI (ADR 0039)",

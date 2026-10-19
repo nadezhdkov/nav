@@ -19,6 +19,7 @@ import { PrinciplesService } from "./principles/service.ts";
 import { InboxService } from "./inbox/service.ts";
 import { CiWatcher } from "./github/ci.ts";
 import { PrWatcher } from "./github/outcomes.ts";
+import { SpecSyncTrigger } from "./github/specsync.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
 import { knowledgePanel } from "./budgets/knowledge.ts";
 import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
@@ -148,7 +149,8 @@ export class Daemon {
     });
     this.inbox = new InboxService({ home: this.home, config: this.config, store: this.store, policy, github, orchestrator: this.orchestrator, runtime, adapters });
     this.away = new AwayService({ config: this.config, store: this.store, policy, orchestrator: this.orchestrator, runtime, adapters });
-    this.prs = new PrWatcher({ config: this.config, store: this.store, github });
+    const specSync = new SpecSyncTrigger({ config: this.config, store: this.store, orchestrator: this.orchestrator, policy });
+    this.prs = new PrWatcher({ config: this.config, store: this.store, github, onMerged: (pr) => specSync.merged(pr) });
     this.ci = new CiWatcher({ config: this.config, store: this.store, github, orchestrator: this.orchestrator, policy });
   }
 
