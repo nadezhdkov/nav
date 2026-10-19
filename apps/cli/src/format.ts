@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, MorningSummary, AutoMergeStatus, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -234,6 +234,22 @@ export function formatCiFailures(failures: CiFailureView[]): string {
     "",
     "fix it: navarch ci fix <failure> · dismiss: navarch ci dismiss <failure>",
   ].join("\n");
+}
+
+/** The conditions the user reads before turning auto-merge on (spec §11.1). */
+export function formatAutoMergeConditions(status: AutoMergeStatus): string {
+  return ["Auto-merge merges a pull request of Navarch's without asking you, only when all of these hold:", ...status.conditions.map((c) => `  - ${c}`), "Release and deploy are never automatic. Turn it off at any time (navarch automerge off) or with the kill switch."].join("\n");
+}
+
+/** `navarch automerge`: each project's state and why its open PRs are waiting; reasons may carry untrusted text. */
+export function formatAutoMerge(status: AutoMergeStatus): string {
+  if (!status.projects.length) return "no projects; add one with navarch project add";
+  const lines = [formatAutoMergeConditions(status), ""];
+  for (const p of status.projects) {
+    lines.push(`${p.repo}  ${p.project_id}  auto-merge ${p.enabled ? `ON (${p.strategy}) since ${p.since}` : "off"}`);
+    for (const w of p.waiting) lines.push(`    #${w.number} waiting: ${truncate(oneLine(w.reason), 100)}`);
+  }
+  return lines.join("\n");
 }
 
 /** `navarch summary`: the morning summary; titles are untrusted text, kept on one line. */

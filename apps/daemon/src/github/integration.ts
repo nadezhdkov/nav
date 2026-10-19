@@ -15,6 +15,7 @@ export class GitHubIntegrationError extends Error {
 }
 
 const integration: Actor = { kind: "system", component: "github" };
+const autoMerger: Actor = { kind: "system", component: "automerge" };
 /** How long a repository listing is reused, so opening New run twice costs one request. */
 const REPOS_TTL_MS = 60_000;
 
@@ -103,6 +104,34 @@ export class GitHubIntegration {
     return this.client.listOpenPullRequests(repo);
   }
 
+  /** What auto-merge checks on GitHub before a merge (ADR 0060). Reads only. */
+  async mergeFacts(repo: string, number: number): Promise<MergeFacts> {
+    const pr = await this.client.pullRequestForMerge(repo, number);
+    const [base_protected, files, checks] = await Promise.all([
+      this.client.branchProtected(repo, pr.base_ref),
+      this.client.pullRequestFiles(repo, number),
+      this.client.checksOverview(repo, pr.head_sha),
+    ]);
+    return { ...pr, default_branch: await this.client.defaultBranch(repo), base_protected, files: files.files, files_truncated: files.truncated, checks };
+  }
+
+  /**
+   * Merges a pull request of Navarch's under auto-merge, after the Policy Engine allowed it. A draft
+   * is marked ready first and turned back into a draft if the merge fails. GitHub merges only when
+   * the head is still `sha`.
+   */
+  async autoMerge(pr: { repo: string; number: number; sha: string; node_id: string; draft: boolean; title: string; method: "squash" | "merge" | "rebase" }, context: { autonomyLevel: number; enabled: boolean }): Promise<{ sha: string | null }> {
+    const decision = this.policy.decide(autoMerger, "github.pr.merge", `${pr.repo}#${pr.number}`, { autonomyLevel: context.autonomyLevel, autoMerge: { enabled: context.enabled } });
+    if (decision.effect !== "allow") throw new GitHubIntegrationError("policy_denied", `merge of ${pr.repo}#${pr.number} denied: ${decision.reason}`);
+    if (pr.draft) await this.client.markReady(pr.node_id);
+    try {
+      return await this.client.mergePullRequest(pr.repo, pr.number, { sha: pr.sha, method: pr.method, title: pr.title });
+    } catch (err) {
+      if (pr.draft) await this.client.convertToDraft(pr.node_id).catch(() => {});
+      throw err;
+    }
+  }
+
   /** How a commit's check runs stand, without their logs (ADR 0041). Reads only. */
   checkStatus(repo: string, sha: string): Promise<CheckStatus> {
     return this.client.checkStatus(repo, sha);
@@ -188,3 +217,21 @@ export class GitHubIntegration {
     return this.client.createPullRequest({ ...pr, base, draft: true });
   }
 }
+
+/** What GitHub says about a pull request right before auto-merge decides (ADR 0060). */
+export type MergeFacts = {
+  state: "open" | "closed";
+  merged: boolean;
+  draft: boolean;
+  head_sha: string;
+  head_ref: string;
+  head_repo: string;
+  base_ref: string;
+  node_id: string;
+  title: string;
+  default_branch: string;
+  base_protected: boolean;
+  files: string[];
+  files_truncated: boolean;
+  checks: { total: number; pending: number; notGreen: string[] };
+};

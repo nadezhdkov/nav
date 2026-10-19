@@ -4,7 +4,7 @@ Navarch runs agents that write code on your machine, so its defaults are strict.
 
 ## Nothing merges without you
 
-- Merge, release and deploy are **never automatic**.
+- Merge, release and deploy are **never automatic**, with one exception you opt into per repository: [auto-merge](autonomy-and-approvals#auto-merge). Release and deploy never are.
 - Runs push only `navarch/*` branches, **never forced**, and only through the GitHub Integration.
 - Pull requests are always **drafts**.
 
