@@ -1,6 +1,7 @@
 import type {
   AwayView,
   CiFailureView,
+  MorningSummary,
   SetAwayRequest,
   RunAttachment,
   GitHubRepoView,
@@ -197,6 +198,8 @@ export const api = {
   projects: () => request<ProjectView[]>("GET", "/api/v1/projects"),
   githubRepos: () => request<GitHubRepoView[]>("GET", "/api/v1/github/repos"),
   cloneRepo: (repo: string) => request<AddProjectResult>("POST", "/api/v1/github/repos/clone", { repo }),
+  summary: () => request<MorningSummary | null>("GET", "/api/v1/summary"),
+  makeSummary: () => request<MorningSummary>("POST", "/api/v1/summary", {}),
   ciFailures: () => request<CiFailureView[]>("GET", "/api/v1/ci/failures"),
   fixCiFailure: (id: string, budget?: number) => request<{ failure: CiFailureView; run: RunView }>("POST", `/api/v1/ci/failures/${encodeURIComponent(id)}/fix`, budget ? { budget } : {}),
   dismissCiFailure: (id: string) => request<CiFailureView>("POST", `/api/v1/ci/failures/${encodeURIComponent(id)}/dismiss`, {}),

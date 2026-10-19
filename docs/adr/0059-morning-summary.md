@@ -19,4 +19,5 @@ Spec §7.4 asks for a scheduled nightly triage that ends in a morning summary wi
 
 - 🟡 Triage runs after a sync and may not have finished when the summary is built; such items show as not triaged and appear triaged in the next one.
 - 🟡 The summary is a snapshot: items handled later are not removed from it.
-- 🔴 No Web UI card yet (Home shows the Inbox and CI failures already), no per-project filter, no weekday schedule.
+- Home shows the latest summary in a card (`SummaryCard.vue`, store `useSummaryStore`, updated on `summary.generated`); "Make one now" is desktop only.
+- 🔴 No per-project filter, no weekday schedule.

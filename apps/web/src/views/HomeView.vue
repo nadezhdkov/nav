@@ -5,6 +5,7 @@ import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import CiFailures from "../components/CiFailures.vue";
 import KillSwitch from "../components/KillSwitch.vue";
+import SummaryCard from "../components/SummaryCard.vue";
 import QuotaBars from "../components/QuotaBars.vue";
 import StatusBadge from "../components/StatusBadge.vue";
 import { money, runLook, runTitle } from "../lib/status.ts";
@@ -82,6 +83,8 @@ function at(runId: string): string | null {
         <li v-for="a in alerts" :key="a.key"><RouterLink :to="a.to" class="text-fg hover:text-accent">{{ a.text }}</RouterLink></li>
       </ul>
     </div>
+
+    <SummaryCard />
 
     <CiFailures />
 

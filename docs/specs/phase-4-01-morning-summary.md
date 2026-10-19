@@ -9,6 +9,8 @@ Status: implemented · Branch: `feat/morning-summary` · Spec: §7.4, §16 Phase
 - `MorningSummary` (`packages/contracts/src/summary.ts`): new items, duplicates, CI failures, stalled PRs, approvals waiting, runs finished and failed, billed cost, suggested runs with their estimate.
 - `GET /api/v1/summary` (latest or null; devices may read it), `POST /api/v1/summary` (makes one now; desktop only), `navarch summary [--now]`.
 
+- Home has a Summary card (all five locales) with a "Make one now" button on the desktop only.
+
 ## Acceptance
 
 - Items, duplicates, suggestions and the estimate are computed from the Inbox view (`apps/daemon/test/summary.test.ts`).
@@ -17,4 +19,4 @@ Status: implemented · Branch: `feat/morning-summary` · Spec: §7.4, §16 Phase
 
 ## Not in this slice
 
-- A Web UI card, filters by project, weekday schedules, delivery by e-mail.
+- Filters by project, weekday schedules, delivery by e-mail.
