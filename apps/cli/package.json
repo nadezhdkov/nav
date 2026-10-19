@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@navarch/contracts": "workspace:*",
-    "@navarch/daemon": "workspace:*"
+    "@navarch/daemon": "workspace:*",
+    "@navarch/mcp-server": "workspace:*"
   }
 }
