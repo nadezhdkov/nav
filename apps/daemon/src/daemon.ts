@@ -21,6 +21,7 @@ import { CiWatcher } from "./github/ci.ts";
 import { WebAuthnService } from "./webauthn/service.ts";
 import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
+import { ScheduleService } from "./schedules/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { SpecSyncTrigger } from "./github/specsync.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
@@ -82,6 +83,7 @@ export class Daemon {
   readonly prs: PrWatcher;
   readonly ci: CiWatcher;
   readonly summary: SummaryService;
+  readonly schedules: ScheduleService;
   readonly autoMerge: AutoMerger;
   readonly webauthn: WebAuthnService;
   readonly budgets: Budgets;
@@ -175,6 +177,13 @@ export class Daemon {
       refresh: async () => {
         await Promise.allSettled([this.inbox.sync(undefined, { kind: "system", component: "summary" }), this.prs.check(), this.ci.check()]);
       },
+    });
+    this.schedules = new ScheduleService({
+      config: this.config,
+      store: this.store,
+      policy,
+      startRun: (req, actor) => this.orchestrator.startRun(req, actor),
+      flows: () => this.flows.list(),
     });
   }
 
@@ -276,6 +285,7 @@ export class Daemon {
     this.prs.start();
     this.ci.start();
     this.summary.start();
+    this.schedules.start();
     this.autoMerge.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
@@ -315,6 +325,7 @@ export class Daemon {
     await this.prs.stop();
     await this.ci.stop();
     await this.summary.stop();
+    await this.schedules.stop();
     await this.autoMerge.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));

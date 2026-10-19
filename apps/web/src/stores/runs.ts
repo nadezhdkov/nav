@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, CiFailureView, MorningSummary, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView, PrinciplesView } from "@navarch/contracts";
+import type { ScheduleView, ApprovalView, AwayView, CiFailureView, MorningSummary, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView, PrinciplesView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -400,4 +400,28 @@ export const useAwayStore = defineStore("away", () => {
 
   const active = computed(() => view.value?.active === true);
   return { view, error, active, load, set, apply };
+});
+
+export const useSchedulesStore = defineStore("schedules", () => {
+  const list = ref<ScheduleView[]>([]);
+  const loaded = ref(false);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      list.value = await api.schedules();
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    } finally {
+      loaded.value = true;
+    }
+  }
+
+  const refetch = debounced(() => void load());
+  function apply(event: NavarchEvent) {
+    if (event.type.startsWith("schedule.")) refetch();
+  }
+
+  return { list, loaded, error, load, apply };
 });

@@ -6,6 +6,7 @@ import {
   newId,
   parsePayload,
   type AwaySettings,
+  type ScheduleDay,
   type AwayView,
   type DeviceView,
   type FleetAgent,
@@ -67,7 +68,11 @@ export class EventStore {
   readonly db: DatabaseSync;
   private readonly listeners = new Set<EventListener>();
 
-  constructor(path: string) {
+  /** Where event timestamps come from; tests drive it to make time-based services deterministic. */
+  private readonly clock: () => Date;
+
+  constructor(path: string, opts: { now?: () => Date } = {}) {
+    this.clock = opts.now ?? (() => new Date());
     this.db = new DatabaseSync(path);
     this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA foreign_keys = ON;");
     this.db.exec(eventsTable);
@@ -75,7 +80,7 @@ export class EventStore {
     if (!(this.db.prepare("PRAGMA table_info(events)").all() as { name: string }[]).some((c) => c.name === "hash")) this.db.exec("ALTER TABLE events ADD COLUMN hash TEXT");
     // A projection table added later starts empty: fill it from the log.
     const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles")) || (tableExists("runs") && !tableExists("principle_proposals"));
+    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles")) || (tableExists("runs") && !tableExists("principle_proposals")) || (tableExists("runs") && !tableExists("schedules"));
     this.db.exec(projectionTables);
     this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
@@ -110,7 +115,7 @@ export class EventStore {
       for (const e of events) {
         const payload = parsePayload(e.type, e.payload);
         const id = newId("evt");
-        const ts = new Date().toISOString();
+        const ts = this.clock().toISOString();
         const actorJson = JSON.stringify(e.actor);
         const payloadJson = JSON.stringify(payload);
         tip = chainHash(tip, { id, ts, type: e.type, run_id: e.run_id, task_id: e.task_id, actor: actorJson, payload: payloadJson, schema_version: 1 });
@@ -608,6 +613,21 @@ export class EventStore {
     return (this.db.prepare(`SELECT * FROM projects ${withRemoved ? "" : "WHERE removed_at IS NULL"} ORDER BY added_at, rowid`).all() as Row[]).map(toProjectRecord);
   }
 
+  /** Scheduled runs (ADR 0064), oldest first; removed ones are left out. */
+  schedules(): ScheduleRecord[] {
+    return (this.db.prepare("SELECT * FROM schedules WHERE removed_at IS NULL ORDER BY saved_at, rowid").all() as Row[]).map(toScheduleRecord);
+  }
+
+  schedule(id: string): ScheduleRecord | undefined {
+    const row = this.db.prepare("SELECT * FROM schedules WHERE id = ? AND removed_at IS NULL").get(id) as Row | undefined;
+    return row ? toScheduleRecord(row) : undefined;
+  }
+
+  /** How many scheduled runs the daemon started since `since` (ISO), for the daily limit. */
+  scheduleRunsSince(since: string): number {
+    return Number((this.db.prepare("SELECT COUNT(*) AS n FROM events WHERE type = 'schedule.fired' AND ts >= ?").get(since) as { n: number }).n);
+  }
+
   /** The user's approved rules of a project (ADR 0047), oldest first. */
   principles(projectId: string): PrincipleRecord[] {
     const rows = this.db.prepare("SELECT * FROM principles WHERE project_id = ? AND removed_at IS NULL ORDER BY added_at, rowid").all(projectId) as Row[];
@@ -973,6 +993,23 @@ export type AttemptRecord = {
 
 export type PrincipleProposalRecord = { id: string; project_id: string; text: string; reason: string; run_id: string; status: "pending" | "accepted" | "dismissed"; proposed_at: string };
 
+export type ScheduleRecord = {
+  id: string;
+  project_id: string;
+  name: string;
+  prompt: string;
+  flow: string | null;
+  budget: number;
+  at: string;
+  days: ScheduleDay[];
+  enabled: boolean;
+  /** When the user last saved it; slots before this are never started. */
+  saved_at: string;
+  last_slot: string | null;
+  last_outcome: string | null;
+  last_run_id: string | null;
+  last_message: string | null;
+};
 export type PrincipleRecord = { id: string; project_id: string; text: string; run_id: string | null; added_at: string };
 
 export type ProjectRecord = {
@@ -1185,6 +1222,25 @@ function toTaskRecord(row: Row): TaskRecord {
     compete: row.compete ? (JSON.parse(String(row.compete)) as CompeteTaskRef) : null,
     parallel: row.parallel ? (JSON.parse(String(row.parallel)) as ParallelTaskRef) : null,
     choices: row.choices ? (JSON.parse(String(row.choices)) as string[]) : null,
+  };
+}
+
+function toScheduleRecord(r: Row): ScheduleRecord {
+  return {
+    id: String(r.id),
+    project_id: String(r.project_id),
+    name: String(r.name),
+    prompt: String(r.prompt),
+    flow: (r.flow as string | null) ?? null,
+    budget: Number(r.budget),
+    at: String(r.at),
+    days: String(r.days).split(",").filter(Boolean) as ScheduleDay[],
+    enabled: Number(r.enabled) === 1,
+    saved_at: String(r.saved_at),
+    last_slot: (r.last_slot as string | null) ?? null,
+    last_outcome: (r.last_outcome as string | null) ?? null,
+    last_run_id: (r.last_run_id as string | null) ?? null,
+    last_message: (r.last_message as string | null) ?? null,
   };
 }
 

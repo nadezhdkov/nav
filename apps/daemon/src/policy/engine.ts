@@ -210,6 +210,18 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "spec.auto_sync", effect: "deny", reason: "the daemon starts spec-sync on its own only within spec_sync.daily_runs" },
   {
+    match: (r) => r.action === "schedule.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user sets scheduled runs, from the desktop or the CLI (ADR 0064)",
+  },
+  { match: (r) => r.action === "schedule.set", effect: "deny", reason: "only the user sets scheduled runs, and not from a paired phone or an agent" },
+  {
+    match: (r) => r.action === "schedule.run" && r.actor.kind === "system" && r.context.cap?.items !== undefined && r.context.usage !== undefined && r.context.usage.items < r.context.cap.items,
+    effect: "allow",
+    reason: "the daemon starts a scheduled run within its daily limit (ADR 0064)",
+  },
+  { match: (r) => r.action === "schedule.run", effect: "deny", reason: "the daemon starts scheduled runs only within schedules.daily_runs" },
+  {
     match: (r) => r.action === "away.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
     effect: "allow",
     reason: "the user turns Away mode on and off, from the desktop or the CLI (ADR 0039)",

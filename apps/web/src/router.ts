@@ -10,6 +10,7 @@ export const routes = [
   { path: "/fleet", name: "fleet", component: () => import("./views/FleetView.vue") },
   { path: "/flows", name: "flows", component: () => import("./views/FlowsView.vue") },
   { path: "/flows/:name", name: "flow", component: () => import("./views/FlowStudioView.vue"), props: true },
+  { path: "/schedules", name: "schedules", component: () => import("./views/SchedulesView.vue") },
   { path: "/away", name: "away", component: () => import("./views/AwayView.vue") },
   { path: "/rules", name: "rules", component: () => import("./views/RulesView.vue") },
   { path: "/specs", name: "specs", component: () => import("./views/SpecsView.vue") },
