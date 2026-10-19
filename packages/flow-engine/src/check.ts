@@ -4,7 +4,7 @@ import { exprPaths, isExpression, parseExpr } from "./expr.ts";
 
 /** Operations an `action` or `github` node may name; the daemon registers an executor for each. */
 export const KNOWN_USES: Record<"action" | "github", readonly string[]> = {
-  action: ["verification.run"],
+  action: ["verification.run", "spec.write"],
   github: ["pr.create", "pr.review", "pr.comment"],
 };
 

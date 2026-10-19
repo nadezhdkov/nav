@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -370,6 +370,16 @@ export function formatMetrics(m: MetricsView): string {
   }
   lines.push("", ...formatKnowledge(m.knowledge, tokens, pct));
   return lines.join("\n");
+}
+
+/** `navarch specs`: what each reverse-spec run wrote and how much of it is 🟢 after the evidence check (ADR 0045). */
+export function formatSpecs(runs: SpecRunView[]): string {
+  if (!runs.length) return "no specs written yet; run `navarch run --flow reverse-spec \"<scope>\"`";
+  const pct = (n: number | null) => (n === null ? "-" : `${Math.round(n * 100)} %`);
+  return table(
+    ["RUN", "WHEN", "COMPONENTS", "CLAIMS", "🟢", "🟡", "🔴", "🟢 SHARE", "LOWERED", "BRANCH"],
+    runs.map((r) => [r.run_name ?? r.run_id, r.ts.slice(0, 16).replace("T", " "), String(r.components), String(r.claims), String(r.confirmed), String(r.inferred), String(r.gap), pct(r.green_rate), String(r.downgraded), r.branch]),
+  );
 }
 
 /** The Phase 3 token goal: input tokens with and without the compiled context (ADR 0044). */

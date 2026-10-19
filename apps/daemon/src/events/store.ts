@@ -144,6 +144,11 @@ export class EventStore {
     return rows.map(rowToEvent);
   }
 
+  /** The latest events of one type, newest first. */
+  eventsOfType(type: string, limit = 20): NavarchEvent[] {
+    return (this.db.prepare("SELECT * FROM events WHERE type = ? ORDER BY seq DESC LIMIT ?").all(type, limit) as Row[]).map(rowToEvent);
+  }
+
   /** Rebuilds every projection from the event log (replay, spec P5). */
   rebuildProjections(): void {
     this.db.exec("BEGIN IMMEDIATE");

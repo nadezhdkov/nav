@@ -166,6 +166,28 @@ switch (scenario) {
     }
     break;
   }
+  case "specs": {
+    // The spec-writer (ADR 0045): the first answer has a broken block, the one after the earlier
+    // problems are given is good. One confirmed claim quotes the code, one quotes what is not there.
+    if (!prompt.includes("Navarch spec-writer agent")) {
+      result(true, "ok");
+    } else if (!prompt.includes('<input name="previous_failures">')) {
+      result(true, "Here is the spec.\n\n```navarch-spec\n{ not json\n```");
+    } else {
+      const spec = {
+        component: "auth",
+        title: "Authentication",
+        summary: "How login works.",
+        claims: [
+          { id: "rejects-empty", text: "login throws when no user is given", confidence: "confirmed", evidence: [{ file: "src/auth.ts", line: 2, quote: "throw new Error('missing user')" }] },
+          { id: "uses-bcrypt", text: "passwords are hashed with bcrypt", confidence: "confirmed", evidence: [{ file: "src/auth.ts", line: 3, quote: "bcrypt.hash(password, 12)" }] },
+          { id: "session-ttl", text: "the session lifetime is set elsewhere", confidence: "gap", evidence: [] },
+        ],
+      };
+      result(true, `Done.\n\n\`\`\`navarch-spec\n${JSON.stringify(spec)}\n\`\`\``);
+    }
+    break;
+  }
   case "edit": {
     out({ type: "assistant", message: { content: [{ type: "text", text: "Creating hello.txt" }] } });
     out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Write", input: { file_path: "hello.txt" } }] } });
