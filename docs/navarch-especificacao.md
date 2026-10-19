@@ -1148,6 +1148,7 @@ Recurso **opt-in, por repositório**, desligado por padrão. Existe para quem qu
 - Somente o **usuário humano** pode habilitá-la, por UI ou CLI, com **confirmação explícita** que mostra repositório, condições e riscos, mais **reautenticação** (WebAuthn) quando disponível. Edição de arquivo por agente, comentário de terceiros ou um checkbox isolado não valem.
 - O Policy Engine rejeita (`policy.denied`) qualquer tentativa de agente de alterar essa chave.
 - Pré-requisito: autonomia nível ≥ 3 no repositório.
+- *Implementação (ADR 0060):* o estado vive em eventos `github.auto_merge.enabled|disabled` causados pelo usuário, e não no arquivo do repositório (um PR de agente poderia editá-lo); a confirmação é digitar `owner/repo`; o revisor declara `verdict`, `blocking` e `red` e, sem isso, nada é mesclado.
 
 **Condições para o merge ocorrer** (todas)
 - Todos os checks obrigatórios e a verificação do Navarch passaram; a revisão (`reviewer`, outro provedor) não tem ressalvas bloqueantes.

@@ -35,6 +35,7 @@ import {
   attachmentInfo,
   type RunAttachment,
   type CiFailureView,
+  type AutoMergeStrategy,
   type MorningSummary,
 } from "@navarch/contracts";
 import { competeState, competeTaskId, evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
@@ -773,6 +774,21 @@ export class EventStore {
         )
         .all() as Row[]
     ).map(pullRequestRecord);
+  }
+
+  /**
+   * Auto-merge settings (ADR 0060), from the latest enable or disable event of each project. The
+   * state lives in events the user caused, never in a file of the repository an agent could edit.
+   */
+  autoMergeSettings(): Map<string, { enabled: boolean; since: string | null; strategy: AutoMergeStrategy }> {
+    const rows = this.db.prepare("SELECT ts, type, payload FROM events WHERE type IN ('github.auto_merge.enabled','github.auto_merge.disabled') ORDER BY seq").all() as { ts: string; type: string; payload: string }[];
+    const out = new Map<string, { enabled: boolean; since: string | null; strategy: AutoMergeStrategy }>();
+    for (const r of rows) {
+      const p = JSON.parse(r.payload) as { project_id: string; strategy?: AutoMergeStrategy };
+      const before = out.get(p.project_id);
+      out.set(p.project_id, r.type.endsWith("enabled") ? { enabled: true, since: r.ts, strategy: p.strategy ?? "squash" } : { enabled: false, since: null, strategy: before?.strategy ?? "squash" });
+    }
+    return out;
   }
 
   /** The latest morning summary (ADR 0059), as it was recorded. */

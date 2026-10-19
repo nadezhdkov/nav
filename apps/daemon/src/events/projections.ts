@@ -490,6 +490,9 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
     case "concierge.action.proposed":
     case "concierge.action.decided":
     case "fleet.stopped":
+    case "github.auto_merge.enabled":
+    case "github.auto_merge.disabled":
+    case "github.pr.merged":
     case "notification.sent":
     case "notification.failed":
       return;

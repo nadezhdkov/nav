@@ -172,6 +172,11 @@ export const reviewer: Profile = {
     "- For each finding give the file, the problem and why it matters. Say plainly when there is nothing to report.",
     ...COMMON,
     "- Finish with your verdict (approve, or changes needed) and the findings, Standards first, then Spec.",
+    "- End your answer with one fenced block, which Navarch reads (auto-merge needs it; without it nothing is merged on its own):",
+    "```navarch-outputs",
+    '{ "verdict": "approve", "blocking": 0, "red": 0 }',
+    "```",
+    '- `verdict` is "approve" or "changes"; `blocking` counts findings that must be fixed before merging; `red` counts 🔴 items (gaps you could not confirm, work left undone). Be honest: a wrong zero merges code without a human.',
     ...PROPOSE,
   ].join("\n"),
 };

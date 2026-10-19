@@ -296,6 +296,81 @@ export class GitHubClient {
     return pr ? { number: pr.number, url: pr.html_url } : undefined;
   }
 
+  /** What auto-merge needs to know about a pull request right before it merges (ADR 0060). */
+  async pullRequestForMerge(repo: string, number: number): Promise<{ state: "open" | "closed"; merged: boolean; draft: boolean; head_sha: string; head_ref: string; head_repo: string; base_ref: string; node_id: string; title: string }> {
+    const pr = await this.request<{ state: string; merged?: boolean; draft?: boolean; node_id: string; title: string; head: { sha: string; ref: string; repo: { full_name: string } | null }; base: { ref: string } }>(
+      "GET",
+      `/repos/${repo}/pulls/${number}`,
+      undefined,
+      `${repo}#${number}`,
+    );
+    return { state: pr.state === "open" ? "open" : "closed", merged: Boolean(pr.merged), draft: pr.draft ?? false, head_sha: pr.head.sha, head_ref: pr.head.ref, head_repo: pr.head.repo?.full_name ?? "(deleted fork)", base_ref: pr.base.ref, node_id: pr.node_id, title: pr.title };
+  }
+
+  /** Whether the branch is protected on GitHub. */
+  async branchProtected(repo: string, branch: string): Promise<boolean> {
+    const b = await this.request<{ protected?: boolean }>("GET", `/repos/${repo}/branches/${encodeURIComponent(branch)}`, undefined, `${repo}:${branch}`);
+    return b.protected !== false;
+  }
+
+  /** The files a pull request changes (up to 300, GitHub's own limit), with renames' old names. */
+  async pullRequestFiles(repo: string, number: number): Promise<{ files: string[]; truncated: boolean }> {
+    const files: string[] = [];
+    for (let page = 1; page <= 3; page++) {
+      const list = await this.request<{ filename: string; previous_filename?: string }[]>("GET", `/repos/${repo}/pulls/${number}/files?per_page=100&page=${page}`, undefined, `${repo}#${number}`);
+      for (const f of list) files.push(f.filename, ...(f.previous_filename ? [f.previous_filename] : []));
+      if (list.length < 100) return { files, truncated: false };
+    }
+    return { files, truncated: true };
+  }
+
+  /** Check runs of a commit: how many, how many are unfinished, and the names of those that did not succeed. */
+  async checksOverview(repo: string, sha: string): Promise<{ total: number; pending: number; notGreen: string[] }> {
+    const listing = await this.request<{ total_count: number; check_runs: { name: string; status: string; conclusion: string | null }[] }>(
+      "GET",
+      `/repos/${repo}/commits/${sha}/check-runs?filter=latest&per_page=100`,
+      undefined,
+      `checks of ${repo}@${sha.slice(0, 7)}`,
+    );
+    const runs = listing.check_runs;
+    return {
+      // A listing cut at 100 is not a complete picture: count it as more than it shows.
+      total: Math.max(listing.total_count, runs.length),
+      pending: runs.filter((c) => c.status !== "completed").length + Math.max(0, listing.total_count - runs.length),
+      notGreen: runs.filter((c) => c.status === "completed" && !["success", "neutral", "skipped"].includes(c.conclusion ?? "")).map((c) => c.name),
+    };
+  }
+
+  /** Marks a draft pull request ready for review (GraphQL; the REST API has no such call). */
+  async markReady(nodeId: string): Promise<void> {
+    await this.graphql("mutation($id: ID!) { markPullRequestReadyForReview(input: { pullRequestId: $id }) { clientMutationId } }", { id: nodeId });
+  }
+
+  /** Turns a pull request back into a draft, undoing `markReady` when the merge then failed. */
+  async convertToDraft(nodeId: string): Promise<void> {
+    await this.graphql("mutation($id: ID!) { convertPullRequestToDraft(input: { pullRequestId: $id }) { clientMutationId } }", { id: nodeId });
+  }
+
+  /** Merges only if the head is still `sha` (GitHub answers 409 otherwise). */
+  async mergePullRequest(repo: string, number: number, merge: { sha: string; method: "squash" | "merge" | "rebase"; title: string }): Promise<{ sha: string | null }> {
+    const out = await this.request<{ sha?: string; merged?: boolean }>(
+      "PUT",
+      `/repos/${repo}/pulls/${number}/merge`,
+      { sha: merge.sha, merge_method: merge.method, commit_title: merge.title },
+      `${repo}#${number}`,
+    );
+    if (out.merged === false) throw new GitHubError(405, `GitHub did not merge ${repo}#${number}`);
+    return { sha: out.sha ?? null };
+  }
+
+  private async graphql(query: string, variables: Record<string, unknown>): Promise<void> {
+    // GitHub Enterprise Server serves GraphQL at /api/graphql, next to /api/v3.
+    const res = await this.send("POST", "/../graphql", { query, variables });
+    const json = (await readJson(res)) as { errors?: { message: string }[] } | undefined;
+    if (!res.ok) throw failure(res, "GraphQL", json);
+    if (json?.errors?.length) throw new GitHubError(422, `GitHub GraphQL: ${json.errors.map((e) => e.message).join("; ").slice(0, 300)}`);
+  }
+
   private async request<T>(method: string, path: string, body: unknown, what: string): Promise<T> {
     const res = await this.send(method, path, body);
     const json = await readJson(res);

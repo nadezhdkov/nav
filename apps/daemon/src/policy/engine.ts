@@ -23,6 +23,8 @@ export type PolicyContext = {
   cap?: { items: number; usd: number };
   /** For `approval.delegate`: Away mode is on and the user handed this kind of approval to the approver (ADR 0039). */
   away?: { active: boolean; delegated: boolean };
+  /** For `github.pr.merge`: the user turned auto-merge on for this repository (ADR 0060). */
+  autoMerge?: { enabled: boolean };
 };
 
 export type PolicyRequest = {
@@ -61,6 +63,11 @@ export const defaultRules: PolicyRule[] = [
     reason: "push to navarch/* branches is allowed",
   },
   { match: (r) => r.action === "git.push", effect: "deny", reason: "push outside navarch/* is never allowed" },
+  {
+    match: (r) => r.action === "github.pr.merge" && r.actor.kind === "system" && r.actor.component === "automerge" && r.context.autoMerge?.enabled === true && r.context.autonomyLevel >= 3,
+    effect: "allow",
+    reason: "auto-merge is on for this repository, which the user enabled, and the autonomy level is 3 or higher (spec §11.1)",
+  },
   {
     match: (r) => r.action === "github.pr.merge",
     effect: "require_approval",
@@ -213,6 +220,12 @@ export const defaultRules: PolicyRule[] = [
     reason: "the user approves and removes a project's rules, from the desktop or the CLI (ADR 0047)",
   },
   { match: (r) => r.action === "principles.set", effect: "deny", reason: "only the user changes a project's rules, and not from a paired phone or an agent" },
+  {
+    match: (r) => r.action === "automerge.set" && r.actor.kind === "user" && r.actor.via !== "mobile",
+    effect: "allow",
+    reason: "the user turns auto-merge on and off for a repository, from the desktop or the CLI (ADR 0060)",
+  },
+  { match: (r) => r.action === "automerge.set", effect: "deny", reason: "only the user turns auto-merge on or off, and not from a paired phone or an agent (spec §11.1)" },
   { match: (r) => r.action === "away.set", effect: "deny", reason: "only the user turns Away mode on or off, and not from a paired phone" },
   {
     match: (r) => r.action === "approval.delegate" && r.actor.kind === "agent" && r.actor.profile === "approver" && r.context.away?.active === true && r.context.away.delegated === true,

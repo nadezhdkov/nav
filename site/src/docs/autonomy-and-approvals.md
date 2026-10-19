@@ -75,3 +75,15 @@ For each approval it was handed, the approver reads the plan (or the finished ch
 - **leave to you**: the approval waits as usual and your phone is notified.
 
 It is an AI model, so it can be wrong; what it approves still ends as a draft PR that you review and merge. It never merges, never raises a budget and never decides anything you did not hand over. Runs above your complexity limit, and PRs whose checks failed, always wait for you.
+
+## Auto-merge
+
+Off by default and per repository. Only you can turn it on, from the CLI or the desktop (never from a phone or by an agent), by typing the repository's name after reading the conditions:
+
+```sh
+navarch automerge                                   # conditions and each project's state
+navarch automerge on owner/repo --confirm owner/repo
+navarch automerge off owner/repo
+```
+
+It needs autonomy level 3 or higher. Navarch then merges one of its own pull requests only when all of these hold: the verification passed with checks configured, the reviewer approved with no blocking finding and no 🔴 item, the head is the commit Navarch pushed, GitHub's checks are all green (and there is at least one), the target is the default branch and it is **not protected**, no dependency manifest, lockfile, workflow or protected path changed, and the run is within its budget. Anything unknown means no merge. The stop-everything button turns it off in every project, and each merge is recorded with its reason. The GitHub token needs Pull requests and Contents write access.

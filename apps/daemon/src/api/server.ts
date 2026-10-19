@@ -39,6 +39,7 @@ import {
   CiFailureStatus,
   StartInboxRequest,
   SyncInboxRequest,
+  SetAutoMergeRequest,
   SetAwayRequest,
   AddPrincipleRequest,
   SetBudgetRequest,
@@ -63,6 +64,7 @@ import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { PrinciplesError } from "../principles/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
+import { AutoMergeError } from "../github/automerge.ts";
 import { CiError } from "../github/ci.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
@@ -347,6 +349,19 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
+
+  // Opt-in auto-merge (spec §11.1, ADR 0060). A phone may read the state; changing it is desktop and CLI only.
+  app.get("/api/v1/auto-merge", async () => daemon.autoMerge.status());
+  app.put("/api/v1/projects/:id/auto-merge", async (req, reply) => {
+    const parsed = SetAutoMergeRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return await daemon.autoMerge.set((req.params as { id: string }).id, parsed.data, actorOf(req));
+    } catch (err) {
+      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400 }[err.code]).send({ error: err.code, message: err.message });
+      throw err;
+    }
+  });
 
   // The morning summary (ADR 0059). A phone may read it; making one now syncs every project, so it is desktop only.
   app.get("/api/v1/summary", async () => daemon.summary.latest() ?? null);
@@ -758,6 +773,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/summary",
+  "GET /api/v1/auto-merge",
   "GET /api/v1/inbox/:id",
   "POST /api/v1/inbox/sync",
   "POST /api/v1/inbox/start",
