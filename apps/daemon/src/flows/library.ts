@@ -253,14 +253,16 @@ export class FlowLibrary implements FlowLookup {
   }
 
   /** Subflows count when they resolve; one that no longer does leaves the run to report it. */
-  private needs(flow: FlowDefinition): FlowNeeds {
+  private needs(flow: FlowDefinition): Exclude<FlowNeeds, "merged_pull_request"> {
     let subflows: Record<string, FlowDefinition> = {};
     try {
       subflows = subflowsOf(flow, this.all());
     } catch {
       // The run refuses it with the reason when started.
     }
-    return flowNeeds(flow, subflows);
+    const needs = flowNeeds(flow, subflows);
+    // The pickers say "needs a pull request" for both; a merged one is chosen with the same --pr (ADR 0049).
+    return needs === "merged_pull_request" ? "pull_request" : needs;
   }
 
   private expectRevision(row: StudioFlowRecord | undefined, revision: number | null): void {

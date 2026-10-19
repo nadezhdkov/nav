@@ -7,7 +7,7 @@ const FLOWS = fileURLToPath(new URL("../../../flows/", import.meta.url));
 const builtins = readdirSync(FLOWS).filter((f) => f.endsWith(".yaml")).map((f) => readFileSync(FLOWS + f, "utf8"));
 const flows = new Map(builtins.map((y) => parseFlow(y)).map((f) => [f.metadata.name, f]));
 const catalog: FlowCatalog = {
-  profiles: ["triager", "planner", "implementer", "reviewer", "lead", "judge", "pr-reviewer", "ci-fixer", "spec-writer"],
+  profiles: ["triager", "planner", "implementer", "reviewer", "lead", "judge", "pr-reviewer", "ci-fixer", "spec-writer", "spec-syncer"],
   adapters: ["claude-code", "codex"],
   flows,
 };

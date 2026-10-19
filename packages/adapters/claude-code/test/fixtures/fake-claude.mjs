@@ -169,7 +169,26 @@ switch (scenario) {
   case "specs": {
     // The spec-writer (ADR 0045): the first answer has a broken block, the one after the earlier
     // problems are given is good. One confirmed claim quotes the code, one quotes what is not there.
-    if (!prompt.includes("Navarch spec-writer agent")) {
+    if (prompt.includes("Navarch spec-syncer agent")) {
+      // The spec-syncer (ADR 0049): a broken block first, then an addendum with one change whose
+      // quote is in the code, one removal (no evidence) and a stale claim that does not exist.
+      if (!prompt.includes('<input name="previous_failures">')) {
+        result(true, "Here is the addendum.\n\n```navarch-addendum\n{ not json\n```");
+      } else {
+        const addendum = {
+          summary: "Login now rate-limits and the plain-text login is gone.",
+          changes: [
+            { id: "login-rate-limit", component: "auth", kind: "added", text: "login is refused after too many attempts", confidence: "confirmed", evidence: [{ file: "src/auth.ts", line: 3, quote: "checkRateLimit(user)" }] },
+            { id: "plain-login-gone", component: "auth", kind: "removed", text: "the plain-text login path no longer exists", confidence: "confirmed", evidence: [] },
+          ],
+          stale: [
+            { component: "auth", claim: "rejects-empty", reason: "empty users now hit the rate limit first" },
+            { component: "auth", claim: "does-not-exist", reason: "named by mistake" },
+          ],
+        };
+        result(true, `Done.\n\n\`\`\`navarch-addendum\n${JSON.stringify(addendum)}\n\`\`\``);
+      }
+    } else if (!prompt.includes("Navarch spec-writer agent")) {
       result(true, "ok");
     } else if (!prompt.includes('<input name="previous_failures">')) {
       result(true, "Here is the spec.\n\n```navarch-spec\n{ not json\n```");

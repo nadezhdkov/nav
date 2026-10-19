@@ -1,12 +1,12 @@
 import { parseIssueRef, type Actor, type WorkItem } from "@navarch/contracts";
-import { checkPush, cloneRepo, fetchPullRequest, GitHubClient, pushBranch, repoFromRemote, type CheckStatus, type GitHubRepo, type OpenPullRequest } from "@navarch/github";
+import { checkPush, cloneRepo, fetchMergedPullRequest, fetchPullRequest, GitHubClient, pushBranch, repoFromRemote, type CheckStatus, type GitHubRepo, type OpenPullRequest } from "@navarch/github";
 import { remoteUrl } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
 import type { Vault } from "../vault/vault.ts";
 
 export class GitHubIntegrationError extends Error {
-  readonly code: "invalid_issue" | "repo_mismatch" | "policy_denied" | "push_denied" | "pr_closed";
+  readonly code: "invalid_issue" | "repo_mismatch" | "policy_denied" | "push_denied" | "pr_closed" | "pr_not_merged" | "github_error";
 
   constructor(code: GitHubIntegrationError["code"], message: string) {
     super(message);
@@ -55,13 +55,32 @@ export class GitHubIntegration {
    */
   async readPullRequest(repoPath: string, ref: string): Promise<WorkItem & { pull_request: NonNullable<WorkItem["pull_request"]> }> {
     const { origin, number } = await this.originRef(repoPath, ref);
-    const { state, head_ref, head_sha, head_repo, base_ref, base_sha, draft, ...item } = await this.client.getPullRequest(origin, number);
+    const { state, head_ref, head_sha, head_repo, base_ref, base_sha, draft, merged: _merged, merge_commit_sha: _merge, ...item } = await this.client.getPullRequest(origin, number);
     if (state !== "open") throw new GitHubIntegrationError("pr_closed", `${origin}#${number} is closed; Navarch works on open pull requests`);
     const token = await this.vault.get("github/token");
     const fetched = await fetchPullRequest({ repoPath, repo: origin, number, baseRef: base_ref, token, gitUrl: this.config.github.git_url });
     // What was fetched is what the run works on, even if the pull request moved since it was read.
     const failing_checks = await this.client.failingChecks(origin, fetched.head);
     return { ...item, pull_request: { head_ref, head_sha: fetched.head, head_repo, base_ref, base_sha: fetched.base, draft, failing_checks } };
+  }
+
+  /**
+   * A pull request that was merged, for `spec-sync` (ADR 0049): the work item with its pull request
+   * set to what the merge changed. Its `head_sha` is the merge commit, which the run works on, and
+   * its `base_sha` the merge commit's first parent, so the prompt's diff is what the merge brought in.
+   */
+  async readMergedPullRequest(repoPath: string, ref: string): Promise<WorkItem & { pull_request: NonNullable<WorkItem["pull_request"]> }> {
+    const { origin, number } = await this.originRef(repoPath, ref);
+    const { state, head_ref, head_sha: _head, head_repo, base_ref, base_sha: _base, draft, merged, merge_commit_sha, ...item } = await this.client.getPullRequest(origin, number);
+    if (state === "open" || !merged || !merge_commit_sha) throw new GitHubIntegrationError("pr_not_merged", `${origin}#${number} is not merged; spec-sync works on merged pull requests`);
+    const token = await this.vault.get("github/token");
+    let fetched;
+    try {
+      fetched = await fetchMergedPullRequest({ repoPath, repo: origin, number, baseRef: base_ref, mergeCommit: merge_commit_sha, token, gitUrl: this.config.github.git_url });
+    } catch (err) {
+      throw new GitHubIntegrationError("github_error", (err as Error).message);
+    }
+    return { ...item, pull_request: { head_ref, head_sha: fetched.merge, head_repo, base_ref, base_sha: fetched.parent, draft, failing_checks: [] } };
   }
 
   /**

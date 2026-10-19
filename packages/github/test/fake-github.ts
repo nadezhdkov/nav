@@ -30,6 +30,8 @@ export type FakePull = {
   draft?: boolean;
   state?: "open" | "closed";
   merged?: boolean;
+  /** The commit a merged pull request left on its base branch. */
+  merge_commit_sha?: string;
   closed_at?: string;
 };
 
@@ -158,6 +160,7 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
             state: found.state ?? "open",
             draft: found.draft ?? false,
             merged: found.merged ?? false,
+            merge_commit_sha: found.merge_commit_sha ?? null,
             merged_at: found.merged ? (found.closed_at ?? "2026-01-02T00:00:00Z") : null,
             closed_at: found.state === "closed" ? (found.closed_at ?? "2026-01-02T00:00:00Z") : null,
             head: { ref: found.head_ref, sha: found.head_sha, repo: { full_name: found.head_repo ?? name } },

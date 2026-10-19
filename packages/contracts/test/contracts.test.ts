@@ -79,6 +79,22 @@ describe("redact", () => {
     expect(out).not.toContain("nvd_");
     expect(out).not.toContain("nvr_");
   });
+
+  it("removes a private key from its BEGIN line to the first END line, and nothing around it", () => {
+    const key = (kind: string) => `-----BEGIN ${kind}PRIVATE KEY-----\nMIIB\nabc\n-----END ${kind}PRIVATE KEY-----`;
+    expect(redact(`before ${key("RSA ")} between ${key("")} after`)).toBe("before [REDACTED] between [REDACTED] after");
+    expect(redact(`${key("EC ")}`)).toBe("[REDACTED]");
+    // A nested BEGIN is swallowed by the key it sits in, as the lazy pattern did.
+    expect(redact("-----BEGIN PRIVATE KEY-----\n-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY----- tail")).toBe("[REDACTED] tail");
+  });
+
+  it("leaves a BEGIN line with no END alone, and does it in linear time", () => {
+    expect(redact("-----BEGIN PRIVATE KEY-----\nno end here")).toBe("-----BEGIN PRIVATE KEY-----\nno end here");
+    const hostile = "-----BEGIN PRIVATE KEY-----\n".repeat(50_000);
+    const started = performance.now();
+    expect(redact(hostile)).toBe(hostile);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
 });
 
 describe("devices and push", () => {

@@ -110,4 +110,5 @@ export async function compileContext(opts: { root: string; task: string; maxToke
   return { text, sources, chars: text.length, est_tokens: Math.ceil(text.length / CHARS_PER_TOKEN), max_tokens: maxTokens, ms: Date.now() - started };
 }
 
-export { renderIndex, renderSpec, searchSpecs, verifyDrafts } from "./specs.ts";
+export { renderAddendum, renderIndex, renderSpec, searchSpecs, verifyAddendum, verifyDrafts } from "./specs.ts";
+export type { AddendumMeta, VerifiedAddendum, VerifiedChange } from "./specs.ts";

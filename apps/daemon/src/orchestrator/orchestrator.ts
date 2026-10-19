@@ -140,7 +140,12 @@ export class Orchestrator {
     if (req.issue || req.pull_request) {
       if (!this.github) throw new OrchestratorError("github_unavailable", "the GitHub Integration is not configured");
       try {
-        workItem = req.pull_request ? await this.github.readPullRequest(repoPath, req.pull_request) : await this.github.readIssue(repoPath, req.issue!);
+        // spec-sync works on a pull request that was merged (ADR 0049), the others on an open one.
+        const early = req.flow ? this.flows.get(req.flow) : undefined;
+        const merged = !!early && flowNeeds(early.definition) === "merged_pull_request";
+        workItem = req.pull_request
+          ? await (merged ? this.github.readMergedPullRequest(repoPath, req.pull_request) : this.github.readPullRequest(repoPath, req.pull_request))
+          : await this.github.readIssue(repoPath, req.issue!);
       } catch (err) {
         if (err instanceof GitHubIntegrationError) throw new OrchestratorError(err.code, err.message);
         throw new OrchestratorError("github_error", (err as Error).message);
@@ -174,8 +179,8 @@ export class Orchestrator {
     }
     const allNodes = [flow, ...Object.values(subflows)].flatMap((f) => f.nodes);
     const needs = flowNeeds(flow, subflows);
-    const onPr = needs === "pull_request";
-    if (onPr && !pr) throw new OrchestratorError("invalid_request", `flow "${flowName}" works on a pull request (--pr owner/repo#N)`);
+    const onPr = needs === "pull_request" || needs === "merged_pull_request";
+    if (onPr && !pr) throw new OrchestratorError("invalid_request", `flow "${flowName}" works on a ${needs === "merged_pull_request" ? "merged " : ""}pull request (--pr owner/repo#N)`);
     if (pr && !onPr) throw new OrchestratorError("invalid_request", `flow "${flowName}" does not work on pull requests; use review-pr or ci-fix`);
     // ci-fix pushes a branch into the pull request's repository and runs its code in verification.
     if (pr && allNodes.some((n) => n.type === "agent" && n.profile === "ci-fixer")) {
@@ -202,8 +207,8 @@ export class Orchestrator {
       }
     }
 
-    // A specs PR has no issue: the repository comes from the project, and the push is checked now too.
-    if (!workItem && this.github && params.open_pr !== false && allNodes.some((n) => n.type === "github" && n.uses === "pr.specs")) {
+    // A specs PR takes its repository from the project, not from an issue, and the push is checked now too.
+    if (this.github && params.open_pr !== false && allNodes.some((n) => n.type === "github" && n.uses === "pr.specs")) {
       const registered = this.store.projectByPath(repoPath);
       if (!registered) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR for the specs and needs a registered project (navarch project add)`);
       try {

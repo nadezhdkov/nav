@@ -246,6 +246,21 @@ export const EventPayloads = {
     /** Repository-relative files written under `.navarch/specs/`. */
     files: z.array(z.string()),
   }),
+  /** `spec.addendum` checked a merged pull request's spec changes and wrote an addendum (ADR 0049). */
+  "spec.addendum.written": z.object({
+    repo: z.string(),
+    pr_number: z.number().int().positive(),
+    changes: z.number().int().nonnegative(),
+    confirmed: z.number().int().nonnegative(),
+    inferred: z.number().int().nonnegative(),
+    gap: z.number().int().nonnegative(),
+    downgraded: z.number().int().nonnegative(),
+    /** Stale claims that exist in the specs / that the agent named but the specs do not have. */
+    stale: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+    branch: z.string(),
+    files: z.array(z.string()),
+  }),
   /** An instruction from the user to a run's agents (ADR 0019); `task_id` targets one task. */
   "run.message": z.object({
     message_id: z.string(),
