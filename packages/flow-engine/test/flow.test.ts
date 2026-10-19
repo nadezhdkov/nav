@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { evaluate, inputsSection, next, parseExpr, parseFlow, renderInputs, resolveParams, type RunContext, type TaskState } from "../src/index.ts";
+import { evaluate, inputsSection, isExpression, next, parseExpr, parseFlow, renderInputs, resolveParams, type RunContext, type TaskState } from "../src/index.ts";
 
 const builtin = (name: string) => readFileSync(fileURLToPath(new URL(`../../../flows/${name}.yaml`, import.meta.url)), "utf8");
 
@@ -21,6 +21,20 @@ describe("expressions", () => {
     expect(evaluate(parseExpr("${{ params.max == 3 }}"), scope)).toBe(true);
     expect(evaluate(parseExpr("${{ nodes.plan.outputs.summary }}"), scope)).toBeUndefined();
     expect(evaluate(parseExpr("${{ nodes.verify.outputs.blocking_failures }}"), scope)).toEqual(["lint"]);
+  });
+
+  it("takes the body of \${{ … }} with any whitespace around it, and nothing else", () => {
+    expect(isExpression("  ${{ params.max }}\n")).toBe(true);
+    expect(isExpression("${{params.max}}")).toBe(true);
+    expect(isExpression("${{}}")).toBe(true);
+    for (const plain of ["", "${{", "${{}", "${ { x } }", "x ${{ params.max }}", "${{ params.max }} x", "}}${{"]) expect(isExpression(plain), plain).toBe(false);
+    expect(() => parseExpr("${{}}")).toThrow();
+  });
+
+  it("reads a very long text in time proportional to its length", () => {
+    const started = performance.now();
+    for (const text of ["${{" + " ".repeat(200_000), "${{" + " ".repeat(200_000) + "x}", " ".repeat(200_000) + "${{ params.max }}"]) isExpression(text);
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   it("refuses anything outside the small grammar", () => {

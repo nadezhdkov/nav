@@ -43,9 +43,38 @@ describe("retryAtFromText", () => {
     expect(retryAtFromText("usage limit reached; resets in 1h30m", now)).toBe(at(5_400_000));
   });
 
+  it("reads the other ways a duration is written", () => {
+    expect(retryAtFromText("Try Again After 2 Hours and 5 minutes, please", now)).toBe(at(2 * 3_600_000 + 5 * 60_000));
+    expect(retryAtFromText("available again in 1 day, 2 hrs", now)).toBe(at(86_400_000 + 2 * 3_600_000));
+    expect(retryAtFromText("retry in 0.5 secs", now)).toBe(at(500));
+    // The first hint that has a duration wins; an earlier phrase without one is skipped.
+    expect(retryAtFromText("Please retry. It resets in 3m; retry in 9s", now)).toBe(at(180_000));
+  });
+
   it("returns undefined without a hint", () => {
     expect(retryAtFromText("You exceeded your current quota (429)", now)).toBeUndefined();
     expect(retryAtFromText("retry in a while", now)).toBeUndefined();
+    expect(retryAtFromText("retry info 5s", now)).toBeUndefined();
+    expect(retryAtFromText("retry in 5 msec", now)).toBeUndefined();
+    expect(retryAtFromText("retry in 0s", now)).toBeUndefined();
+  });
+
+  it("returns undefined, rather than throwing, for a time too far away to be a date", () => {
+    expect(retryAtFromText("retry in 9999999999 days", now)).toBeUndefined();
+    expect(retryAtFromText('"retryDelay": "99999999999999999s"', now)).toBeUndefined();
+  });
+
+  it("reads long runs of spaces, digits and commas in time proportional to their length", () => {
+    const long = 200_000;
+    const started = performance.now();
+    for (const text of [
+      "retry in" + " ".repeat(long) + "x",
+      "retry in " + "1 ".repeat(long) + "s",
+      "retry in 1s" + ", ".repeat(long) + "x",
+      "retry in 1s " + "and ".repeat(long) + "x",
+      "retry in ".repeat(long / 10) + "x",
+    ]) retryAtFromText(text, now);
+    expect(performance.now() - started).toBeLessThan(1_000);
   });
 
   it("converts epoch seconds and milliseconds", () => {
