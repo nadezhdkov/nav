@@ -144,7 +144,7 @@ const PHONES = [
       <div class="min-w-0 space-y-4" v-reveal="120">
         <TerminalDemo />
         <figure class="card overflow-hidden p-1.5">
-          <img :src="asset('shots/cli-banner.png')" alt="The navarch banner in a terminal: the mascot, a helm wheel and the name, then project, repository, workspace, branch and agents, System ready and the nav prompt" class="block h-auto w-full rounded-[10px]" loading="lazy" decoding="async" />
+          <img :src="asset('shots/cli-banner.png')" alt="The navarch banner in a terminal: the mascot, a helm wheel and the name Navarch, then project, repository, AI model, workspace, branch and agents, System ready and the nav prompt" class="block h-auto w-full rounded-[10px]" loading="lazy" decoding="async" />
         </figure>
       </div>
     </div>

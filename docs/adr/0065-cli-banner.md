@@ -10,7 +10,7 @@ The first banner (ADR 0063) was a small ASCII ship. The user found it plain and 
 
 ## Decision
 
-1. **Mascot as data.** A palette-indexed grid (`mascot.ts`) printed with `▀`/`▄` half-blocks and 24-bit colour: two pixels per text row, no image file and no dependency. It is shown only when `COLORTERM` says true colour and the terminal has at least 78 columns; otherwise it is left out rather than shown badly.
+1. **Mascot as data: her face.** (The first version drew the whole body and looked wrong; the user asked for the face only.) A palette-indexed grid (`mascot.ts`), drawn as the left half of each row and mirrored so the face is symmetrical, printed with `▀`/`▄` half-blocks and 24-bit colour: two pixels per text row, no image file and no dependency. It is shown only when `COLORTERM` says true colour and the terminal has at least 78 columns; otherwise it is left out rather than shown badly.
 2. **The name** in a 5-row block font beside a helm wheel; below 54 columns, plain text.
 3. **Where you are**, each line read quickly and left out when unknown: the registered project (else the repository folder), the `origin` remote shown as an `https` link **without credentials**, the workspace with `~`, the git branch, and the agents running or waiting (from `GET /api/v1/fleet`). Values are stripped of control characters and cut to the width.
 4. **Order.** The chat opens its conversation first, then prints the banner with `System ready`, so a daemon that is not running shows its error and no banner.
@@ -19,6 +19,6 @@ The first banner (ADR 0063) was a small ASCII ship. The user found it plain and 
 
 ## Consequences
 
-- 🟡 The mascot was drawn by hand from the mock-up and checked in a browser rendering, not in every terminal font; line height gaps in some terminals show seams between rows.
+- 🟡 The face was drawn by hand from the project's mascot and checked in a browser rendering, not in every terminal font; line height gaps in some terminals show seams between rows.
 - 🟡 Git is called for three lookups (1.5 s each at most); a slow filesystem delays the banner.
 - 🔴 No animation, no choice of mascot, no light-theme palette.
