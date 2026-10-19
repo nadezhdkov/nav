@@ -11,7 +11,8 @@ CREATE TABLE IF NOT EXISTS events (
   task_id TEXT,
   actor TEXT NOT NULL,
   payload TEXT NOT NULL,
-  schema_version INTEGER NOT NULL
+  schema_version INTEGER NOT NULL,
+  hash TEXT
 );
 CREATE INDEX IF NOT EXISTS events_run ON events(run_id, seq);
 CREATE TRIGGER IF NOT EXISTS events_no_update BEFORE UPDATE ON events

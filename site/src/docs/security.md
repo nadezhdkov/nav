@@ -12,6 +12,10 @@ Navarch runs agents that write code on your machine, so its defaults are strict.
 
 Register a security key (a fingerprint or PIN on your laptop or phone, a passkey, or a USB key) in Settings → Security. Once you have one, turning on auto-merge and adding or removing keys ask you to touch it first. It works only on the desktop, at `http://localhost` or your Tailscale name (never an IP address), and a paired phone cannot manage keys.
 
+## The history can be checked
+
+Every recorded event is chained to the one before it by a hash, so editing, deleting or reordering history breaks the chain. `navarch audit` verifies it and prints the latest hash; keep a copy somewhere the daemon cannot write, and `navarch audit --expect <hash>` later shows whether that point is still in the log. `navarch audit export <run>` lists a run's events with their actors. It detects tampering; it does not prevent it.
+
 ## Agents stay in their box
 
 - Each run works in **its own git worktree**. Agents may not write outside it, and access to `~/.ssh` and to the vault is always denied.

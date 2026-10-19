@@ -66,6 +66,8 @@ Run options:
 | `navarch inbox dismiss <item> \| restore <item>` | hide or bring back an item |
 | `navarch automerge [on <project> --confirm <owner/repo>\|off <project>]` | opt-in auto-merge per repository: conditions and state |
 | `navarch summary [--now]` | the morning summary: new issues, CI failures, stalled PRs and suggested runs; `--now` syncs and makes one |
+| `navarch audit [verify] [--expect <hash>]` | check the event log's hash chain and print its head |
+| `navarch audit export <run> [--json]` | a run's events with actors and hashes |
 | `navarch ci [--all]` | failing checks noticed on your projects' open pull requests |
 | `navarch ci fix <failure> [--budget <usd>]` | start a `ci-fix` run on that pull request |
 | `navarch ci dismiss <failure>` | stop showing a failure |
