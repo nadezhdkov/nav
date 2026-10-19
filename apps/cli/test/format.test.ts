@@ -190,12 +190,24 @@ describe("budgets and usage (ADR 0023)", () => {
         models: [],
         pull_requests: { opened: 4, open: 1, merged: 2, closed: 1, gone: 0, acceptance_rate: 0.667, accepted_as_is: 1, rework: 1, rework_rate: 0.333, cost_per_merged: 1.7, recent: [] },
       },
+      knowledge: {
+        target_reduction: 0.3,
+        min_attempts: 3,
+        context: { attempts: 3, median_est_tokens: 2800 },
+        profiles: [{ profile: "implementer", with: { attempts: 3, succeeded: 3, success_rate: 1, median_input_tokens: 65000 }, without: { attempts: 3, succeeded: 3, success_rate: 1, median_input_tokens: 100000 }, reduction: 0.35 }],
+        overall: { with: { attempts: 3, succeeded: 3, success_rate: 1, median_input_tokens: 65000 }, without: { attempts: 3, succeeded: 3, success_rate: 1, median_input_tokens: 100000 }, reduction: 0.35 },
+        pull_requests: { with: { closed: 2, merged: 2, acceptance_rate: 1 }, without: { closed: 2, merged: 1, acceptance_rate: 0.5 } },
+        verdict: "met",
+      },
     });
     expect(text).toContain("cost, last 7 days: $0.4000 billed");
     expect(text).not.toContain("2026-10-15");
     expect(text).toMatch(/acme\s+2\s+\$0\.4000/);
     expect(text).toContain("accepted 67 % · as is 1 · rework (> 2 commits after Navarch's) 1, 33 % · cost per merged PR $1.70");
     expect(text).toMatch(/implementer\s+4\s+75 %\s+1/);
+    expect(text).toContain("context compiler: input tokens per attempt with / without the block, target -30 % · met");
+    expect(text).toMatch(/all\s+3\/3\s+65\.0k\s+100\.0k\s+-35 %\s+100 %\/100 %/);
+    expect(text).toContain("PRs accepted: with 100 % (2/2) · without 50 % (1/2)");
   });
 
   it("shows spend, tokens and per-model metrics", () => {

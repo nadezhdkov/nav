@@ -159,6 +159,7 @@ describe("observed metrics (ADR 0023)", () => {
     cached_tokens: 0,
     cost: 0.1,
     plan_cost: 0,
+    context_tokens: null,
     ...over,
   });
 

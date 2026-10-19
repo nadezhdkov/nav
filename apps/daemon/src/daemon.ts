@@ -19,6 +19,7 @@ import { InboxService } from "./inbox/service.ts";
 import { CiWatcher } from "./github/ci.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
+import { knowledgePanel } from "./budgets/knowledge.ts";
 import { PAUSE_INTERRUPT, registerSecret, type Actor, type AdapterId, type AgentAdapter, type RunMessage, type RemoteStatus, type RunView, type SendRunMessage, type SetBudgetRequest, type UsageView, type MetricsView } from "@navarch/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildServer } from "./api/server.ts";
@@ -204,12 +205,14 @@ export class Daemon {
     const now = Date.now();
     const from = windowStart(now, opts.days).toISOString();
     const attempts = this.store.attemptsSince(from);
+    const prs = this.store.pullRequestsSince(from);
     const models = modelMetrics(attempts, { now, billingOf: (adapter) => this.adapters.get(adapter)?.capabilities().billing ?? "metered" });
     return {
       generated_at: new Date(now).toISOString(),
       window_days: opts.days,
       cost: costPanel(this.store.ledgerSince(from), { now, days: opts.days, projects: this.store.listProjects() }),
-      quality: qualityPanel(attempts, this.store.pullRequestsSince(from), models),
+      quality: qualityPanel(attempts, prs, models),
+      knowledge: knowledgePanel(attempts, prs),
     };
   }
 

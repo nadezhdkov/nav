@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, UsageView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -368,7 +368,23 @@ export function formatMetrics(m: MetricsView): string {
   if (m.quality.models.length) {
     lines.push("", "success by model:", table(["MODEL", "TASKS", "OK", "ERR 24H"], m.quality.models.map((x) => [x.id, String(x.tasks), pct(x.success_rate), pct(x.error_rate_24h)])));
   }
+  lines.push("", ...formatKnowledge(m.knowledge, tokens, pct));
   return lines.join("\n");
+}
+
+/** The Phase 3 token goal: input tokens with and without the compiled context (ADR 0044). */
+function formatKnowledge(k: KnowledgePanel, tokens: (n: number) => string, pct: (n: number | null) => string): string[] {
+  const num = (n: number | null) => (n === null ? "-" : tokens(n));
+  const red = (n: number | null) => (n === null ? "-" : `${n >= 0 ? "-" : "+"}${Math.abs(Math.round(n * 100))} %`);
+  const verdict = { met: "met", not_met: "not met", insufficient: `not enough data yet (${k.min_attempts} attempts on each side)` }[k.verdict];
+  const row = (label: string, w: KnowledgePanel["overall"]) => [label, `${w.with.attempts}/${w.without.attempts}`, num(w.with.median_input_tokens), num(w.without.median_input_tokens), red(w.reduction), `${pct(w.with.success_rate)}/${pct(w.without.success_rate)}`];
+  const pr = k.pull_requests;
+  return [
+    `context compiler: input tokens per attempt with / without the block, target -${Math.round(k.target_reduction * 100)} % · ${verdict}`,
+    ...(k.context.attempts ? [`  ${k.context.attempts} attempts carried a block of about ${num(k.context.median_est_tokens)} tokens`] : []),
+    table(["PROFILE", "ATTEMPTS", "WITH", "WITHOUT", "CHANGE", "OK"], [...k.profiles.map((p) => row(p.profile, p)), row("all", k.overall)]),
+    `  PRs accepted: with ${pct(pr.with.acceptance_rate)} (${pr.with.merged}/${pr.with.closed}) · without ${pct(pr.without.acceptance_rate)} (${pr.without.merged}/${pr.without.closed})`,
+  ];
 }
 
 /** `navarch flow list`: built-in and Studio Flows (ADR 0033). */
