@@ -1,4 +1,4 @@
-import type { ApprovalView, AwayView, CiFailureView, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView, PrinciplesView } from "@navarch/contracts";
+import type { ApprovalView, AwayView, CiFailureView, MorningSummary, SetAwayRequest, FleetView, FleetWindow, InboxView, NavarchEvent, ProjectView, QuotaView, RunDetail, RunView, UsageView, MetricsView, SpecRunView, SpecAddendumRunView, PrinciplesView } from "@navarch/contracts";
 import { defineStore } from "pinia";
 import { computed, ref } from "vue";
 import { api } from "../api/client.ts";
@@ -202,6 +202,31 @@ export const useCiStore = defineStore("ci", () => {
   }
 
   return { failures, error, load, apply };
+});
+
+/** The latest morning summary (ADR 0059), for Home. */
+export const useSummaryStore = defineStore("summary", () => {
+  const summary = ref<MorningSummary | null>(null);
+  const error = ref<string | null>(null);
+
+  async function load() {
+    try {
+      summary.value = await api.summary();
+      error.value = null;
+    } catch (err) {
+      error.value = (err as Error).message;
+    }
+  }
+
+  async function make() {
+    summary.value = await api.makeSummary();
+  }
+
+  function apply(event: NavarchEvent) {
+    if (event.type === "summary.generated") summary.value = (event as NavarchEvent<"summary.generated">).payload;
+  }
+
+  return { summary, error, load, make, apply };
 });
 
 /** Registered projects and agents' quota windows, for the sidebar and Home. */

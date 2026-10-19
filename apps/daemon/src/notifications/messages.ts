@@ -5,7 +5,7 @@ import type { Locale } from "@navarch/contracts";
  * notification is shown by the phone's system, not by the app; the device's locale comes with
  * its push subscription. `{n}` is a count.
  */
-export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "budget_warning" | "paused_quota" | "pr_opened" | "run_done" | "question" | "ci_failure";
+export type NoticeKind = "approval" | "run_failed" | "budget_exceeded" | "budget_warning" | "paused_quota" | "pr_opened" | "run_done" | "question" | "ci_failure" | "summary";
 export type ApprovalSubject = "plan" | "pr" | "verification" | "agent";
 
 interface Texts {
@@ -27,6 +27,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       run_done: "Run done",
       question: "An agent is waiting for you",
       ci_failure: "CI failed on a pull request",
+      summary: "Morning summary",
     },
     approval: { plan: "Plan", pr: "Pull request", verification: "Verification", agent: "Agent start" },
     more: "{n} more in this run",
@@ -43,6 +44,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       run_done: "Run concluída",
       question: "Um agente está esperando você",
       ci_failure: "CI falhou em um pull request",
+      summary: "Resumo da manhã",
     },
     approval: { plan: "Plano", pr: "Pull request", verification: "Verificação", agent: "Início do agente" },
     more: "mais {n} nesta run",
@@ -59,6 +61,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       run_done: "Run terminada",
       question: "Un agente te está esperando",
       ci_failure: "CI falló en un pull request",
+      summary: "Resumen de la mañana",
     },
     approval: { plan: "Plan", pr: "Pull request", verification: "Verificación", agent: "Inicio del agente" },
     more: "{n} más en esta run",
@@ -75,6 +78,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       run_done: "Run fertig",
       question: "Ein Agent wartet auf dich",
       ci_failure: "CI fehlgeschlagen bei einem Pull Request",
+      summary: "Morgenübersicht",
     },
     approval: { plan: "Plan", pr: "Pull Request", verification: "Prüfung", agent: "Agent-Start" },
     more: "{n} weitere in diesem Run",
@@ -91,6 +95,7 @@ export const MESSAGES: Record<Locale, Texts> = {
       run_done: "运行完成",
       question: "有智能体在等你回复",
       ci_failure: "拉取请求的 CI 失败",
+      summary: "晨间摘要",
     },
     approval: { plan: "计划", pr: "拉取请求", verification: "验证", agent: "启动代理" },
     more: "此运行中还有 {n} 项",

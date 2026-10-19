@@ -206,6 +206,18 @@ export const Config = z.object({
     })
     .prefault({}),
   /**
+   * The morning summary (spec §7.4, ADR 0059). With `enabled`, once a day at `at` (the PC's local
+   * time) the daemon syncs every project, builds the summary and sends a notification.
+   */
+  summary: z
+    .object({
+      enabled: z.boolean().default(false),
+      at: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).default("08:00"),
+      /** A draft PR of Navarch's open this many days is listed as stalled. */
+      stalled_days: z.number().int().positive().default(3),
+    })
+    .prefault({}),
+  /**
    * `spec-sync` after merges (ADR 0052). With `auto`, the daemon starts it itself for a pull request
    * Navarch opened that was merged, in a project that already has specs, at most `daily_runs` a day
    * in the PC's local time; otherwise the user starts it.

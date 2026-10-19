@@ -5,6 +5,7 @@ import { RunStatus, TaskStatus } from "./status.ts";
 import { CompeteTaskRef } from "./compete.ts";
 import { TeamTaskRef } from "./team.ts";
 import { AwayDelegate, AwaySettings, AwayVerdict } from "./away.ts";
+import { MorningSummary } from "./summary.ts";
 import { ContainerIsolation, VerificationReport, VerifyCommand, WorkItem, WorkItemRef } from "./work.ts";
 
 /** Who caused an event (spec §9.2 `actor`). */
@@ -367,6 +368,8 @@ export const EventPayloads = {
   "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
   /** The user dismissed a CI failure. */
   "ci.failure.dismissed": z.object({ failure_id: z.string() }),
+  /** The morning summary was made (spec §7.4, ADR 0059); the payload is the summary as it was. */
+  "summary.generated": MorningSummary,
   /** The daemon started a `spec-sync` run for a pull request of Navarch's that was merged (ADR 0052, `spec_sync.auto`). */
   "spec.sync.auto_started": z.object({ repo: z.string(), number: z.number().int().positive(), project_id: z.string(), run_id: z.string() }),
   /** The user approved a rule for a project (ADR 0047); it is applied to later runs there. */

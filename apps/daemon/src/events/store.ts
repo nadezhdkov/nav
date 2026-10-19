@@ -35,6 +35,7 @@ import {
   attachmentInfo,
   type RunAttachment,
   type CiFailureView,
+  type MorningSummary,
 } from "@navarch/contracts";
 import { competeState, competeTaskId, evaluate, parseExpr, progress, teamState, teamTaskId } from "@navarch/flow-engine";
 import { applyEvent } from "./projections.ts";
@@ -772,6 +773,12 @@ export class EventStore {
         )
         .all() as Row[]
     ).map(pullRequestRecord);
+  }
+
+  /** The latest morning summary (ADR 0059), as it was recorded. */
+  latestSummary(): MorningSummary | undefined {
+    const row = this.db.prepare("SELECT payload FROM events WHERE type = 'summary.generated' ORDER BY seq DESC LIMIT 1").get() as { payload: string } | undefined;
+    return row ? (JSON.parse(row.payload) as MorningSummary) : undefined;
   }
 
   /** CI failures (ADR 0041), newest first; `status` narrows them. */

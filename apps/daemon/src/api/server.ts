@@ -348,6 +348,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
 
+  // The morning summary (ADR 0059). A phone may read it; making one now syncs every project, so it is desktop only.
+  app.get("/api/v1/summary", async () => daemon.summary.latest() ?? null);
+  app.post("/api/v1/summary", async () => daemon.summary.generate());
+
   // CI failures noticed on open pull requests (ADR 0041). A phone may read them; starting a fix is desktop only.
   app.get("/api/v1/ci/failures", async (req, reply) => {
     const status = (req.query as { status?: string }).status;
@@ -753,6 +757,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/projects/:id/principles",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
+  "GET /api/v1/summary",
   "GET /api/v1/inbox/:id",
   "POST /api/v1/inbox/sync",
   "POST /api/v1/inbox/start",

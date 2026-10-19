@@ -11,7 +11,7 @@ import PairView from "./views/PairView.vue";
 import { connected, onEvent, onReconnect, subscribe } from "./api/stream.ts";
 import { locales, setLocale, type Locale } from "./i18n.ts";
 import TokenView from "./views/TokenView.vue";
-import { useApprovalsStore, useAwayStore, useCiStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useSpecsStore, usePrinciplesStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
+import { useApprovalsStore, useAwayStore, useCiStore, useFleetStore, useInboxStore, useProjectsStore, useRunsStore, useSpecsStore, useSummaryStore, usePrinciplesStore, useUsageStore, useMetricsStore } from "./stores/runs.ts";
 
 const { t, locale } = useI18n();
 const runs = useRunsStore();
@@ -22,7 +22,7 @@ const projects = useProjectsStore();
 const usage = useUsageStore();
 const away = useAwayStore();
 const principles = usePrinciplesStore();
-const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore(), away, useCiStore(), useSpecsStore(), principles];
+const stores = [runs, approvals, fleet, inbox, projects, usage, useMetricsStore(), away, useCiStore(), useSummaryStore(), useSpecsStore(), principles];
 
 const offs: (() => void)[] = [];
 /** Loads everything again, for the "Try again" of the unreachable notice. */

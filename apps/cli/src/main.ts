@@ -29,6 +29,7 @@ import {
   type SyncInboxResult,
   type AwayView,
   type CiFailureView,
+  type MorningSummary,
   SetAwayRequest,
   type BudgetView,
   type SetBudgetRequest,
@@ -46,7 +47,7 @@ import { serveStdio } from "@navarch/mcp-server";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatSummary, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -116,6 +117,7 @@ Usage:
                                          change a limit; raising one releases tasks waiting on it
   navarch usage [--days <n>] [--profile <name>]
                                          spend today and this month, tokens, success and cost per model
+  navarch summary [--now]                  the morning summary: new issues, CI failures, stalled PRs, suggested runs (--now syncs and makes one)
   navarch specs                            specs written by reverse-spec runs and their share of confirmed (🟢) claims
   navarch metrics [--days <n>]             cost by day, project, profile and model; success rates, accepted PRs, rework
   navarch flow list                        built-in Flows and the Flows published in Flow Studio (Web UI → Flows)
@@ -477,6 +479,11 @@ async function main(argv: string[]): Promise<number> {
       if (values.project) query.set("project", values.project);
       const view = await api.request<InboxView>("GET", `/api/v1/inbox${query.size ? `?${query}` : ""}`);
       return print(json ? view : formatInbox(view), json);
+    }
+    case "summary": {
+      const api = new ApiClient(home);
+      const summary = values.now ? await api.request<MorningSummary>("POST", "/api/v1/summary", {}) : await api.request<MorningSummary | null>("GET", "/api/v1/summary");
+      return print(json ? summary : formatSummary(summary), json);
     }
     case "ci": {
       const api = new ApiClient(home);

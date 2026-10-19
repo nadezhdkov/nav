@@ -209,6 +209,12 @@ export function noticeFor(event: NavarchEvent): Notice | undefined {
     const text = `${p.repo}#${p.number} ${p.title}`.replace(/[\u0000-\u001f\u007f]/g, " ");
     return { kind: "ci_failure", run_id: p.failure_id, critical: false, url: "/home", text: text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1)}…` : text };
   }
+  if (event.type === "summary.generated") {
+    // Not about a run: the summary's id groups the notice; the body is its headline in numbers.
+    const p = (event as NavarchEvent<"summary.generated">).payload;
+    const parts = [`${p.new_total} new`, `${p.ci_failures.length} CI`, `${p.approvals_waiting} approvals`].join(" · ");
+    return { kind: "summary", run_id: p.id, critical: false, url: "/home", text: parts };
+  }
   const runId = event.run_id;
   if (!runId) return undefined;
   if (event.type === "approval.requested") {
