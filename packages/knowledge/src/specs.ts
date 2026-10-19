@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative } from "node:path";
 import { coverageOf, SPEC_ICON, type SpecCoverage, type SpecDraft, type SpecEvidence, type VerifiedClaim, type VerifiedSpec } from "@navarch/contracts";
 import { readText } from "@navarch/explorer";
@@ -121,4 +121,35 @@ export function renderIndex(specs: readonly VerifiedSpec[], meta: { runId: strin
   ].join("\n");
   const json = `${JSON.stringify({ run_id: meta.runId, generated_at: meta.generatedAt, coverage, components: specs.map((s) => ({ component: s.component, file: `${s.component}.md`, ...coverageOf([s]) })) }, null, 2)}\n`;
   return { markdown, json, coverage };
+}
+
+const SPECS_DIR = ".navarch/specs";
+const MAX_SPEC_HITS = 50;
+
+/**
+ * Lines of the specification files under `.navarch/specs/` that contain every word of the query
+ * (case-insensitive). The files are text an agent wrote from untrusted code: shown, never run.
+ */
+export async function searchSpecs(root: string, query: string): Promise<{ file: string; line: number; text: string }[]> {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  let names: string[];
+  try {
+    // Regular files only: a symlink in an untrusted repository must not lead outside it.
+    names = (await readdir(join(root, SPECS_DIR), { withFileTypes: true })).filter((e) => e.isFile() && e.name.endsWith(".md")).map((e) => e.name).sort();
+  } catch {
+    return [];
+  }
+  const hits: { file: string; line: number; text: string }[] = [];
+  for (const name of names) {
+    const file = `${SPECS_DIR}/${name}`;
+    const text = await readText(root, file);
+    if (text === undefined) continue;
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length && hits.length < MAX_SPEC_HITS; i++) {
+      const lower = lines[i]!.toLowerCase();
+      if (words.every((w) => lower.includes(w))) hits.push({ file, line: i + 1, text: lines[i]!.trim().slice(0, 400) });
+    }
+  }
+  return hits;
 }

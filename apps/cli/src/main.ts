@@ -39,6 +39,7 @@ import {
   type ValidateFlowResponse,
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
+import { serveStdio } from "@navarch/mcp-server";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
@@ -87,6 +88,7 @@ Usage:
   navarch project list | remove <project-id>
   navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
   navarch map | symbols <name> | where <text> [--project <project-id>]
+  navarch mcp [--project <project-id>]    (Navarch as an MCP server on stdio, read-only tools for one project)
                                          explore the project of the current directory: languages and entry points,
                                          where a symbol is defined, where a text appears
   navarch sync [--project <project-id>]    read new and changed issues now (also polled every 15 min)
@@ -397,6 +399,13 @@ async function main(argv: string[]): Promise<number> {
       }
       const hits = await api.request<SearchHit[]>("GET", `${base}/search?q=${encodeURIComponent(query)}`);
       return print(json ? hits : formatHits(hits), json);
+    }
+    case "mcp": {
+      // Navarch as an MCP server on stdio for one project (ADR 0046); stdout carries only protocol messages.
+      const api = new ApiClient(home);
+      const base = `/api/v1/projects/${encodeURIComponent(await exploredProject(api, values.project))}`;
+      await serveStdio({ get: (path) => api.request("GET", base + path) }, process.stdin, (line) => process.stdout.write(`${line}\n`));
+      return EXIT.ok;
     }
     case "sync": {
       const result = await new ApiClient(home).request<SyncInboxResult>("POST", "/api/v1/inbox/sync", values.project ? { project_id: values.project } : {});

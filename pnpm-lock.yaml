@@ -184,6 +184,9 @@ importers:
       '@navarch/daemon':
         specifier: workspace:*
         version: link:../daemon
+      '@navarch/mcp-server':
+        specifier: workspace:*
+        version: link:../../packages/mcp-server
 
   apps/daemon:
     dependencies:
@@ -467,6 +470,12 @@ importers:
       '@navarch/explorer':
         specifier: workspace:*
         version: link:../explorer
+
+  packages/mcp-server:
+    dependencies:
+      '@navarch/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/model-router: {}
 

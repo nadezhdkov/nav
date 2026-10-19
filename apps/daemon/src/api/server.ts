@@ -46,6 +46,7 @@ import {
   type SyncInboxResult,
 } from "@navarch/contracts";
 import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
+import { compileContext, searchSpecs } from "@navarch/knowledge";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { FlowStudioError } from "../flows/library.ts";
 import { z } from "zod";
@@ -247,6 +248,18 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const q = (req.query as { q?: string }).q;
     if (!q) return badRequest(reply, "q is required");
     return explore(req, reply, (root) => searchText(root, q));
+  });
+
+  // What the MCP server serves besides the above (ADR 0046): the compiled context of a goal and the project's specs.
+  app.get("/api/v1/projects/:id/context", (req, reply) => {
+    const task = (req.query as { task?: string }).task;
+    if (!task) return badRequest(reply, "task is required");
+    return explore(req, reply, async (root) => (await compileContext({ root, task })) ?? { text: "", sources: [], chars: 0, est_tokens: 0, max_tokens: 4000, ms: 0 });
+  });
+  app.get("/api/v1/projects/:id/specs", (req, reply) => {
+    const q = (req.query as { q?: string }).q;
+    if (!q) return badRequest(reply, "q is required");
+    return explore(req, reply, (root) => searchSpecs(root, q));
   });
 
   // GitHub repositories for New run (ADR 0026): desktop only, never paired devices.
@@ -686,6 +699,8 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/projects/:id/map",
   "GET /api/v1/projects/:id/symbols",
   "GET /api/v1/projects/:id/search",
+  "GET /api/v1/projects/:id/context",
+  "GET /api/v1/projects/:id/specs",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/inbox/:id",

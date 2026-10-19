@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { coverageOf, parseSpecDrafts, type SpecDraft } from "@navarch/contracts";
 import { beforeAll, describe, expect, it } from "vitest";
-import { renderIndex, renderSpec, verifyDrafts } from "../src/index.ts";
+import { renderIndex, renderSpec, searchSpecs, verifyDrafts } from "../src/index.ts";
 
 let root: string;
 function put(rel: string, body: string): void {
@@ -123,5 +123,22 @@ describe("rendering and coverage", () => {
     const index = renderIndex(specs, meta);
     expect(index.markdown).toContain("| [Authentication](auth.md) | 2 | 1 | 1 | 0 | 50 % |");
     expect(JSON.parse(index.json).coverage).toMatchObject({ claims: 2, confirmed: 1, green_rate: 0.5 });
+  });
+});
+
+describe("searchSpecs", () => {
+  it("finds lines with every word in the spec files, and nothing without them", async () => {
+    const { mkdtemp, mkdir, writeFile, symlink } = await import("node:fs/promises");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = await mkdtemp(join(tmpdir(), "specs-"));
+    await mkdir(join(dir, ".navarch/specs"), { recursive: true });
+    await writeFile(join(dir, ".navarch/specs/auth.md"), "# Auth\n- 🟢 **c1** Creates a Session for the user\n- 🔴 **c2** who revokes?\n");
+    await writeFile(join(dir, "secret.md"), "creates a session outside\n");
+    await symlink(join(dir, "secret.md"), join(dir, ".navarch/specs/link.md"));
+    const hits = await searchSpecs(dir, "creates SESSION");
+    expect(hits).toEqual([{ file: ".navarch/specs/auth.md", line: 2, text: "- 🟢 **c1** Creates a Session for the user" }]);
+    expect(await searchSpecs(dir, "")).toEqual([]);
+    expect(await searchSpecs(join(dir, "nothing"), "auth")).toEqual([]);
   });
 });
