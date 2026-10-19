@@ -89,7 +89,7 @@ Usage:
   navarch reject <approval-id> [--reason <text>]
   navarch secret set <name>                store a secret from stdin, e.g. github/token (a fine-grained PAT)
   navarch secret status <name>
-  navarch remote status                    Tailscale and the phone's URL (\`tailscale serve\` must proxy to the daemon)
+  navarch remote status                    Tailscale (or relay) and the phone's URL (\`tailscale serve\` must proxy to the daemon)
   navarch devices                          paired phones (pair one from the Web UI: Settings → Devices)
   navarch devices revoke <device-id>       sign a phone out
   navarch project add <clone> [--github <owner/name>] [--name <name>]

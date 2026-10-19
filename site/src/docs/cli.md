@@ -8,7 +8,7 @@ The `navarch` command (or `nav`) talks to the daemon. `navarch --help` prints th
 |---|---|
 | `navarch daemon start\|stop\|status` | manage `navarchd` |
 | `navarch web [--print]` | open the Web UI with a single-use sign-in code |
-| `navarch remote status` | Tailscale and the phone's address |
+| `navarch remote status` | Tailscale or relay, and the phone's address |
 | `navarch devices [revoke <id>]` | paired phones |
 
 ## Runs

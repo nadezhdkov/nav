@@ -333,7 +333,7 @@ export type PushKey = z.infer<typeof PushKey>;
 
 /** Remote access as the daemon sees it (`GET /api/v1/remote`, `navarch remote status`). */
 export const RemoteStatus = z.object({
-  mode: z.enum(["tailscale", "off"]),
+  mode: z.enum(["tailscale", "relay", "off"]),
   installed: z.boolean(),
   running: z.boolean(),
   /** The HTTPS origin the phone opens; from the config or the tailnet name. */

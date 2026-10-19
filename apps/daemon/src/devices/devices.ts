@@ -57,6 +57,18 @@ export class DeviceService {
     return { code, url, expires_at: new Date(now + PAIRING_TTL_MS).toISOString() };
   }
 
+  /** Pairing codes not yet used or expired: the secrets a phone at the relay may start a handshake with. */
+  activePairingCodes(): string[] {
+    const now = this.now();
+    return [...this.pairings].filter(([, expires]) => expires > now).map(([code]) => code);
+  }
+
+  /** Whether a paired device exists and has not been revoked. */
+  isActive(deviceId: string): boolean {
+    const device = this.store.getDevice(deviceId);
+    return !!device && !device.revoked_at;
+  }
+
   pair(code: string, name: string): DeviceSession {
     const expires = this.pairings.get(code);
     this.pairings.delete(code);
