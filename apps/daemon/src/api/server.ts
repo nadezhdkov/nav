@@ -44,6 +44,8 @@ import {
   ReauthOptionsRequest,
   ReauthVerifyRequest,
   SetAutoMergeRequest,
+  SaveScheduleRequest,
+  SetScheduleEnabledRequest,
   SetAwayRequest,
   AddPrincipleRequest,
   SetBudgetRequest,
@@ -67,6 +69,7 @@ import { InboxError } from "../inbox/service.ts";
 import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { PrinciplesError } from "../principles/service.ts";
+import { ScheduleError } from "../schedules/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
 import { WebAuthnServiceError } from "../webauthn/service.ts";
 import { AutoMergeError } from "../github/automerge.ts";
@@ -110,6 +113,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof ScheduleError) {
+      const status = err.code === "not_found" ? 404 : err.code === "forbidden" ? 403 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
+    }
     if (err instanceof PrinciplesError) {
       const status = err.code === "not_found" ? 404 : err.code === "forbidden" ? 403 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
@@ -438,6 +445,28 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
       if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400, reauth_required: 403 }[err.code]).send({ error: err.code, message: err.message });
       throw err;
     }
+  });
+
+  // Scheduled runs (ADR 0064): a phone may read them; only the user sets them, from the desktop or the CLI.
+  app.get("/api/v1/schedules", async () => daemon.schedules.list());
+  app.post("/api/v1/schedules", async (req, reply) => {
+    const parsed = SaveScheduleRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(daemon.schedules.save(undefined, parsed.data, actorOf(req)));
+  });
+  app.put("/api/v1/schedules/:id", async (req, reply) => {
+    const parsed = SaveScheduleRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.schedules.save((req.params as { id: string }).id, parsed.data, actorOf(req));
+  });
+  app.put("/api/v1/schedules/:id/enabled", async (req, reply) => {
+    const parsed = SetScheduleEnabledRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.schedules.setEnabled((req.params as { id: string }).id, parsed.data.enabled, actorOf(req));
+  });
+  app.delete("/api/v1/schedules/:id", async (req, reply) => {
+    daemon.schedules.remove((req.params as { id: string }).id, actorOf(req));
+    return reply.code(204).send();
   });
 
   // The morning summary (ADR 0059). A phone may read it; making one now syncs every project, so it is desktop only.
@@ -858,6 +887,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/summary",
+  "GET /api/v1/schedules",
   "GET /api/v1/auto-merge",
   "GET /api/v1/inbox/:id",
   "POST /api/v1/inbox/sync",

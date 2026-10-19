@@ -66,6 +66,7 @@ Run options:
 | `navarch inbox dismiss <item> \| restore <item>` | hide or bring back an item |
 | `navarch automerge [on <project> --confirm <owner/repo>\|off <project>]` | opt-in auto-merge per repository: conditions and state |
 | `navarch summary [--now]` | the morning summary: new issues, CI failures, stalled PRs and suggested runs; `--now` syncs and makes one |
+| `navarch schedule` `[list] \| add <name> <prompt> --at HH:MM [--days daily\|weekdays\|mon,wed] --budget <usd> [--flow <name>] \| pause\|resume\|remove <id>` | scheduled runs: a prompt the daemon starts on a timetable, with a budget. See [Scheduled runs](/docs/scheduled-runs) |
 | `navarch audit [verify] [--expect <hash>]` | check the event log's hash chain and print its head |
 | `navarch audit export <run> [--json]` | a run's events with actors and hashes |
 | `navarch ci [--all]` | failing checks noticed on your projects' open pull requests |

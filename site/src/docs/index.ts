@@ -3,7 +3,7 @@ export const DOC_SECTIONS = [
   { title: "Start", pages: ["introduction", "getting-started", "first-issue-run"] },
   { title: "Concepts", pages: ["how-it-works", "flows", "autonomy-and-approvals"] },
   { title: "Agents", pages: ["agents", "budgets-and-quotas"] },
-  { title: "Use it", pages: ["web-ui", "phone", "cli", "concierge", "team-and-compete"] },
+  { title: "Use it", pages: ["web-ui", "phone", "cli", "concierge", "team-and-compete", "scheduled-runs"] },
   { title: "Reference", pages: ["configuration", "security"] },
 ] as const;
 
