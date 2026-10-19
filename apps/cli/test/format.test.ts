@@ -392,3 +392,40 @@ describe("formatTraceability (ADR 0054)", () => {
     expect(formatTraceability({ ...view, has_specs: false })).toContain("navarch run --flow reverse-spec");
   });
 });
+
+describe("scheduled runs", () => {
+  it("reads --days as a preset or a list, and refuses anything else", async () => {
+    const { parseScheduleDays } = await import("../src/format.ts");
+    expect(parseScheduleDays("daily")).toHaveLength(7);
+    expect(parseScheduleDays("weekdays")).toEqual(["mon", "tue", "wed", "thu", "fri"]);
+    expect(parseScheduleDays("Mon, wednesday,mon")).toEqual(["mon", "wed"]);
+    expect(() => parseScheduleDays("someday")).toThrow(/--days/);
+  });
+
+  it("prints each schedule with its next slot and what the last one did", async () => {
+    const { formatSchedules } = await import("../src/format.ts");
+    const view = {
+      id: "sch_1",
+      name: "nightly",
+      project_id: "prj_1",
+      repo: "acme/widgets",
+      prompt: "triage\nthe failing tests",
+      flow: null,
+      budget: 1,
+      at: "03:00",
+      days: ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+      enabled: true,
+      next_at: "2026-10-22T06:00:00.000Z",
+      last_slot: "2026-10-21 03:00",
+      last_outcome: "missed",
+      last_run_id: null,
+      last_message: "the daemon was not running at that time",
+    } as const;
+    const out = formatSchedules([view as never]);
+    expect(out).toContain("sch_1  nightly  acme/widgets  daily at 03:00  $1 budget");
+    expect(out).toContain("triage the failing tests");
+    expect(out).toContain("last 2026-10-21 03:00: missed");
+    expect(formatSchedules([{ ...view, enabled: false } as never])).toContain("paused");
+    expect(formatSchedules([])).toMatch(/no scheduled runs/);
+  });
+});

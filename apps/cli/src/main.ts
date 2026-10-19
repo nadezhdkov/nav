@@ -28,6 +28,7 @@ import {
   type StartInboxResult,
   type SyncInboxResult,
   type AwayView,
+  type ScheduleView,
   type AuditVerifyView,
   type RunAudit,
   type AutoMergeStatus,
@@ -48,11 +49,11 @@ import {
 } from "@navarch/contracts";
 import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
-import { wantsColor } from "./banner.ts";
+import { hasTruecolor, wantsColor } from "./banner.ts";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
 import { printSafeLine, stripControls } from "./safe.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatSummary, formatAudit, formatRunAudit, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics, formatAutoMerge, formatAutoMergeConditions } from "./format.ts";
+import { formatApprovals, formatAway, formatSchedules, parseScheduleDays, formatBudgets, formatCiFailures, formatSummary, formatAudit, formatRunAudit, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics, formatAutoMerge, formatAutoMergeConditions } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -97,6 +98,9 @@ Usage:
   navarch project clone <owner/name>       clone a GitHub repository the token reaches into the Navarch home and add it
   navarch project list | remove <project-id>
   navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
+  navarch schedule [list]                   scheduled runs: a prompt started on a timetable (local time)
+  navarch schedule add <name> <prompt> --at HH:MM [--days daily|weekdays|mon,wed] --budget <usd> [--flow <name>] [--project <id>]
+  navarch schedule pause|resume|remove <id>
   navarch principles [add <rule> [--run <run>] | remove <id> | accept <proposal> | dismiss <proposal>] [--project <project-id>]
                                          rules for the project; agents may propose some, you accept or dismiss them
   navarch map | symbols <name> | where <text> [--project <project-id>]
@@ -182,6 +186,7 @@ async function main(argv: string[]): Promise<number> {
       daily: { type: "string" },
       run: { type: "string" },
       days: { type: "string" },
+      at: { type: "string" },
       version: { type: "string" },
       draft: { type: "boolean", default: false },
       profile: { type: "string" },
@@ -428,6 +433,48 @@ async function main(argv: string[]): Promise<number> {
     case "metrics": {
       const metrics = await new ApiClient(home).request<MetricsView>("GET", `/api/v1/metrics${values.days ? `?days=${encodeURIComponent(values.days)}` : ""}`);
       return print(json ? metrics : formatMetrics(metrics), json);
+    }
+    case "schedule": {
+      const api = new ApiClient(home);
+      const sub = rest[0] ?? "list";
+      if (sub === "list" && rest.length <= 1) {
+        const list = await api.request<ScheduleView[]>("GET", "/api/v1/schedules");
+        return print(json ? list : formatSchedules(list), json);
+      }
+      if (sub === "pause" || sub === "resume") {
+        const id = required(rest[1], "a schedule id (see `navarch schedule`)");
+        const view = await api.request<ScheduleView>("PUT", `/api/v1/schedules/${encodeURIComponent(id)}/enabled`, { enabled: sub === "resume" });
+        return print(json ? view : formatSchedules([view]), json);
+      }
+      if (sub === "remove") {
+        const id = required(rest[1], "a schedule id (see `navarch schedule`)");
+        await api.request("DELETE", `/api/v1/schedules/${encodeURIComponent(id)}`);
+        return print(json ? { removed: id } : `removed ${id}`, json);
+      }
+      if (sub === "add") {
+        const name = required(rest[1], "a name for the schedule");
+        const prompt = required(rest.slice(2).join(" ") || undefined, "the prompt the run starts from");
+        const budget = Number(required(values.budget, "--budget <usd>: nobody watches a scheduled run, so it needs a limit"));
+        if (!Number.isFinite(budget) || budget <= 0) throw new CliError("--budget must be a positive number of USD", EXIT.usage);
+        const project = await exploredProject(api, values.project);
+        const view = await api.request<ScheduleView>("POST", "/api/v1/schedules", {
+          name,
+          project_id: project,
+          prompt,
+          budget,
+          at: required(values.at, "--at HH:MM (the PC's local time)"),
+          days: (() => {
+            try {
+              return parseScheduleDays(values.days ?? "daily");
+            } catch (err) {
+              throw new CliError((err as Error).message, EXIT.usage);
+            }
+          })(),
+          ...(values.flow ? { flow: values.flow } : {}),
+        });
+        return print(json ? view : formatSchedules([view]), json);
+      }
+      throw new CliError("usage: navarch schedule [list] | add <name> <prompt> --at HH:MM [--days …] --budget <usd> | pause|resume|remove <id>", EXIT.usage);
     }
     case "principles": {
       const api = new ApiClient(home);
@@ -868,5 +915,5 @@ function readAttachment(path: string): { name: string; content: string } {
 /** The terminal for `navarch` and `navarch chat`: the ship greets a terminal, in colour when it wants it. */
 function chatIo() {
   const tty = Boolean(process.stdout.isTTY);
-  return { input: process.stdin, output: process.stdout, cwd: process.cwd(), tty, color: wantsColor(tty) };
+  return { input: process.stdin, output: process.stdout, cwd: process.cwd(), tty, color: wantsColor(tty), truecolor: hasTruecolor(), columns: process.stdout.columns };
 }

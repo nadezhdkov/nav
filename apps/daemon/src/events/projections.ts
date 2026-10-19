@@ -417,6 +417,30 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       db.prepare("UPDATE projects SET removed_at = COALESCE(removed_at, ?) WHERE id = ?").run(ts, p.project_id);
       return;
     }
+    case "schedule.saved": {
+      const p = (event as NavarchEvent<"schedule.saved">).payload;
+      db.prepare(
+        `INSERT INTO schedules (id, project_id, name, prompt, flow, budget, at, days, enabled, saved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id, name = excluded.name, prompt = excluded.prompt, flow = excluded.flow, budget = excluded.budget,
+           at = excluded.at, days = excluded.days, enabled = excluded.enabled, saved_at = excluded.saved_at, removed_at = NULL`,
+      ).run(p.schedule_id, p.project_id, p.name, p.prompt, p.flow, p.budget, p.at, p.days.join(","), p.enabled ? 1 : 0, ts);
+      return;
+    }
+    case "schedule.removed": {
+      const p = (event as NavarchEvent<"schedule.removed">).payload;
+      db.prepare("UPDATE schedules SET removed_at = COALESCE(removed_at, ?) WHERE id = ?").run(ts, p.schedule_id);
+      return;
+    }
+    case "schedule.fired": {
+      const p = (event as NavarchEvent<"schedule.fired">).payload;
+      db.prepare("UPDATE schedules SET last_slot = ?, last_outcome = 'started', last_run_id = ?, last_message = NULL WHERE id = ?").run(p.slot, p.run_id, p.schedule_id);
+      return;
+    }
+    case "schedule.skipped": {
+      const p = (event as NavarchEvent<"schedule.skipped">).payload;
+      db.prepare("UPDATE schedules SET last_slot = ?, last_outcome = ?, last_message = ? WHERE id = ?").run(p.slot, p.reason, p.message, p.schedule_id);
+      return;
+    }
     case "principle.added": {
       const p = (event as NavarchEvent<"principle.added">).payload;
       db.prepare("INSERT OR IGNORE INTO principles (id, project_id, text, run_id, added_at) VALUES (?, ?, ?, ?, ?)").run(p.principle_id, p.project_id, p.text, p.run_id, ts);

@@ -1,7 +1,8 @@
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import type { ConciergeTurn, ProposalDecision } from "@navarch/contracts";
-import { banner } from "./banner.ts";
+import { banner, prompt } from "./banner.ts";
+import { bannerInfo } from "./banner-info.ts";
 import { CliError } from "./client.ts";
 import { stripControls } from "./safe.ts";
 
@@ -19,16 +20,20 @@ const HELP = `Ask in plain language, e.g. "what is running?", "why did the last 
   /exit  leave (or Ctrl-D)
 `;
 
-export async function chat(api: ChatApi, io: { input: Readable; output: Writable; cwd: string; /** Output is a terminal: show the ship, in colour when `color`. */ tty?: boolean; color?: boolean }): Promise<number> {
+export async function chat(api: ChatApi, io: { input: Readable; output: Writable; cwd: string; /** Output is a terminal: show the ship, in colour when `color`. */ tty?: boolean; color?: boolean; truecolor?: boolean; columns?: number }): Promise<number> {
   const out = (text: string) => io.output.write(text);
   const lines = lineReader(io.input, io.output);
   const open = async () => (await api.request<{ id: string }>("POST", "/api/v1/concierge/conversations", { cwd: io.cwd })).id;
 
-  out(io.tty ? banner({ color: Boolean(io.color), cwd: io.cwd }) : `navarch concierge · ${io.cwd} · /help for help\n`);
+  if (!io.tty) out(`navarch concierge · ${io.cwd} · /help for help\n`);
   let conversation = await open();
+  if (io.tty) {
+    const info = await bannerInfo(api, io.cwd);
+    out(banner({ color: Boolean(io.color), truecolor: Boolean(io.truecolor), ...(io.columns ? { columns: io.columns } : {}), info }));
+  }
   try {
     for (;;) {
-      const line = await lines.next("navarch> ");
+      const line = await lines.next(io.tty ? prompt(Boolean(io.color)) : "navarch> ");
       if (line === undefined) break;
       const text = line.trim();
       if (!text) continue;

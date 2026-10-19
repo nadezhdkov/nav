@@ -23,6 +23,7 @@ import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
 import { RelayConnector } from "./relay/connector.ts";
 import { loadRelayIdentity } from "./relay/identity.ts";
+import { ScheduleService } from "./schedules/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
 import { SpecSyncTrigger } from "./github/specsync.ts";
 import { costPanel, qualityPanel, windowStart } from "./budgets/panels.ts";
@@ -86,6 +87,7 @@ export class Daemon {
   readonly summary: SummaryService;
   /** The outgoing connection to a relay, when `daemon.remote.mode` is `relay` (ADR 0066). */
   relay: RelayConnector | undefined;
+  readonly schedules: ScheduleService;
   readonly autoMerge: AutoMerger;
   readonly webauthn: WebAuthnService;
   readonly budgets: Budgets;
@@ -179,6 +181,13 @@ export class Daemon {
       refresh: async () => {
         await Promise.allSettled([this.inbox.sync(undefined, { kind: "system", component: "summary" }), this.prs.check(), this.ci.check()]);
       },
+    });
+    this.schedules = new ScheduleService({
+      config: this.config,
+      store: this.store,
+      policy,
+      startRun: (req, actor) => this.orchestrator.startRun(req, actor),
+      flows: () => this.flows.list(),
     });
   }
 
@@ -281,6 +290,7 @@ export class Daemon {
     this.ci.start();
     this.summary.start();
     this.startRelay();
+    this.schedules.start();
     this.autoMerge.start();
     this.scheduler.pump();
     // Learn the tailnet origin in the background, for the stream's origin check (ADR 0020).
@@ -344,6 +354,7 @@ export class Daemon {
     await this.ci.stop();
     await this.summary.stop();
     await this.relay?.stop();
+    await this.schedules.stop();
     await this.autoMerge.stop();
     await this.scheduler.stop(async () => {
       await Promise.all([...this.adapters.values()].map((a) => a.stopAll()));
