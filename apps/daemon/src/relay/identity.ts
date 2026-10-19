@@ -1,5 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -16,22 +16,35 @@ export type RelayIdentity = {
 
 type Stored = { relay_id: string; token: string; key: string };
 
+function readStored(path: string): Stored | undefined {
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Stored>;
+    return raw.relay_id && raw.token && raw.key ? (raw as Stored) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function loadRelayIdentity(home: string): RelayIdentity {
   const dir = join(home, "relay");
   const path = join(dir, "identity.json");
-  let stored: Stored | undefined;
-  if (existsSync(path)) {
-    try {
-      const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Stored>;
-      if (raw.relay_id && raw.token && raw.key) stored = raw as Stored;
-    } catch {
-      stored = undefined;
-    }
-  }
+  let stored = readStored(path);
   if (!stored) {
     mkdirSync(dir, { recursive: true, mode: 0o700 });
-    stored = { relay_id: randomBytes(16).toString("base64url"), token: randomBytes(32).toString("base64url"), key: randomBytes(32).toString("base64url") };
-    writeFileSync(path, JSON.stringify(stored), { mode: 0o600 });
+    const fresh: Stored = { relay_id: randomBytes(16).toString("base64url"), token: randomBytes(32).toString("base64url"), key: randomBytes(32).toString("base64url") };
+    try {
+      // `wx` fails when the file exists, so two daemons starting together cannot overwrite each other's identity.
+      writeFileSync(path, JSON.stringify(fresh), { mode: 0o600, flag: "wx" });
+      stored = fresh;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      stored = readStored(path);
+      if (!stored) {
+        // An unreadable file (damaged JSON) is replaced, as before.
+        writeFileSync(path, JSON.stringify(fresh), { mode: 0o600 });
+        stored = fresh;
+      }
+    }
     chmodSync(path, 0o600);
   }
   const key = Buffer.from(stored.key, "base64url");

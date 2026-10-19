@@ -1,4 +1,5 @@
 import type { Locale } from "@navarch/contracts";
+import { BASE, viaRelay } from "../api/base.ts";
 import { api } from "../api/client.ts";
 
 /**
@@ -25,6 +26,8 @@ export function isStandalone(win: Window, nav: Navigator): boolean {
 /** Registers `sw.js` in a secure context (the tailnet's HTTPS name, or localhost). */
 export async function registerServiceWorker(e: Env = env()): Promise<ServiceWorkerRegistration | undefined> {
   if (!("serviceWorker" in e.navigator) || !e.window.isSecureContext) return undefined;
+  // Behind a relay the phone's loader registered its own worker, which also shows notifications (ADR 0067).
+  if (viaRelay) return e.navigator.serviceWorker.getRegistration(`${BASE}/`);
   try {
     return await e.navigator.serviceWorker.register("/sw.js", { scope: "/" });
   } catch {
@@ -36,7 +39,7 @@ export async function pushState(e: Env = env()): Promise<PushState> {
   const supported = "serviceWorker" in e.navigator && "PushManager" in e.window && "Notification" in e.window;
   if (!supported) return isIos(e.navigator) && !isStandalone(e.window, e.navigator) ? "install" : "unsupported";
   if (Notification.permission === "denied") return "denied";
-  const reg = await e.navigator.serviceWorker.getRegistration("/");
+  const reg = await e.navigator.serviceWorker.getRegistration(`${BASE}/`);
   return (await reg?.pushManager.getSubscription()) ? "on" : "off";
 }
 

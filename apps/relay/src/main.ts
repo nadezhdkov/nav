@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { startRelay } from "./server.ts";
 
@@ -20,6 +22,7 @@ const relay = await startRelay({
   log: (line) => console.log(`${new Date().toISOString()} ${line}`),
 });
 console.log(`navarch-relay listening on ${relay.url} (state ${values.state})`);
+if (!existsSync(resolve(import.meta.dirname, "../dist/sw.js"))) console.warn("the phone loader is not built: run `make relay-build` or phones will see an error page");
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => void relay.stop().then(() => process.exit(0)));

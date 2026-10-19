@@ -1,0 +1,7 @@
+:root { color-scheme: dark light; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; font: 16px/1.5 system-ui, sans-serif; background: #0f1114; color: #e6e8eb; }
+@media (prefers-color-scheme: light) { body { background: #f6f7f9; color: #14161a; } }
+main { max-width: 22rem; padding: 2rem 1.25rem; text-align: center; }
+h1 { margin: 0 0 1rem; font-size: 1.25rem; letter-spacing: 0.02em; }
+#status { font-size: 1.05rem; margin: 0; }
+#detail { margin: 0.75rem 0 0; opacity: 0.7; font-size: 0.95rem; }
