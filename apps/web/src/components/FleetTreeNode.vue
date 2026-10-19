@@ -23,6 +23,7 @@ const look = computed(() => {
   const n = agentNode.value;
   if (n) return nodeLook[n.agent?.status ?? "not_started"];
   if (props.data.kind === "run") return runLook[props.data.run.status];
+  if (props.data.kind === "group") return nodeLook[props.data.worst ?? "not_started"];
   return nodeLook.not_started;
 });
 const live = computed(() => agentNode.value?.agent?.status === "running");
@@ -54,7 +55,7 @@ function activate() {
 <template>
   <div
     class="relative h-full w-full overflow-hidden rounded-lg border bg-surface text-left"
-    :class="[`tone-${look.tone}`, { pulse: live && !focused, 'cursor-pointer': data.kind !== 'project' && data.kind !== 'subagent' }]"
+    :class="[`tone-${look.tone}`, { pulse: live && !focused, 'cursor-pointer': data.kind !== 'project' && data.kind !== 'subagent' && data.kind !== 'group' }]"
     :style="{
       borderColor: selected ? 'var(--accent)' : data.kind === 'project' ? 'var(--border)' : 'color-mix(in srgb, var(--tone) 50%, var(--border))',
       boxShadow: ring,
@@ -175,6 +176,12 @@ function activate() {
       <div class="mt-auto">
         <PromptBox v-if="canPrompt && data.agent" :run-id="data.run.id" :task-id="data.agent.id" :label="label" @sent="actions.sent(data.agent.id)" />
       </div>
+    </div>
+
+    <!-- A group of members the lead put together -->
+    <div v-else-if="data.kind === 'group'" class="flex h-full flex-col justify-center gap-0.5 px-3">
+      <p class="flex items-center gap-1.5 truncate text-sm font-medium"><component :is="iconFor(data.name)" :size="14" class="shrink-0 text-muted" aria-hidden="true" /><span class="truncate">{{ data.name }}</span></p>
+      <p class="text-xs text-muted">{{ t("tree.group", { n: data.members.length }) }}</p>
     </div>
 
     <!-- The lead's own sub-agents, folded by default -->

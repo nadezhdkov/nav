@@ -163,6 +163,7 @@ export const ptBR: Messages = {
     resolves: "Resolver o conflito de {key}",
     internal: "{n} sub-agente(s) interno(s)",
     internalTag: "interno",
+    group: "{n} agente(s)",
     subStarted: "trabalhando",
     subFinished: "concluído",
     delegates: "delega · turno {turn}",

@@ -211,6 +211,8 @@ export const lead: Profile = {
     '  "members": [ { "key": "short-key", "title": "…", "brief": "…", "profile": "implementer", "prefer": "codex", "depends_on": [] } ] }',
     "```",
     "  Keys are new lowercase words (a-z, 0-9, -); `depends_on` names keys of earlier members or earlier in this list.",
+    "  Optionally give related members the same `group` (a lowercase word, such as the role: \"backend\"): the user sees them",
+    "  together under one heading. It is only for display; it changes neither the order nor the merging.",
   ].join("\n"),
 };
 

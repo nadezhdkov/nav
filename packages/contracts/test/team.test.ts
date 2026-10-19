@@ -30,6 +30,12 @@ describe("team plan (ADR 0022)", () => {
     expect(bad.ok).toBe(false);
   });
 
+  it("reads an optional group label for members, and refuses a malformed one", () => {
+    const ok = parseTeamPlan(block({ summary: "s", done: false, members: [member("a", { group: "backend" }), member("b")] }));
+    expect(ok.ok && ok.plan.members.map((m) => m.group)).toEqual(["backend", undefined]);
+    expect(parseTeamPlan(block({ summary: "s", done: false, members: [member("a", { group: "Back End" })] })).ok).toBe(false);
+  });
+
   it("allows depending on members of earlier turns", () => {
     expect(parseTeamPlan(block({ summary: "s", done: false, members: [member("fix", { depends_on: ["api"] })] }), ["api"]).ok).toBe(true);
   });

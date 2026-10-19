@@ -161,6 +161,7 @@ export const en = {
     resolves: "Resolve {key}'s merge conflict",
     internal: "{n} internal sub-agent(s)",
     internalTag: "internal",
+    group: "{n} agent(s)",
     subStarted: "working",
     subFinished: "finished",
     delegates: "delegates · turn {turn}",

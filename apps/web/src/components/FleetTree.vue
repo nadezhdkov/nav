@@ -128,6 +128,8 @@ const announce = computed(() => {
       return `${n.run.prompt.split("\n")[0]}: ${t(`status.${n.run.status}`)}${n.collapsed ? `, ${t("tree.agents", { n: n.agentCount })}` : ""}`;
     case "agent":
       return `${n.role === "lead" ? `${t("tree.lead")} ` : ""}${n.member?.title ?? n.agent?.node_id}: ${t(`status.${n.agent?.status ?? "planned"}`)}`;
+    case "group":
+      return `${n.name}: ${t("tree.group", { n: n.members.length })}`;
     case "subagents":
       return t("tree.internal", { n: n.count });
     case "subagent":

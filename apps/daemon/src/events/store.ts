@@ -339,6 +339,7 @@ export class EventStore {
           profile: m.profile,
           prefer: m.prefer ?? null,
           depends_on: m.depends_on,
+          group: m.group ?? null,
           turn: m.turn,
           task_id: task?.id ?? null,
           status: m.skipped ? "skipped" : m.status,

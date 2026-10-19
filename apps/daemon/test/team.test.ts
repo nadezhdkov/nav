@@ -90,7 +90,7 @@ describe("team runs (ADR 0022)", () => {
       question: null,
       summary: "Team finished: codex.txt added by the api member.",
       plan_errors: [],
-      members: [{ key: "api", profile: "implementer", prefer: "codex", turn: 1, task_id: byNode("team.api").id, status: "succeeded", summary: "Added codex.txt.", merge: "merged" }],
+      members: [{ key: "api", profile: "implementer", prefer: "codex", group: "backend", turn: 1, task_id: byNode("team.api").id, status: "succeeded", summary: "Added codex.txt.", merge: "merged" }],
       subagents: [{ task_id: byNode("team.lead").id, tool_use_id: "toolu_lead1", description: "Survey the repository", status: "finished" }],
     });
 
