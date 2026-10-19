@@ -78,6 +78,10 @@ knowledge:
   context:
     enabled: false          # true: give triage, plan and implement agents a compiled map of the code
     max_tokens: 4000
+    mode: full              # lean (experimental): only the few files to open first, in lean_max_tokens
+    lean_max_tokens: 600
+    profiles: []            # empty: every agent profile; e.g. [planner, implementer]
+    min_complexity: 1       # a run triaged below this gets no block (e.g. 3)
 
 concierge:
   model: ollama/qwen2.5:7b  # an API model with tool calling

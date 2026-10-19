@@ -202,8 +202,16 @@ export class Scheduler {
   private async compileContext(run: RunRecord, task: TaskRecord, profile: Profile, attempt: number): Promise<CompiledContext | undefined> {
     const cfg = this.config.knowledge.context;
     if (!cfg.enabled || !CONTEXT_PROFILES.has(profile.id)) return undefined;
+    if (cfg.profiles.length && !cfg.profiles.includes(profile.id)) return undefined;
+    if (cfg.min_complexity > 1) {
+      // A run that was triaged as small does not get the block; one that was not triaged does.
+      const triage = this.store.taskRecordsOfRun(run.id).filter((t) => t.profile === "triager" && t.status === "succeeded").at(-1);
+      const complexity = typeof triage?.outputs?.complexity === "number" ? triage.outputs.complexity : undefined;
+      if (complexity !== undefined && complexity < cfg.min_complexity) return undefined;
+    }
     try {
-      const context = await compileContext({ root: run.repo_path, task: run.prompt, maxTokens: cfg.max_tokens });
+      const lean = cfg.mode === "lean";
+      const context = await compileContext({ root: run.repo_path, task: run.prompt, maxTokens: lean ? cfg.lean_max_tokens : cfg.max_tokens, mode: cfg.mode });
       if (!context) return undefined;
       this.store.append([
         {

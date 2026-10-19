@@ -193,6 +193,13 @@ export const Config = z.object({
         .object({
           enabled: z.boolean().default(false),
           max_tokens: z.number().int().positive().default(4_000),
+          /** `lean` (ADR 0070) puts only the few files to open first in the prompt, in `lean_max_tokens`; `full` is ADR 0043's block. */
+          mode: z.enum(["full", "lean"]).default("full"),
+          lean_max_tokens: z.number().int().positive().default(600),
+          /** Profiles whose prompt carries it; empty means every profile of ADR 0043. The triager is cheap without it. */
+          profiles: z.array(z.string()).default([]),
+          /** A triaged run below this complexity gets no block: on small tasks the block costs more than it saves. */
+          min_complexity: z.number().int().min(1).max(5).default(1),
         })
         .prefault({}),
     })
