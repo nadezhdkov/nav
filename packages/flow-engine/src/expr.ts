@@ -13,18 +13,21 @@ type Operand = { kind: "path"; path: string[] } | { kind: "literal"; value: unkn
 export type Expr = { negate: boolean; left: Operand; op?: Op; right?: Operand };
 type Op = "<" | "<=" | ">" | ">=" | "==" | "!=";
 
-const WRAPPED = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/;
+/** The body of a `${{ … }}` text, trimmed; undefined for anything else. Cut with string search, not a regex, so long input stays linear. */
+function unwrap(text: string): string | undefined {
+  const t = text.trim();
+  return t.length >= 5 && t.startsWith("${{") && t.endsWith("}}") ? t.slice(3, -2).trim() : undefined;
+}
 const TOKEN = /\s*(<=|>=|==|!=|<|>|!|'[^']*'|-?\d+(?:\.\d+)?|[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)/y;
 
 /** True for `${{ … }}`; anything else is a plain value. */
 export function isExpression(text: string): boolean {
-  return WRAPPED.test(text.trim());
+  return unwrap(text) !== undefined;
 }
 
 export function parseExpr(text: string): Expr {
-  const m = WRAPPED.exec(text.trim());
-  if (!m) throw new ExprError(`not an expression: ${JSON.stringify(text)} (expected \${{ … }})`);
-  const body = m[1]!;
+  const body = unwrap(text);
+  if (body === undefined) throw new ExprError(`not an expression: ${JSON.stringify(text)} (expected \${{ … }})`);
   const tokens: string[] = [];
   TOKEN.lastIndex = 0;
   while (TOKEN.lastIndex < body.length) {
