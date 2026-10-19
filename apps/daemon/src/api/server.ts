@@ -47,7 +47,7 @@ import {
   type SyncInboxResult,
 } from "@navarch/contracts";
 import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
-import { compileContext, searchSpecs } from "@navarch/knowledge";
+import { compileContext, searchSpecs, traceability } from "@navarch/knowledge";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { FlowStudioError } from "../flows/library.ts";
 import { z } from "zod";
@@ -267,6 +267,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!q) return badRequest(reply, "q is required");
     return explore(req, reply, (root) => searchSpecs(root, q));
   });
+
+  // Traceability matrices over the project's specs (ADR 0054): code ↔ spec and spec ↔ test.
+  app.get("/api/v1/projects/:id/traceability", (req, reply) => explore(req, reply, (root) => traceability(root)));
 
   // Project rules (ADR 0047): devices may read them; only the desktop and the CLI change them.
   app.get("/api/v1/projects/:id/principles", async (req) => daemon.principles.view((req.params as { id: string }).id));
@@ -724,6 +727,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/projects/:id/search",
   "GET /api/v1/projects/:id/context",
   "GET /api/v1/projects/:id/specs",
+  "GET /api/v1/projects/:id/traceability",
   "GET /api/v1/projects/:id/principles",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",

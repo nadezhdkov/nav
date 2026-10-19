@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CodeSymbol, ProjectView, RepoMap, SearchHit } from "@navarch/contracts";
+import type { CodeSymbol, ProjectView, RepoMap, SearchHit, TraceabilityView } from "@navarch/contracts";
 import { afterEach, describe, expect, it } from "vitest";
 import { makeRepo, tempHome } from "../../../packages/runner/test/helpers.ts";
 import { Config } from "../src/config.ts";
@@ -53,6 +53,23 @@ describe("repository exploration routes (ADR 0042)", () => {
 
     const hits = await api<SearchHit[]>("GET", `/api/v1/projects/${project.id}/search?q=hi%20`);
     expect(hits.body).toEqual([{ file: "app.ts", line: 2, text: "return `hi ${name}`;" }]);
+  });
+
+  it("serves the traceability matrices of the clone's specs (ADR 0054)", async () => {
+    const { api, project } = await setup();
+    const empty = await api<TraceabilityView>("GET", `/api/v1/projects/${project.id}/traceability`);
+    expect(empty.body).toMatchObject({ has_specs: false, code_spec: [], totals: { source_files: 1, cited_files: 0 } });
+
+    const repo = project.path;
+    mkdirSync(join(repo, ".navarch", "specs"), { recursive: true });
+    writeFileSync(join(repo, "app.test.ts"), "import { greet } from './app.ts';\n");
+    writeFileSync(join(repo, ".navarch", "specs", "greeting.md"), "# Greeting\n\n## Claims\n\n- 🟢 **says-hi** greet says hi — `app.ts:2`\n");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    const view = await api<TraceabilityView>("GET", `/api/v1/projects/${project.id}/traceability`);
+    expect(view.status).toBe(200);
+    expect(view.body.code_spec).toEqual([{ file: "app.ts", claims: [{ component: "greeting", claim: "says-hi", confidence: "confirmed", line: 2 }], tests: [{ file: "app.test.ts", via: "name" }] }]);
+    expect(view.body.totals).toMatchObject({ cited_share: 1, tested_share: 1 });
+    expect((await api("GET", "/api/v1/projects/prj_missing/traceability")).status).toBe(404);
   });
 
   it("rejects a missing query or kind and unknown projects", async () => {

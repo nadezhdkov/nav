@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView, TraceabilityView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -380,6 +380,23 @@ export function formatSpecs(runs: SpecRunView[]): string {
     ["RUN", "WHEN", "COMPONENTS", "CLAIMS", "🟢", "🟡", "🔴", "🟢 SHARE", "LOWERED", "BRANCH"],
     runs.map((r) => [r.run_name ?? r.run_id, r.ts.slice(0, 16).replace("T", " "), String(r.components), String(r.claims), String(r.confirmed), String(r.inferred), String(r.gap), pct(r.green_rate), String(r.downgraded), r.branch]),
   );
+}
+
+/** `navarch trace`: the matrices of a project's specs (ADR 0054); test links are inferred from names and imports. */
+export function formatTraceability(t: TraceabilityView): string {
+  if (!t.has_specs) return "no specs in this project yet; run `navarch run --flow reverse-spec \"<scope>\"` and merge its pull request";
+  const pct = (n: number | null) => (n === null ? "-" : `${Math.round(n * 100)} %`);
+  const out = [
+    `code ↔ spec: ${t.totals.cited_files} of ${t.totals.source_files} source files are cited by a claim (${pct(t.totals.cited_share)}); ${t.uncovered_total} are not`,
+    `spec ↔ test: ${t.totals.claims_with_tests} of ${t.totals.claims_with_files} claims that cite a file have a test tied to it (${pct(t.totals.tested_share)}); links are inferred, a test with the same name or importing the file`,
+    "",
+    table(["COMPONENT", "CLAIMS", "WITH FILES", "WITH TESTS", "FILES"], t.components.map((c) => [c.component, String(c.claims), String(c.claims_with_files), String(c.claims_with_tests), String(c.files)])),
+  ];
+  const untested = t.code_spec.filter((r) => !r.tests.length);
+  if (untested.length) out.push("", "cited files with no test tied to them:", ...untested.slice(0, 20).map((r) => `  ${r.file} (${r.claims.map((c) => `${c.component}/${c.claim}`).join(", ")})`), ...(untested.length > 20 ? [`  … and ${untested.length - 20} more`] : []));
+  if (t.broken.length) out.push("", "citations that no longer match the code:", ...t.broken.slice(0, 20).map((b) => `  ${b.component}/${b.claim} → ${b.file}:${b.line}`));
+  if (t.uncovered.length) out.push("", "source files no claim cites:", ...t.uncovered.slice(0, 20).map((f) => `  ${f}`), ...(t.uncovered_total > 20 ? [`  … and ${t.uncovered_total - 20} more`] : []));
+  return out.join("\n");
 }
 
 /** `navarch principles`: the rules agents get in this project's runs (ADR 0047). */
