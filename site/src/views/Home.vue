@@ -141,7 +141,12 @@ const PHONES = [
         <p class="mt-4 text-muted">Start runs from a prompt or an issue, follow their logs, decide approvals, steer a running agent, pause or stop everything. Or run <code class="rounded bg-surface-2 px-1.5 py-0.5 font-mono text-sm">navarch</code> with no arguments and just ask: anything that changes something waits for your yes.</p>
         <RouterLink to="/docs/cli" class="mt-6 inline-flex items-center gap-1.5 font-semibold text-accent hover:underline">CLI reference <ArrowRight :size="16" aria-hidden="true" /></RouterLink>
       </div>
-      <div class="min-w-0" v-reveal="120"><TerminalDemo /></div>
+      <div class="min-w-0 space-y-4" v-reveal="120">
+        <TerminalDemo />
+        <figure class="card overflow-hidden p-1.5">
+          <img :src="asset('shots/cli-banner.png')" alt="The navarch banner in a terminal: the mascot, a helm wheel and the name, then project, repository, workspace, branch and agents, System ready and the nav prompt" class="block h-auto w-full rounded-[10px]" loading="lazy" decoding="async" />
+        </figure>
+      </div>
     </div>
   </section>
 

@@ -9,7 +9,7 @@ Run `navarch` with no arguments (or `navarch chat`) and ask in plain language:
 
 The **concierge** is an agent that runs inside the daemon and reads Navarch's state on its own: runs, events, approvals, the Inbox, usage.
 
-In a terminal, `navarch` greets you with a small ship and its helmsman, in colour when your terminal supports it (set `NO_COLOR` to turn colour off). Without a terminal, such as in a pipe, it prints one plain line. The same chat is on your phone: see [On your phone](/docs/phone).
+In a terminal, `navarch` greets you with the mascot, a helm wheel and the name, then where you are: project, repository (without credentials), workspace, branch and how many agents are running, and `System ready`. The mascot needs a terminal with true colour and at least 78 columns; narrower terminals get the name and the lines of text only, and `NO_COLOR` turns colour off. Without a terminal, such as in a pipe, it prints one plain line. The prompt is `nav>`. The same chat is on your phone: see [On your phone](/docs/phone).
 
 ## It proposes, you decide
 
