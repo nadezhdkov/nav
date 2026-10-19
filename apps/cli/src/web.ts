@@ -10,7 +10,8 @@ export type Opener = (url: string) => Promise<boolean>;
  */
 export async function webUrl(api: WebApi): Promise<string> {
   const { code } = await api.request<WebCode>("POST", "/api/v1/web/codes");
-  return `${api.url}/#code=${code}`;
+  // WebAuthn needs a domain name for the page: localhost reaches the same loopback daemon as 127.0.0.1 (ADR 0062).
+  return `${api.url.replace(/^http:\/\/127\.0\.0\.1(?=[:/]|$)/, "http://localhost")}/#code=${code}`;
 }
 
 /**

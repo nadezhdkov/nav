@@ -369,6 +369,11 @@ export const EventPayloads = {
   "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
   /** The user dismissed a CI failure. */
   "ci.failure.dismissed": z.object({ failure_id: z.string() }),
+  /** The user registered a security key (WebAuthn, ADR 0062). Only ids and names; the public key stays in a table that is not a projection. */
+  "webauthn.registered": z.object({ credential_id: z.string(), name: z.string(), rp_id: z.string() }),
+  "webauthn.removed": z.object({ credential_id: z.string() }),
+  /** The user proved presence with a key for one action; the token it earned is single use and not recorded. */
+  "webauthn.reauthenticated": z.object({ credential_id: z.string(), purpose: z.string() }),
   /** The user turned auto-merge on for a project's repository, after confirming it by name (ADR 0060). */
   "github.auto_merge.enabled": z.object({ project_id: z.string(), repo: z.string(), strategy: AutoMergeStrategy }),
   /** Auto-merge was turned off: by the user, or by the kill switch. */

@@ -39,6 +39,9 @@ import {
   CiFailureStatus,
   StartInboxRequest,
   SyncInboxRequest,
+  RegisterKeyRequest,
+  ReauthOptionsRequest,
+  ReauthVerifyRequest,
   SetAutoMergeRequest,
   SetAwayRequest,
   AddPrincipleRequest,
@@ -64,6 +67,7 @@ import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
 import { PrinciplesError } from "../principles/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
+import { WebAuthnServiceError } from "../webauthn/service.ts";
 import { AutoMergeError } from "../github/automerge.ts";
 import { CiError } from "../github/ci.ts";
 
@@ -350,6 +354,61 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
 
+  // Security keys and re-authentication (WebAuthn, ADR 0062). The desktop and the CLI only: a phone is refused by the Policy Engine and the route allowlist.
+  const originOf = (req: FastifyRequest): string | undefined => {
+    if (typeof req.headers.origin === "string") return req.headers.origin;
+    // A same-origin GET carries no Origin: rebuild it from Host, which is http on localhost and https behind `tailscale serve`.
+    const host = req.headers.host;
+    return host ? `${/^localhost(:\d+)?$/.test(host) ? "http" : "https"}://${host}` : undefined;
+  };
+  const keyError = (reply: FastifyReply, err: unknown) => {
+    if (!(err instanceof WebAuthnServiceError)) throw err;
+    return reply.code({ bad_request: 400, forbidden: 403, not_found: 404, conflict: 409, reauth_required: 403 }[err.code]).send({ error: err.code, message: err.message });
+  };
+  app.get("/api/v1/security-keys", async (req) => daemon.webauthn.view(originOf(req)));
+  app.post("/api/v1/security-keys/register/options", async (req, reply) => {
+    try {
+      return daemon.webauthn.registrationOptions(originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/security-keys/register", async (req, reply) => {
+    const parsed = RegisterKeyRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.register(parsed.data, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/security-keys/:id/remove", async (req, reply) => {
+    try {
+      daemon.webauthn.remove((req.params as { id: string }).id, (req.body as { reauth?: string } | undefined)?.reauth, actorOf(req));
+      return daemon.webauthn.view(originOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/reauth/options", async (req, reply) => {
+    const parsed = ReauthOptionsRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.reauthOptions(parsed.data.purpose, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+  app.post("/api/v1/reauth/verify", async (req, reply) => {
+    const parsed = ReauthVerifyRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, parsed.error.message);
+    try {
+      return daemon.webauthn.reauthVerify(parsed.data, originOf(req), actorOf(req));
+    } catch (err) {
+      return keyError(reply, err);
+    }
+  });
+
   // Opt-in auto-merge (spec §11.1, ADR 0060). A phone may read the state; changing it is desktop and CLI only.
   app.get("/api/v1/auto-merge", async () => daemon.autoMerge.status());
   app.put("/api/v1/projects/:id/auto-merge", async (req, reply) => {
@@ -358,7 +417,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     try {
       return await daemon.autoMerge.set((req.params as { id: string }).id, parsed.data, actorOf(req));
     } catch (err) {
-      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400 }[err.code]).send({ error: err.code, message: err.message });
+      if (err instanceof AutoMergeError) return reply.code({ not_found: 404, conflict: 409, forbidden: 403, bad_request: 400, reauth_required: 403 }[err.code]).send({ error: err.code, message: err.message });
       throw err;
     }
   });

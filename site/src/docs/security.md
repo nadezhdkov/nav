@@ -8,6 +8,10 @@ Navarch runs agents that write code on your machine, so its defaults are strict.
 - Runs push only `navarch/*` branches, **never forced**, and only through the GitHub Integration.
 - Pull requests are always **drafts**.
 
+## Security keys
+
+Register a security key (a fingerprint or PIN on your laptop or phone, a passkey, or a USB key) in Settings → Security. Once you have one, turning on auto-merge and adding or removing keys ask you to touch it first. It works only on the desktop, at `http://localhost` or your Tailscale name (never an IP address), and a paired phone cannot manage keys.
+
 ## Agents stay in their box
 
 - Each run works in **its own git worktree**. Agents may not write outside it, and access to `~/.ssh` and to the vault is always denied.

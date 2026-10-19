@@ -18,6 +18,7 @@ import { AwayService } from "./away/service.ts";
 import { PrinciplesService } from "./principles/service.ts";
 import { InboxService } from "./inbox/service.ts";
 import { CiWatcher } from "./github/ci.ts";
+import { WebAuthnService } from "./webauthn/service.ts";
 import { AutoMerger } from "./github/automerge.ts";
 import { SummaryService } from "./summary/service.ts";
 import { PrWatcher } from "./github/outcomes.ts";
@@ -82,6 +83,7 @@ export class Daemon {
   readonly ci: CiWatcher;
   readonly summary: SummaryService;
   readonly autoMerge: AutoMerger;
+  readonly webauthn: WebAuthnService;
   readonly budgets: Budgets;
   readonly flows: FlowLibrary;
   private remoteCache: { at: number; status: RemoteStatus } | undefined;
@@ -157,7 +159,14 @@ export class Daemon {
     const specSync = new SpecSyncTrigger({ config: this.config, store: this.store, orchestrator: this.orchestrator, policy });
     this.prs = new PrWatcher({ config: this.config, store: this.store, github, onMerged: (pr) => specSync.merged(pr) });
     this.ci = new CiWatcher({ config: this.config, store: this.store, github, orchestrator: this.orchestrator, policy });
-    this.autoMerge = new AutoMerger({ config: this.config, store: this.store, policy, github });
+    this.webauthn = new WebAuthnService({
+      store: this.store,
+      policy,
+      autonomyLevel: this.config.autonomy_level,
+      // WebAuthn needs a domain name: the desktop at localhost, or the Tailscale name; never an IP address.
+      allowedOrigin: (origin) => /^http:\/\/localhost(:\d+)?$/.test(origin) || origin === this.remoteOrigin(),
+    });
+    this.autoMerge = new AutoMerger({ config: this.config, store: this.store, policy, github, reauth: this.webauthn });
     this.summary = new SummaryService({
       config: this.config,
       store: this.store,

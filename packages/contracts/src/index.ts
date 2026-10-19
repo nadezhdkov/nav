@@ -20,3 +20,4 @@ export * from "./specs.ts";
 export * from "./principles.ts";
 export * from "./summary.ts";
 export * from "./automerge.ts";
+export * from "./webauthn.ts";
