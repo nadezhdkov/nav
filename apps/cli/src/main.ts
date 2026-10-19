@@ -34,6 +34,8 @@ import {
   type UsageView,
   type MetricsView,
   type SpecRunView,
+  type PrinciplesView,
+  type PrincipleView,
   type FlowDetail,
   type FlowSummary,
   type ValidateFlowResponse,
@@ -42,7 +44,7 @@ import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -87,6 +89,7 @@ Usage:
   navarch project clone <owner/name>       clone a GitHub repository the token reaches into the Navarch home and add it
   navarch project list | remove <project-id>
   navarch repos [--refresh]                GitHub repositories the token reaches (own, collaborator, organizations)
+  navarch principles [add <rule> [--run <run>] | remove <id>] [--project <project-id>]
   navarch map | symbols <name> | where <text> [--project <project-id>]
   navarch mcp [--project <project-id>]    (Navarch as an MCP server on stdio, read-only tools for one project)
                                          explore the project of the current directory: languages and entry points,
@@ -377,6 +380,23 @@ async function main(argv: string[]): Promise<number> {
     case "metrics": {
       const metrics = await new ApiClient(home).request<MetricsView>("GET", `/api/v1/metrics${values.days ? `?days=${encodeURIComponent(values.days)}` : ""}`);
       return print(json ? metrics : formatMetrics(metrics), json);
+    }
+    case "principles": {
+      const api = new ApiClient(home);
+      const project = await exploredProject(api, values.project);
+      const base = `/api/v1/projects/${encodeURIComponent(project)}/principles`;
+      if (rest[0] === "add") {
+        const text = required(rest.slice(1).join(" ") || undefined, "the rule, in one line");
+        const added = await api.request<PrincipleView>("POST", base, { text, ...(values.run ? { run_id: values.run } : {}) });
+        return print(json ? added : `added ${added.id}: ${added.text}`, json);
+      }
+      if (rest[0] === "remove") {
+        await api.request("DELETE", `${base}/${encodeURIComponent(required(rest[1], "a rule id (see `navarch principles`)"))}`);
+        return print(json ? { removed: rest[1] } : `removed ${rest[1]}`, json);
+      }
+      if (rest.length) throw new CliError("usage: navarch principles [--project <id>] [add <rule> [--run <id>] | remove <id>]", EXIT.usage);
+      const view = await api.request<PrinciplesView>("GET", base);
+      return print(json ? view : formatPrinciples(view), json);
     }
     case "specs": {
       const specs = await new ApiClient(home).request<SpecRunView[]>("GET", "/api/v1/specs");

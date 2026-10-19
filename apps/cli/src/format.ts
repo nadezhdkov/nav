@@ -1,4 +1,4 @@
-import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView } from "@navarch/contracts";
+import type { CodeSymbol, RepoMap, SearchHit, ApprovalView, AwayView, BudgetView, CiFailureView, DeviceView, FlowProblem, FlowSummary, GitHubRepoView, InboxView, KnowledgePanel, MetricsView, ProjectSyncResult, ProjectView, RemoteStatus, RunDetail, RunView, NavarchEvent, SpecRunView, UsageView, PrinciplesView } from "@navarch/contracts";
 
 const usd = (n: number) => `$${n > 0 && n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
 const time = (iso: string) => iso.slice(11, 19);
@@ -380,6 +380,13 @@ export function formatSpecs(runs: SpecRunView[]): string {
     ["RUN", "WHEN", "COMPONENTS", "CLAIMS", "🟢", "🟡", "🔴", "🟢 SHARE", "LOWERED", "BRANCH"],
     runs.map((r) => [r.run_name ?? r.run_id, r.ts.slice(0, 16).replace("T", " "), String(r.components), String(r.claims), String(r.confirmed), String(r.inferred), String(r.gap), pct(r.green_rate), String(r.downgraded), r.branch]),
   );
+}
+
+/** `navarch principles`: the rules agents get in this project's runs (ADR 0047). */
+export function formatPrinciples(view: PrinciplesView): string {
+  if (!view.principles.length) return "no rules yet; add one with `navarch principles add \"<rule>\"` or list bullets in .navarch/principles.md";
+  const rows = table(["ID", "FROM", "RULE"], view.principles.map((p) => [p.id, p.source === "user" ? "you" : "repository file", p.text]));
+  return view.truncated ? `${rows}\n(only the first rules reach agents)` : rows;
 }
 
 /** The Phase 3 token goal: input tokens with and without the compiled context (ADR 0044). */

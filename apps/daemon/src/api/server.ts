@@ -40,6 +40,7 @@ import {
   StartInboxRequest,
   SyncInboxRequest,
   SetAwayRequest,
+  AddPrincipleRequest,
   SetBudgetRequest,
   WorkItemStatus,
   type SpecRunView,
@@ -59,6 +60,7 @@ import { DeviceError } from "../devices/devices.ts";
 import { InboxError } from "../inbox/service.ts";
 import { isRunName } from "../orchestrator/names.ts";
 import { AwayError } from "../away/service.ts";
+import { PrinciplesError } from "../principles/service.ts";
 import { BudgetError } from "../budgets/budgets.ts";
 import { CiError } from "../github/ci.ts";
 
@@ -94,6 +96,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   });
 
   app.setErrorHandler((err, _req, reply) => {
+    if (err instanceof PrinciplesError) {
+      const status = err.code === "not_found" ? 404 : err.code === "forbidden" ? 403 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
+    }
     if (err instanceof ConciergeError) {
       const status = err.code === "not_found" ? 404 : err.code === "unavailable" ? 503 : 400;
       return reply.code(status).send({ error: err.code, message: err.message });
@@ -260,6 +266,23 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const q = (req.query as { q?: string }).q;
     if (!q) return badRequest(reply, "q is required");
     return explore(req, reply, (root) => searchSpecs(root, q));
+  });
+
+  // Project rules (ADR 0047): devices may read them; only the desktop and the CLI change them.
+  app.get("/api/v1/projects/:id/principles", async (req) => daemon.principles.view((req.params as { id: string }).id));
+
+  app.post("/api/v1/projects/:id/principles", async (req, reply) => {
+    if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot change a project's rules");
+    const parsed = AddPrincipleRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(daemon.principles.add((req.params as { id: string }).id, parsed.data, actorOf(req)));
+  });
+
+  app.delete("/api/v1/projects/:id/principles/:principle", async (req, reply) => {
+    if (callerOf(req).kind === "device") return forbidden(reply, "a paired device cannot change a project's rules");
+    const params = req.params as { id: string; principle: string };
+    daemon.principles.remove(params.id, params.principle, actorOf(req));
+    return reply.code(204).send();
   });
 
   // GitHub repositories for New run (ADR 0026): desktop only, never paired devices.
@@ -701,6 +724,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/projects/:id/search",
   "GET /api/v1/projects/:id/context",
   "GET /api/v1/projects/:id/specs",
+  "GET /api/v1/projects/:id/principles",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
   "GET /api/v1/inbox/:id",

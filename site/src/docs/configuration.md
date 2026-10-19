@@ -82,6 +82,15 @@ notifications:
 
 Adapters can be turned on or off, and given a command path or a default model, under `adapters.<id>`. For example, set `adapters.opencode.command` when `~/.opencode/bin` is not on your `PATH`.
 
+## Project rules: principles
+
+Rules such as "use Pest, not PHPUnit" or "never touch `legacy/`" reach every agent of a project's runs. There are two places for them:
+
+- `navarch principles add "<rule>"` keeps a rule for the project of the current directory. Only you can add or remove them, from the desktop or the CLI, never from a phone or an agent.
+- `.navarch/principles.md` in the repository: each top-level bullet is a rule. It is read at the run's base commit, like `project.yaml`.
+
+Yours come first; at most 30 reach an agent. Rules do not widen the commands an agent may run.
+
 ## Runtime state
 
 Everything lives in `~/.navarch`: the event store, worktrees, logs, the device key and the push keys. Set `NAVARCH_HOME` to use another directory. Secrets are not there: they are in your OS keychain.

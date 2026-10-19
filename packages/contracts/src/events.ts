@@ -352,6 +352,10 @@ export const EventPayloads = {
   "ci.failure.started": z.object({ failure_id: z.string(), run_id: z.string(), auto: z.boolean() }),
   /** The user dismissed a CI failure. */
   "ci.failure.dismissed": z.object({ failure_id: z.string() }),
+  /** The user approved a rule for a project (ADR 0047); it is applied to later runs there. */
+  "principle.added": z.object({ project_id: z.string(), principle_id: z.string(), text: z.string(), run_id: z.string().nullable() }),
+  /** The user removed a rule. */
+  "principle.removed": z.object({ project_id: z.string(), principle_id: z.string() }),
   /** A pull request Navarch opened can no longer be read (404 three polls in a row); it is no longer followed (ADR 0037). */
   "github.pr.lost": z.object({ repo: z.string(), number: z.number().int().positive(), reason: z.string() }),
   /** Navarch posted a COMMENT review on a pull request (ADR 0032); `existing` when a retry found its earlier one. */

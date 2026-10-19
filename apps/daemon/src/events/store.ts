@@ -66,7 +66,7 @@ export class EventStore {
     this.db.exec(eventsTable);
     // A projection table added later starts empty: fill it from the log.
     const tableExists = (name: string) => !!this.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
-    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures"));
+    const missingTables = tableExists("runs") && !tableExists("pull_requests") || (tableExists("runs") && !tableExists("ci_failures")) || (tableExists("runs") && !tableExists("principles"));
     this.db.exec(projectionTables);
     this.db.exec(credentialTables);
     // Projections are derived data: when a column was added, rebuild them from the log.
@@ -588,6 +588,18 @@ export class EventStore {
     return (this.db.prepare(`SELECT * FROM projects ${withRemoved ? "" : "WHERE removed_at IS NULL"} ORDER BY added_at, rowid`).all() as Row[]).map(toProjectRecord);
   }
 
+  /** The user's approved rules of a project (ADR 0047), oldest first. */
+  principles(projectId: string): PrincipleRecord[] {
+    const rows = this.db.prepare("SELECT * FROM principles WHERE project_id = ? AND removed_at IS NULL ORDER BY added_at, rowid").all(projectId) as Row[];
+    return rows.map((r) => ({ id: String(r.id), project_id: String(r.project_id), text: String(r.text), run_id: (r.run_id as string | null) ?? null, added_at: String(r.added_at) }));
+  }
+
+  /** The active project registered for a clone path, if any. */
+  projectByPath(path: string): ProjectRecord | undefined {
+    const trim = (p: string) => p.replace(/\/+$/, "");
+    return this.listProjects().find((p) => trim(p.path) === trim(path));
+  }
+
   getProject(id: string): ProjectRecord | undefined {
     const row = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as Row | undefined;
     return row ? toProjectRecord(row) : undefined;
@@ -894,6 +906,8 @@ export type AttemptRecord = {
   /** Estimated tokens of the compiled context block the attempt carried, null without one (ADR 0043). */
   context_tokens: number | null;
 };
+
+export type PrincipleRecord = { id: string; project_id: string; text: string; run_id: string | null; added_at: string };
 
 export type ProjectRecord = {
   id: string;

@@ -417,6 +417,16 @@ export function applyEvent(db: DatabaseSync, event: NavarchEvent): void {
       db.prepare("UPDATE projects SET removed_at = COALESCE(removed_at, ?) WHERE id = ?").run(ts, p.project_id);
       return;
     }
+    case "principle.added": {
+      const p = (event as NavarchEvent<"principle.added">).payload;
+      db.prepare("INSERT OR IGNORE INTO principles (id, project_id, text, run_id, added_at) VALUES (?, ?, ?, ?, ?)").run(p.principle_id, p.project_id, p.text, p.run_id, ts);
+      return;
+    }
+    case "principle.removed": {
+      const p = (event as NavarchEvent<"principle.removed">).payload;
+      db.prepare("UPDATE principles SET removed_at = COALESCE(removed_at, ?) WHERE id = ? AND project_id = ?").run(ts, p.principle_id, p.project_id);
+      return;
+    }
     case "inbox.synced": {
       const p = (event as NavarchEvent<"inbox.synced">).payload;
       db.prepare("UPDATE projects SET synced_at = ?, sync_cursor = COALESCE(?, sync_cursor) WHERE id = ?").run(ts, p.cursor ?? null, p.project_id);
