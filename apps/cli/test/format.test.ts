@@ -1,6 +1,6 @@
 import type { ApprovalView, DeviceView, InboxView, RunDetail, RunView, NavarchEvent } from "@navarch/contracts";
 import { describe, expect, it } from "vitest";
-import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatSpecs, formatHits, formatRepoMap, formatSymbols, formatPrinciples } from "../src/format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatDevices, formatEvent, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatRemote, formatRunDetail, formatRunList, formatSync, formatUsage, formatMetrics, formatSpecs, formatHits, formatRepoMap, formatSymbols, formatPrinciples, formatTraceability } from "../src/format.ts";
 
 function run(prompt: string): RunView {
   return {
@@ -354,5 +354,36 @@ describe("formatPrinciples (ADR 0047, 0056)", () => {
   it("says nothing of proposals when there are none", () => {
     expect(formatPrinciples({ ...base, proposals: [] })).not.toContain("proposed");
     expect(formatPrinciples({ ...base, principles: [], proposals: [] })).toContain("no rules yet");
+  });
+});
+
+describe("formatTraceability (ADR 0054)", () => {
+  const view = {
+    has_specs: true,
+    components: [{ component: "auth", claims: 4, claims_with_files: 3, claims_with_tests: 1, files: 2 }],
+    code_spec: [
+      { file: "src/auth.ts", claims: [{ component: "auth", claim: "rejects-empty", confidence: "confirmed" as const, line: 2 }], tests: [{ file: "src/auth.test.ts", via: "name" as const }] },
+      { file: "src/session.ts", claims: [{ component: "auth", claim: "sessions", confidence: "inferred" as const, line: 1 }], tests: [] },
+    ],
+    uncovered: ["src/orphan.ts"],
+    uncovered_total: 1,
+    spec_test: [],
+    broken: [{ component: "auth", claim: "gone", file: "src/removed.ts", line: 3 }],
+    totals: { source_files: 3, cited_files: 2, cited_share: 0.667, claims: 4, claims_with_files: 3, claims_with_tests: 1, tested_share: 0.333 },
+  };
+
+  it("summarises both matrices and lists what is untested, broken and uncovered", () => {
+    const text = formatTraceability(view);
+    expect(text).toContain("code ↔ spec: 2 of 3 source files are cited by a claim (67 %); 1 are not");
+    expect(text).toContain("spec ↔ test: 1 of 3 claims that cite a file have a test tied to it (33 %); links are inferred");
+    expect(text).toMatch(/auth\s+4\s+3\s+1\s+2/);
+    expect(text).toContain("src/session.ts (auth/sessions)");
+    expect(text).not.toContain("src/auth.ts (");
+    expect(text).toContain("auth/gone → src/removed.ts:3");
+    expect(text).toContain("  src/orphan.ts");
+  });
+
+  it("says how to get specs when the project has none", () => {
+    expect(formatTraceability({ ...view, has_specs: false })).toContain("navarch run --flow reverse-spec");
   });
 });

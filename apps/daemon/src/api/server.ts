@@ -43,11 +43,12 @@ import {
   AddPrincipleRequest,
   SetBudgetRequest,
   WorkItemStatus,
+  type SpecAddendumRunView,
   type SpecRunView,
   type SyncInboxResult,
 } from "@navarch/contracts";
 import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
-import { compileContext, searchSpecs } from "@navarch/knowledge";
+import { compileContext, searchSpecs, traceability } from "@navarch/knowledge";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { FlowStudioError } from "../flows/library.ts";
 import { z } from "zod";
@@ -268,6 +269,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return explore(req, reply, (root) => searchSpecs(root, q));
   });
 
+  // Traceability matrices over the project's specs (ADR 0054): code ↔ spec and spec ↔ test.
+  app.get("/api/v1/projects/:id/traceability", (req, reply) => explore(req, reply, (root) => traceability(root)));
+
   // Project rules (ADR 0047): devices may read them; only the desktop and the CLI change them.
   app.get("/api/v1/projects/:id/principles", async (req) => daemon.principles.view((req.params as { id: string }).id));
 
@@ -382,6 +386,16 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.get("/api/v1/specs", async (): Promise<SpecRunView[]> =>
     daemon.store.eventsOfType("spec.generated", 20).map((e) => ({
       ...(e.payload as NavarchEvent<"spec.generated">["payload"]),
+      run_id: e.run_id ?? "",
+      run_name: e.run_id ? (daemon.store.getRun(e.run_id)?.name ?? null) : null,
+      ts: e.ts,
+    })),
+  );
+
+  // Addenda written by spec-sync runs (ADR 0053); devices may read them too.
+  app.get("/api/v1/specs/addenda", async (): Promise<SpecAddendumRunView[]> =>
+    daemon.store.eventsOfType("spec.addendum.written", 20).map((e) => ({
+      ...(e.payload as NavarchEvent<"spec.addendum.written">["payload"]),
       run_id: e.run_id ?? "",
       run_name: e.run_id ? (daemon.store.getRun(e.run_id)?.name ?? null) : null,
       ts: e.ts,
@@ -734,6 +748,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/projects/:id/search",
   "GET /api/v1/projects/:id/context",
   "GET /api/v1/projects/:id/specs",
+  "GET /api/v1/projects/:id/traceability",
   "GET /api/v1/projects/:id/principles",
   "GET /api/v1/inbox",
   "GET /api/v1/ci/failures",
@@ -746,6 +761,7 @@ const DEVICE_ROUTES = new Set([
   "GET /api/v1/usage",
   "GET /api/v1/metrics",
   "GET /api/v1/specs",
+  "GET /api/v1/specs/addenda",
   "GET /api/v1/budgets",
   "GET /api/v1/away",
   "POST /api/v1/stop",

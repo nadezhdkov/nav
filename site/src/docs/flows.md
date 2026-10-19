@@ -43,6 +43,8 @@ navarch run --flow spec-sync --pr owner/repo#17    # pull request 17 must be mer
 
 The run works on the merge commit. An agent reads what the merge changed, compares it with your specs and lists what is new, changed or gone, and which existing claims may no longer hold. Navarch checks the evidence the same way as for `reverse-spec`, then writes one file, `.navarch/specs/addenda/pr-17.md`, and opens a draft pull request with it (waiting for your approval below autonomy level 3). Your spec files are not rewritten: the addendum sits beside them until the next full `reverse-spec`. Like `reverse-spec`, it needs a registered project; `--param open_pr=false` keeps the addendum on the run's branch.
 
+To have it run after every merge, set `spec_sync.auto: true`. When a pull request Navarch opened is merged, in a project whose specs Navarch already wrote, the daemon starts `spec-sync` itself, at most `spec_sync.daily_runs` (3) a day and once per pull request. It never starts it for a pull request that only added specs, and the addendum's pull request still asks for your approval below autonomy level 3.
+
 ### Failing checks are noticed for you
 
 On the same schedule as the Inbox (and on `navarch sync`), Navarch looks at the open pull requests of your projects. When a pull request's checks have all finished and some failed, it records the failure once per commit and sends a push notification. Home shows them in a **CI failures** card with **Fix it** and **Dismiss** buttons (on your phone you see the list and a link to the pull request); `navarch ci` lists them, and `navarch ci fix <failure>` starts `ci-fix` on the pull request.

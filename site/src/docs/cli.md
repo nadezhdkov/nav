@@ -81,6 +81,7 @@ Run options:
 | `navarch budget set --run <run> <usd>` | one run's budget |
 | `navarch usage [--days N] [--profile P]` | spend, tokens, success and cost per model |
 | `navarch specs` | the specs written by `reverse-spec` runs and their share of confirmed (🟢) claims |
+| `navarch trace` `[--project <id>]` | how the project's specs tie to the code and to tests: the files the claims cite, the source files no claim cites, and the tests that exist for those files (inferred from names and imports). Read-only |
 | `navarch metrics [--days N]` | cost by day, project, profile and model; success rates |
 | `navarch secret set <name>` | store a secret in the OS keychain, read from stdin |
 | `navarch secret status <name>` | whether a secret is set |

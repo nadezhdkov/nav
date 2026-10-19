@@ -44,6 +44,12 @@ export const TOOLS: readonly ToolDef[] = [
     path: (a) => `/specs${q("q", a.query)}`,
   },
   {
+    name: "traceability",
+    description: "Traceability matrices of the project's specs: which code files the claims cite, which source files no claim covers, and which tests are tied to each claim (inferred from names and imports).",
+    inputSchema: { type: "object", properties: {}, required: [] },
+    path: () => "/traceability",
+  },
+  {
     name: "context_compile",
     description: "A minimal context package for a goal: a short repository map, matching definitions and excerpts with file:line.",
     inputSchema: { type: "object", properties: { task: str("The goal or task, in plain words") }, required: ["task"] },

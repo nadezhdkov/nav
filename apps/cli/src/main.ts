@@ -22,6 +22,7 @@ import {
   type CodeSymbol,
   type ProjectView,
   type RepoMap,
+  type TraceabilityView,
   type SearchHit,
   type AddProjectResult,
   type StartInboxResult,
@@ -44,7 +45,7 @@ import { homeFiles, navarchHome } from "@navarch/daemon/config";
 import { serveStdio } from "@navarch/mcp-server";
 import { chat } from "./chat.ts";
 import { ApiClient, CliError, daemonInfo, EXIT } from "./client.ts";
-import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
+import { formatApprovals, formatAway, formatBudgets, formatCiFailures, formatDevices, formatEvent, formatHits, formatRepoMap, formatSymbols, formatTraceability, formatFlows, formatGitHubRepos, formatInbox, formatProblems, formatPrinciples, formatProjects, formatRemote, formatRunDetail, formatRunList, formatSpecs, formatSync, formatUsage, formatMetrics } from "./format.ts";
 import { openInBrowser, webUrl } from "./web.ts";
 
 const USAGE = `navarch — Navarch command line
@@ -92,6 +93,7 @@ Usage:
   navarch principles [add <rule> [--run <run>] | remove <id> | accept <proposal> | dismiss <proposal>] [--project <project-id>]
                                          rules for the project; agents may propose some, you accept or dismiss them
   navarch map | symbols <name> | where <text> [--project <project-id>]
+  navarch trace [--project <project-id>]   traceability of the specs: code ↔ spec, spec ↔ test, files no claim covers
   navarch mcp [--project <project-id>]    (Navarch as an MCP server on stdio, read-only tools for one project)
                                          explore the project of the current directory: languages and entry points,
                                          where a symbol is defined, where a text appears
@@ -425,6 +427,12 @@ async function main(argv: string[]): Promise<number> {
       }
       const hits = await api.request<SearchHit[]>("GET", `${base}/search?q=${encodeURIComponent(query)}`);
       return print(json ? hits : formatHits(hits), json);
+    }
+    case "trace": {
+      const api = new ApiClient(home);
+      const project = await exploredProject(api, values.project);
+      const view = await api.request<TraceabilityView>("GET", `/api/v1/projects/${encodeURIComponent(project)}/traceability`);
+      return print(json ? view : formatTraceability(view), json);
     }
     case "mcp": {
       // Navarch as an MCP server on stdio for one project (ADR 0046); stdout carries only protocol messages.
