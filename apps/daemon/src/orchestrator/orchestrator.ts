@@ -202,6 +202,18 @@ export class Orchestrator {
       }
     }
 
+    // A specs PR has no issue: the repository comes from the project, and the push is checked now too.
+    if (!workItem && this.github && params.open_pr !== false && allNodes.some((n) => n.type === "github" && n.uses === "pr.specs")) {
+      const registered = this.store.projectByPath(repoPath);
+      if (!registered) throw new OrchestratorError("invalid_request", `flow "${flowName}" opens a PR for the specs and needs a registered project (navarch project add)`);
+      try {
+        await this.github.checkPush(repoPath, registered.repo);
+      } catch (err) {
+        if (err instanceof GitHubIntegrationError) throw new OrchestratorError(err.code, err.message);
+        throw err;
+      }
+    }
+
     const isolation = resolveIsolation(project, this.config);
     const runId = newId("run");
     const name = uniqueCodename(runId, (n) => this.store.runIdByName(n) !== undefined);

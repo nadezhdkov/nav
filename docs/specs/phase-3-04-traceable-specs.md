@@ -21,5 +21,5 @@ The second Phase 3 criterion: specs of a real project with at least 70% of their
 ## Not in this slice
 
 - Guided mode (pause between steps) and the autonomous interview of §6.9.2, the Scout, Archaeologist, Detective/Architect and Reviewer roles, C4 diagrams and ERDs: one writer covers the scope.
-- A PR for the specs (the `pr.create` action needs an issue or pull request), `spec-sync` addenda, `principles.md`, traceability matrices (`code ↔ spec`, `spec ↔ test`).
+- A PR for the specs (done in slice 7, ADR 0048), `spec-sync` addenda, `principles.md`, traceability matrices (`code ↔ spec`, `spec ↔ test`).
 - A Web UI view. The 70% criterion is measured on a real project in the go/no-go campaign.

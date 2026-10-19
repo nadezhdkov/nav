@@ -1,14 +1,18 @@
 # Reverse-engineer traceable specs from the code (spec §6.8.1, §6.9.2, ADR 0045). The run's prompt
 # names the scope (a module, a directory, or the whole repository). The spec-writer reads the code
 # and makes claims with evidence; `spec.write` checks every quote against the code, writes
-# `.navarch/specs/` and commits it on the run's branch. No PR: the user pushes the branch if wanted.
+# `.navarch/specs/` and commits it on the run's branch. `pr.specs` then pushes that branch and opens
+# a draft PR (ADR 0048); below autonomy level 3 it waits for the user's approval first.
+# Needs a registered project; `--param open_pr=false` keeps the specs on the branch only.
 apiVersion: navarch/v1
 kind: Flow
 metadata:
   name: reverse-spec
-  description: Read the code in a scope and write verified, traceable specs to .navarch/specs/ on the run's branch.
+  description: Read the code in a scope, write verified, traceable specs to .navarch/specs/ on the run's branch and open a draft PR with them.
 params:
   max_attempts: { type: int, default: 2 }
+  # false keeps the specs on the run's branch and opens no PR (--param open_pr=false).
+  open_pr: { type: bool, default: true }
 
 nodes:
   - id: spec_loop
@@ -25,5 +29,11 @@ nodes:
         type: action
         uses: spec.write
 
+  - id: open_pr
+    type: github
+    uses: pr.specs
+    when: ${{ params.open_pr }}
+    with: { draft: true }
+
 edges:
-  - spec_loop
+  - spec_loop -> open_pr
