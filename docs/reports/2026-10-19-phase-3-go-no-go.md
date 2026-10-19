@@ -14,4 +14,4 @@ Reading: on tasks this small the agent already finds the code in a few reads, an
 
 ## Verdict
 
-Specs criterion met. Token criterion not met on this sample, so `knowledge.context.enabled` stays `false`. Next: rerun on larger tasks in a repository without a failing baseline, and fix F1, before deciding whether to drop the context block.
+Specs criterion met. Token criterion not met on this sample, so `knowledge.context.enabled` stays `false`. The user decided not to repeat the measurement on larger tasks: it would only spend more tokens, and a +9 % change on small tasks is unlikely to turn into a 30 % saving on large ones. Open: fix F1 in `verifyDrafts`.
