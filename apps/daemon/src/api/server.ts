@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import fastifyStatic from "@fastify/static";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import {
   FlowRevisionRequest,
@@ -77,6 +78,8 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return caller.kind === "device" ? { kind: "user", via: "mobile", device_id: caller.deviceId } : { kind: "user", via: viaOf(req.headers) };
   };
   await app.register(websocket);
+  // Off everywhere but the routes that scan the whole event log: they opt in with `config.rateLimit`.
+  await app.register(rateLimit, { global: false });
 
   // Who is calling: the local token (CLI, desktop UI) or a paired device's access token (ADR 0020).
   // `tailscale serve` makes remote requests look local, so the source address proves nothing.
@@ -351,11 +354,11 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
   app.post("/api/v1/inbox/:id/restore", async (req) => daemon.inbox.restore((req.params as { id: string }).id, actorOf(req)));
 
   // The event log's hash chain and the per-run audit export (spec §10.3, ADR 0061). Desktop and CLI only.
-  app.get("/api/v1/audit", async (req) => {
+  app.get("/api/v1/audit", { config: { rateLimit: AUDIT_LIMIT } }, async (req) => {
     const expect = (req.query as { expect?: string }).expect;
     return { ...daemon.store.verifyChain(), expected: expect ? { hash: expect, found: daemon.store.hasHash(expect) } : null };
   });
-  app.get("/api/v1/runs/:id/audit", async (req, reply) => {
+  app.get("/api/v1/runs/:id/audit", { config: { rateLimit: AUDIT_LIMIT } }, async (req, reply) => {
     const run = daemon.store.getRun((req.params as { id: string }).id);
     if (!run) return reply.code(404).send({ error: "not_found", message: "no such run" });
     return { run: { id: run.id, name: run.name, status: run.status }, generated_at: new Date().toISOString(), chain: daemon.store.verifyChain(), events: daemon.store.auditEvents(run.id) };
@@ -743,6 +746,9 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 }
 
 const WEB_CODE_TTL_MS = 60_000;
+
+/** Verifying the chain reads every event, so a loop of requests could keep the daemon busy. */
+const AUDIT_LIMIT = { max: 30, timeWindow: "1 minute" };
 
 type Caller = { kind: "local" } | { kind: "device"; deviceId: string };
 
