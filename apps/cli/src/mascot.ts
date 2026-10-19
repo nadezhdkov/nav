@@ -27,51 +27,44 @@ export const PALETTE: Record<string, [number, number, number]> = {
   X: [240, 240, 240], // socks
   Z: [150, 156, 168], // sock shade
   V: [60, 190, 90], // sparkle
+  Q: [236, 124, 138], // tongue
 };
 
-type Seg = [x: number, text: string];
-
-/** One grid row from segments placed at columns; the rest is transparent. */
-function row(width: number, ...segs: Seg[]): string {
-  const cells = Array<string>(width).fill(".");
-  for (const [x, text] of segs) for (let i = 0; i < text.length; i++) cells[x + i] = text[i]!;
-  return cells.join("");
-}
+/** A symmetric picture is drawn as its left half; the right half is the mirror image. */
+const mirror = (half: string): string => half + [...half].reverse().join("");
 
 export const WIDTH = 24;
 
+/**
+ * Her face and hat (the project's mascot), two pixels to a text row. Only the left half of each row is
+ * written down, so the face is symmetrical by construction.
+ */
 export const SPRITE: string[] = [
-  row(WIDTH, [5, "WW"], [15, "WW"]),
-  row(WIDTH, [4, "WPPW"], [14, "WPPW"]),
-  row(WIDTH, [4, "WPPWWWWWWWWPPW"]),
-  row(WIDTH, [3, "WWWWWWWWWWWWWWWW"]),
-  row(WIDTH, [3, "WWKKWWWWWWWWKKWW"]),
-  row(WIDTH, [3, "WGKKWWWWWWWWKKGW"]),
-  row(WIDTH, [2, "WWHHHHHHHHHHHHHHWW"]),
-  row(WIDTH, [2, "HHDHHLHHHHHHLHHDHH"]),
-  row(WIDTH, [1, "HDHHSHHHHSSHHHHSHHDH"], [22, "V"]),
-  row(WIDTH, [1, "HHHSSSHHSSSSHHSSSHHH"]),
-  row(WIDTH, [1, "HDHSSSSSSSSSSSSSSHDH"], [21, "VV"]),
-  row(WIDTH, [1, "HHHSEEESSSSSSEEESHHH"]),
-  row(WIDTH, [1, "HHDSEAIESSSSEAIESDHH"], [22, "V"]),
-  row(WIDTH, [1, "HHHSEEESSSSSSEEESHHH"]),
-  row(WIDTH, [1, "HDHSCSSSSMMSSSSCSHDH"]),
-  row(WIDTH, [1, "HHHHSSSSSMMSSSSSHHHH"], [22, "S"]),
-  row(WIDTH, [1, "HDHHHSSSSSSSSSSHHHDH"], [21, "NS"]),
-  row(WIDTH, [2, "HHHHHHRRRRRRHHHHHH"], [20, "NN"]),
-  row(WIDTH, [2, "OHHNNNRRYYRRNNNHHO"], [19, "NN"]),
-  row(WIDTH, [2, "ONNNNNNRRRRNNNNNNO"]),
-  row(WIDTH, [0, "NN"], [2, "ONNNNNNNYYNNNNNNNO"]),
-  row(WIDTH, [0, "NN"], [2, "NNNNNNNNNNNNNNNNNN"]),
-  row(WIDTH, [0, "SS"], [2, "NNNNNNNNYYNNNNNNNN"]),
-  row(WIDTH, [0, "SS"], [2, "NNNNTTTTTTTTTTNNNN"]),
-  row(WIDTH, [4, "TTTTTTTTTTTTTT"]),
-  row(WIDTH, [5, "TTTTTTTTTTTT"]),
-  row(WIDTH, [5, "XXXXX"], [12, "XXXXX"]),
-  row(WIDTH, [5, "XXXXX"], [12, "XXXXX"]),
-  row(WIDTH, [5, "XZZXX"], [12, "XXZZX"]),
-  row(WIDTH, [4, "ZZZZZZ"], [12, "ZZZZZZ"]),
-];
+  "....WW......",
+  "...WPPW.....",
+  "...WPPWWWWWW",
+  "..WWWWWWWWWW",
+  "..WWKKWWWWWW",
+  "..WGKKWWWWWW",
+  "..WGWWWWWWWW",
+  ".HHHHHHHHHHH",
+  ".HHLHHHHHHHH",
+  "HHHHHHHHHHHH",
+  "HHDHSHHHHSSS",
+  "HHHHSSHHSSSS",
+  "HHDHSSAAASSS",
+  "HHHHSAEIEESS",
+  "HHDHSEEEEESS",
+  "HHHHSSEEEESS",
+  "HHDHSCCSSSSS",
+  "HHHHSSSSSMMM",
+  "HHDHSSSSSSMQ",
+  "HHHHHSSSSSSS",
+  "HHDHHHSSSSSS",
+  ".HHHHHHSSSSS",
+  "..HHHHHHHRRR",
+  "...HHHHHHRRR",
+].map(mirror);
 
 /** The figure as lines of text: `▀` carries the upper pixel as foreground and the lower as background. */
 export function renderMascot(): string[] {

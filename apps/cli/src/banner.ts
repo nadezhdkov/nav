@@ -122,9 +122,11 @@ export function banner(opts: BannerOptions): string {
   if (!withMascot) return `${right.join("\n")}\n`;
   const mascot = renderMascot();
   const height = Math.max(mascot.length, right.length);
+  // The face sits beside the middle of the text, not at its top.
+  const top = Math.max(0, Math.floor((right.length - mascot.length) / 2));
   const lines: string[] = [];
   for (let i = 0; i < height; i++) {
-    const left = mascot[i] ?? " ".repeat(MASCOT_WIDTH);
+    const left = mascot[i - top] ?? " ".repeat(MASCOT_WIDTH);
     lines.push(`${left}${" ".repeat(MASCOT_GAP)}${right[i] ?? ""}`);
   }
   return `${lines.join("\n")}\n`;
