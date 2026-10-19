@@ -120,6 +120,29 @@ switch (scenario) {
     }
     break;
   }
+  case "lead-sublead": {
+    // Two-level team (ADR 0058): the lead gives one part to a sub-lead, which has two implementers
+    // of its own; each writes <key>.txt in its worktree.
+    const team = (plan) => "```navarch-team\n" + JSON.stringify(plan) + "\n```";
+    const profile = /You are the Navarch (\w+) agent/.exec(prompt)?.[1];
+    if (resume && prompt.includes("This is your next turn as the team lead")) {
+      result(true, team({ summary: "Everything is merged.", done: true }));
+    } else if (profile === "lead") {
+      result(true, team({ summary: "One sub-lead takes the service.", done: false, members: [{ key: "svc", title: "The service", brief: "Build x.txt and y.txt.", profile: "sublead" }] }));
+    } else if (profile === "sublead") {
+      const members = ["x", "y"].map((key) => ({ key, title: `Member ${key}`, brief: `Create ${key}.txt.`, profile: "implementer" }));
+      result(true, team({ summary: "Two members.", done: false, members }));
+    } else if (profile === "implementer") {
+      const key = /Create (\w)\.txt/.exec(prompt.split('<input name="brief">')[1] ?? "")?.[1] ?? "x";
+      // A demo can hold the members to show the two-level team mid-run.
+      while (existsSync(join(stateDir, "hold-members"))) await sleep(200);
+      writeFileSync(`${key}.txt`, `from ${key}\n`);
+      result(true, `Member ${key} done.`);
+    } else {
+      result(true, profile === "reviewer" ? "Verdict: approve." : `no answer for ${profile}`);
+    }
+    break;
+  }
   case "compete": {
     // Compete mode (ADR 0031): each competitor knows its key from its worktree (…-compete-c<i>).
     // c1 and c2 write answer.txt (the check) and their own file; c3 never passes the check. The

@@ -45,7 +45,7 @@ function agent(over: Partial<FleetAgent> = {}): FleetAgent {
     resumable: true,
     pending_messages: 0,
     team_role: null,
-    team_key: null,
+    team_key: null, team_sub: null,
     ...over,
   };
 }

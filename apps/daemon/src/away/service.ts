@@ -250,7 +250,7 @@ export class AwayService {
       summary: approval.summary,
       prompt,
       ...optional("triage", summary((t) => t.profile === "triager")),
-      ...optional("plan", summary((t) => t.profile === "planner" || t.profile === "lead")),
+      ...optional("plan", summary((t) => t.profile === "planner" || t.profile === "lead" || t.profile === "sublead")),
       ...(subject === "pr" ? optional("implementation", summary((t) => IMPLEMENTING_PROFILES.includes(t.profile))) : {}),
       ...(subject === "pr" ? optional("verification", summary((t) => t.node_id === "verify" || t.uses === "verification.run")) : {}),
       ...(subject === "pr" ? optional("review", summary((t) => t.profile === "reviewer")) : {}),

@@ -116,8 +116,10 @@ export function buildFleetTree(
     if (isCollapsed) return;
 
     const team = run.team;
-    const lead = team ? run.agents.find((a) => a.team_role === "lead") : undefined;
-    const memberAgents = new Map(run.agents.filter((a) => a.team_role === "member" && a.team_key).map((a) => [a.team_key!, a]));
+    const lead = team ? run.agents.find((a) => a.team_role === "lead" && !a.team_sub) : undefined;
+    // A sub-lead's agent stands for its member (ADR 0058); its own members are the agents with `team_sub`.
+    const memberAgents = new Map(run.agents.filter((a) => a.team_role === "member" && a.team_key && !a.team_sub).map((a) => [a.team_key!, a]));
+    for (const a of run.agents) if (a.team_role === "lead" && a.team_sub) memberAgents.set(a.team_sub, a);
     // A parallel member's conflict resolver hangs under that member (ADR 0029).
     const resolvers = new Map(
       (team?.members ?? []).flatMap((m) => {
@@ -126,7 +128,7 @@ export function buildFleetTree(
       }),
     );
     for (const agent of run.agents) {
-      if (agent.team_role === "member" || resolvers.has(agent.id)) continue;
+      if (agent.team_role === "member" || agent.team_sub || resolvers.has(agent.id)) continue;
       const nodeId = agentNodeId(run.id, agent.node_id);
       const role = agent.team_role === "lead" ? "lead" : null;
       add({ kind: "agent", ...base(nodeId, id, role ? SIZE.lead : SIZE.agent), run, agent, role, member: null, team: role ? team : null });
@@ -157,6 +159,7 @@ export function buildFleetTree(
       const running = agent?.status === "running";
       link(parentId, nodeId, member.group ? "tree" : lead ? "delegates" : "tree", running, !member.group && lead ? member.turn : undefined);
       if (lead && (member.status === "succeeded" || member.status === "failed")) link(nodeId, leadId, "reports", false);
+      if (member.sub) addSubTeam(run, team, member, agent, nodeId);
     }
     for (const [agentId, key] of resolvers) {
       const agent = run.agents.find((a) => a.id === agentId)!;
@@ -184,6 +187,23 @@ export function buildFleetTree(
           add({ kind: "subagent", ...base(subId, groupId, SIZE.subagent), run, subagent: sub });
           link(groupId, subId, "tree", sub.status === "started");
         }
+      }
+    }
+  }
+
+  /** A sub-lead's members hang under the sub-lead (ADR 0058): lead → sub-lead → members. */
+  function addSubTeam(run: FleetRun, team: TeamView, sub: TeamMemberView, subAgent: FleetAgent | null, subId: string) {
+    const members = sub.sub?.members ?? [];
+    const agents = new Map(run.agents.filter((a) => a.team_sub === sub.key && a.team_role === "member" && a.team_key).map((a) => [a.team_key!, a]));
+    const prefix = `${team.node_id}.${sub.key}`;
+    for (const member of members) {
+      const nodeId = agentNodeId(run.id, `${prefix}.${member.key}`);
+      const agent = agents.get(member.key) ?? null;
+      add({ kind: "agent", ...base(nodeId, subId, SIZE.agent), run, agent, role: "member", member: { ...member, sub: null }, team });
+      link(subId, nodeId, "delegates", agent?.status === "running", member.turn);
+      if (subAgent && (member.status === "succeeded" || member.status === "failed")) link(nodeId, subId, "reports", false);
+      for (const dep of member.depends_on) {
+        if (members.some((m) => m.key === dep)) link(agentNodeId(run.id, `${prefix}.${dep}`), nodeId, "after", false);
       }
     }
   }

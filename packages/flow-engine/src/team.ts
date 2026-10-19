@@ -1,4 +1,4 @@
-import { IMPLEMENTING_PROFILES, parseTeamPlan, type FlowNode, type TeamMemberSpec, type TeamPlan } from "@navarch/contracts";
+import { IMPLEMENTING_PROFILES, parseTeamPlan, type FlowNode, type TeamMemberSpec, type TeamPlan, type TeamTaskRef } from "@navarch/contracts";
 import { evaluate, parseExpr, truthy, type Scope } from "./expr.ts";
 import type { NodeToStart, RunContext, Step, TaskState } from "./flow.ts";
 
@@ -27,8 +27,16 @@ export type TeamMember = TeamMemberSpec & {
   conflicts?: string[];
 };
 
-/** Members whose work is merged back in a parallel team; the other profiles are read-only. */
-const EDITS = new Set(IMPLEMENTING_PROFILES);
+/** Members whose work is merged back in a parallel team; the other profiles are read-only. A sub-lead's is the work of its own team. */
+const EDITS = new Set([...IMPLEMENTING_PROFILES, "sublead"]);
+
+/** Two-level teams (ADR 0058): a `sublead` member runs a team of its own, one level deep and smaller than the main one. */
+export const MAX_SUBLEADS = 3;
+export const SUB_MAX_TURNS = 4;
+export const SUB_MAX_MEMBERS = 6;
+
+/** The sub-lead whose team a step belongs to: its tasks are `<root>.<key>.…`, its work happens in the worktree `<key>`. */
+type Nest = { root: string; key: string; title: string; brief: string };
 
 /** What a team node's tasks say so far (ADR 0022). Pure, so the UI projection and the engine agree. */
 export type TeamState = {
@@ -51,13 +59,13 @@ const latest = (tasks: TaskState[], nodeId: string, iteration?: number) =>
   tasks.filter((t) => t.node_id === nodeId && (iteration === undefined || t.iteration === iteration)).sort((a, b) => a.iteration - b.iteration).at(-1);
 
 /** `parallel`: the team merges its editing members back (ADR 0029), so a dependency is done once merged. */
-export function teamState(teamId: string, tasks: TaskState[], parallel = false): TeamState {
+export function teamState(teamId: string, tasks: TaskState[], parallel = false, nested = false): TeamState {
   const turns: Turn[] = [];
   const members: TeamMember[] = [];
   for (const task of tasks.filter((t) => t.node_id === teamTaskId.lead(teamId)).sort((a, b) => a.iteration - b.iteration)) {
     const turn: Turn = { iteration: task.iteration, task };
     if (task.status === "succeeded") {
-      const parsed = parseTeamPlan(String(task.outputs?.summary ?? ""), members.map((m) => m.key));
+      const parsed = parseTeamPlan(String(task.outputs?.summary ?? ""), members.map((m) => m.key), { nested });
       if (parsed.ok) {
         turn.plan = parsed.plan;
         for (const spec of parsed.plan.members) members.push({ ...spec, turn: task.iteration, status: "planned", summary: undefined });
@@ -72,6 +80,9 @@ export function teamState(teamId: string, tasks: TaskState[], parallel = false):
     if (t) {
       m.status = t.status;
       m.summary = typeof t.outputs?.summary === "string" ? t.outputs.summary : undefined;
+    } else if (m.profile === "sublead" && tasks.some((x) => x.node_id === teamTaskId.lead(`${teamId}.${m.key}`))) {
+      // The sub-lead's own team is working; it has no task of its own until that team ends.
+      m.status = "running";
     }
   }
   if (parallel) {
@@ -113,16 +124,16 @@ function mergeOf(teamId: string, key: string, tasks: TaskState[]): { state: Merg
 }
 
 /** The next integration task of a member, "busy" while one runs, or undefined when there is nothing to do. */
-function integrationStep(teamId: string, m: TeamMember, tasks: TaskState[]): "busy" | Omit<NodeToStart, "stage"> | undefined {
+function integrationStep(teamId: string, m: TeamMember, tasks: TaskState[], nest?: Nest): "busy" | Omit<NodeToStart, "stage"> | undefined {
   if (!m.merge || m.merge === "merged" || m.merge === "conflict") return undefined;
   const first = latest(tasks, teamTaskId.integrate(teamId, m.key), 1);
-  if (!first) return integrateNode(teamId, m, 1);
+  if (!first) return integrateNode(teamId, m, 1, nest);
   if (ACTIVE.has(first.status)) return "busy";
   const resolve = latest(tasks, teamTaskId.resolve(teamId, m.key));
-  if (!resolve) return resolveNode(teamId, m);
+  if (!resolve) return resolveNode(teamId, m, nest);
   if (ACTIVE.has(resolve.status)) return "busy";
   const second = latest(tasks, teamTaskId.integrate(teamId, m.key), 2);
-  if (!second) return integrateNode(teamId, m, 2);
+  if (!second) return integrateNode(teamId, m, 2, nest);
   return ACTIVE.has(second.status) ? "busy" : undefined;
 }
 
@@ -138,19 +149,19 @@ function num(value: number | string, scope: Scope): number {
  * The next step inside a team node, or undefined when the team finished and the chain goes on.
  * Order of a turn: lead → (first-plan approval) → members in dependency order → verify → next turn.
  */
-export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope): Step | undefined {
-  const parallel = bool(node.parallel, scope);
-  const state = teamState(node.id, ctx.tasks, parallel);
-  const maxTurns = num(node.max_turns, scope);
-  const maxMembers = num(node.max_members, scope);
+export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope, nest?: Nest): Step | undefined {
+  const parallel = nest ? true : bool(node.parallel, scope);
+  const state = teamState(node.id, ctx.tasks, parallel, !!nest);
+  const maxTurns = nest ? SUB_MAX_TURNS : num(node.max_turns, scope);
+  const maxMembers = nest ? SUB_MAX_MEMBERS : num(node.max_members, scope);
   const turn = state.turns.at(-1);
-  if (!turn) return start(leadNode(node, 1, maxTurns, state, ctx.tasks, undefined), "planning");
+  if (!turn) return start(leadNode(node, 1, maxTurns, state, ctx.tasks, undefined, nest), "planning");
   if (ACTIVE.has(turn.task.status)) return { kind: "wait" };
   if (turn.task.status !== "succeeded") return { kind: "fail", reason: `the lead's turn ${turn.iteration} ${turn.task.status}` };
   const t = turn.iteration;
   const nextTurn = (reason: string, blocked?: string): Step => {
     if (t >= maxTurns) return { kind: "fail", reason: `${node.id} stopped after ${t} turn(s) without finishing (max_turns ${maxTurns})` };
-    return start(leadNode(node, t + 1, maxTurns, state, ctx.tasks, reason), "executing", blocked);
+    return start(leadNode(node, t + 1, maxTurns, state, ctx.tasks, reason, nest), "executing", blocked);
   };
 
   if (!turn.plan) {
@@ -159,9 +170,12 @@ export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope): Step | 
   }
   const plan = turn.plan;
   if (state.members.length > maxMembers) return { kind: "fail", reason: `the team plan of turn ${t} goes over max_members (${maxMembers})` };
+  const subleads = state.members.filter((m) => m.profile === "sublead").length;
+  if (subleads > MAX_SUBLEADS) return { kind: "fail", reason: `the team plan of turn ${t} has ${subleads} sub-leads, more than ${MAX_SUBLEADS}` };
+  if (subleads && !parallel) return { kind: "fail", reason: "sub-leads need a parallel team (each works in its own worktree)" };
 
   // The first plan that adds members waits for a human below autonomy level 3.
-  const approve = bool(node.approve_first_plan, scope);
+  const approve = !nest && bool(node.approve_first_plan, scope);
   const firstWithMembers = state.turns.find((x) => x.plan?.members.length);
   if (approve && firstWithMembers === turn) {
     const approval = latest(ctx.tasks, teamTaskId.approval(node.id));
@@ -172,11 +186,11 @@ export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope): Step | 
 
   const ofTurn = state.members.filter((x) => x.turn === t && !x.skipped);
   if (parallel) {
-    const step = parallelStep(node, ofTurn, state, ctx.tasks, num(node.max_parallel, scope));
+    const step = parallelStep(node, ofTurn, state, ctx, scope, num(node.max_parallel, scope), nest);
     if (step) return step;
   } else {
     for (const m of ofTurn) {
-      if (m.status === "planned") return start(memberNode(node, m, state, false), "executing", undefined, m);
+      if (m.status === "planned") return start(memberNode(node, m, state, false, nest), "executing", undefined, m);
       if (ACTIVE.has(m.status)) return { kind: "wait" };
     }
   }
@@ -184,7 +198,7 @@ export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope): Step | 
   if (plan.question) return nextTurn(`The user was asked: "${plan.question}". Their answer is in the operator instruction.`, "question");
 
   const verify = latest(ctx.tasks, teamTaskId.verify(node.id), t);
-  if (!verify) return start({ node: { id: teamTaskId.verify(node.id), type: "action", uses: "verification.run" }, iteration: t, inputs: {}, show: [], team: { node_id: node.id, role: "verify" } }, "verifying");
+  if (!verify) return start({ node: { id: teamTaskId.verify(node.id), type: "action", uses: "verification.run" }, iteration: t, inputs: {}, show: [], team: ref(node, nest, "verify") }, "verifying");
   if (ACTIVE.has(verify.status)) return { kind: "wait" };
   const passed = verify.status === "succeeded" && verify.outputs?.passed !== false;
   if (plan.done && passed) return undefined;
@@ -196,8 +210,9 @@ export function teamStep(node: TeamNode, ctx: RunContext, scope: Scope): Step | 
  * then any member whose dependencies are done while fewer than `maxParallel` run; wait while
  * anything of the turn is unfinished, and undefined once every member ended and merged or not.
  */
-function parallelStep(node: TeamNode, ofTurn: TeamMember[], state: TeamState, tasks: TaskState[], maxParallel: number): Step | undefined {
-  const integrations = ofTurn.map((m) => integrationStep(node.id, m, tasks));
+function parallelStep(node: TeamNode, ofTurn: TeamMember[], state: TeamState, ctx: RunContext, scope: Scope, maxParallel: number, nest?: Nest): Step | undefined {
+  const tasks = ctx.tasks;
+  const integrations = ofTurn.map((m) => integrationStep(node.id, m, tasks, nest));
   if (!integrations.includes("busy")) {
     const due = integrations.find((x) => x !== undefined && x !== "busy");
     if (due) return start(due, "executing");
@@ -208,29 +223,71 @@ function parallelStep(node: TeamNode, ofTurn: TeamMember[], state: TeamState, ta
     return d.status === "succeeded" && (d.merge === undefined || d.merge === "merged");
   };
   for (const m of ofTurn) {
-    if (m.status !== "planned" || running >= maxParallel || !m.depends_on.every(done)) continue;
-    return start(memberNode(node, m, state, true), "executing", undefined, m);
+    const ready = m.depends_on.every(done);
+    if (m.profile === "sublead") {
+      // The sub-lead's team is a team node of its own; its step is the sub-lead's next step.
+      if (!(m.status === "running" || (m.status === "planned" && running < maxParallel && ready))) continue;
+      const step = subTeamStep(node, m, ctx, scope);
+      if (step.kind === "wait") continue;
+      return step;
+    }
+    if (m.status !== "planned" || running >= maxParallel || !ready) continue;
+    return start(memberNode(node, m, state, true, nest), "executing", undefined, m);
   }
   running = ofTurn.filter((m) => ACTIVE.has(m.status) || m.status === "planned").length;
   return running || integrations.some((x) => x !== undefined) ? { kind: "wait" } : undefined;
+}
+
+/**
+ * One step of a sub-lead's team (ADR 0058): the next task of its own lead, members and checks, or,
+ * once that team ended, the task `<root>.<key>` that closes it, which the parent treats as the
+ * member finishing (and merges like an editing member).
+ */
+function subTeamStep(root: TeamNode, m: TeamMember, ctx: RunContext, scope: Scope): Step {
+  const id = `${root.id}.${m.key}`;
+  const sub: TeamNode = { ...root, id, lead: { profile: "sublead" }, parallel: true, approve_first_plan: false };
+  const nest: Nest = { root: root.id, key: m.key, title: m.title, brief: m.brief };
+  const step = teamStep(sub, ctx, scope, nest);
+  if (step) {
+    if (step.kind === "start") return { kind: "start", start: { ...step.start, ...(m.prefer && step.start.team?.role === "lead" ? { prefer: m.prefer } : {}) } };
+    if (step.kind !== "fail") return step;
+  }
+  const failed = step?.kind === "fail" ? step.reason : undefined;
+  const summary = teamState(id, ctx.tasks, true, true).summary;
+  return start({
+    node: { id: teamTaskId.member(root.id, m.key), type: "action", uses: "team.subteam" },
+    iteration: 1,
+    inputs: { member: m.key, title: m.title, ...(summary ? { team_summary: summary } : {}), ...(failed ? { failed } : {}) },
+    show: [],
+    team: { node_id: root.id, role: "member", key: m.key },
+  }, "executing");
 }
 
 function start(s: Omit<NodeToStart, "stage" | "blocked" | "prefer">, stage: NodeToStart["stage"], blocked?: string, m?: TeamMember): Step {
   return { kind: "start", start: { ...s, stage, ...(blocked ? { blocked } : {}), ...(m?.prefer ? { prefer: m.prefer } : {}) } };
 }
 
-function leadNode(node: TeamNode, iteration: number, maxTurns: number, state: TeamState, tasks: TaskState[], reason: string | undefined): Omit<NodeToStart, "stage"> {
+/**
+ * The reference a team task carries. Tasks of a sub-lead's team name the main team's node and the
+ * sub-lead's key (`sub`); their worktrees follow from it (`<key>` for the sub-lead's, `<key>.<member>` for a member's).
+ */
+function ref(node: TeamNode, nest: Nest | undefined, role: TeamTaskRef["role"], extra: Partial<TeamTaskRef> = {}): TeamTaskRef {
+  return { node_id: nest?.root ?? node.id, role, ...extra, ...(nest ? { sub: nest.key } : {}) };
+}
+
+function leadNode(node: TeamNode, iteration: number, maxTurns: number, state: TeamState, tasks: TaskState[], reason: string | undefined, nest?: Nest): Omit<NodeToStart, "stage"> {
   return {
     node: { id: teamTaskId.lead(node.id), type: "agent", profile: node.lead.profile },
     iteration,
     inputs: {
+      ...(nest ? { assignment: `${nest.title}\n${nest.brief}` } : {}),
       turn: `${iteration} of ${maxTurns}`,
       reason,
       team: state.members.length ? state.members.map(describeMember) : undefined,
       checks: checksText(node.id, tasks),
     },
     show: [],
-    team: { node_id: node.id, role: "lead" },
+    team: ref(node, nest, "lead", nest ? { own_worktree: true } : {}),
   };
 }
 
@@ -258,29 +315,29 @@ function describeMember(m: TeamMember): string {
   return m.summary ? `${head}\n${cap(m.summary)}` : head;
 }
 
-function memberNode(node: TeamNode, m: TeamMember, state: TeamState, ownWorktree: boolean): Omit<NodeToStart, "stage"> {
+function memberNode(node: TeamNode, m: TeamMember, state: TeamState, ownWorktree: boolean, nest?: Nest): Omit<NodeToStart, "stage"> {
   const deps = m.depends_on.map((d) => state.members.find((x) => x.key === d)!).map((d) => `${d.key}: ${d.summary ? cap(d.summary) : "(no summary)"}`);
   return {
     node: { id: teamTaskId.member(node.id, m.key), type: "agent", profile: m.profile },
     iteration: 1,
     inputs: { brief: m.brief, ...(deps.length ? { depends_on: deps } : {}) },
     show: [],
-    team: { node_id: node.id, role: "member", key: m.key, ...(ownWorktree ? { own_worktree: true } : {}) },
+    team: ref(node, nest, "member", { key: m.key, ...(ownWorktree ? { own_worktree: true } : {}) }),
   };
 }
 
-function integrateNode(teamId: string, m: TeamMember, iteration: 1 | 2): Omit<NodeToStart, "stage"> {
+function integrateNode(teamId: string, m: TeamMember, iteration: 1 | 2, nest?: Nest): Omit<NodeToStart, "stage"> {
   return {
     node: { id: teamTaskId.integrate(teamId, m.key), type: "action", uses: "team.integrate" },
     iteration,
     inputs: { member: m.key, title: m.title },
     show: [],
-    team: { node_id: teamId, role: "integrate", key: m.key },
+    team: { node_id: nest?.root ?? teamId, role: "integrate", key: m.key, ...(nest ? { sub: nest.key } : {}) },
   };
 }
 
 /** An implementer that removes the conflict markers a member's merge left; Navarch concludes the merge. */
-function resolveNode(teamId: string, m: TeamMember): Omit<NodeToStart, "stage"> {
+function resolveNode(teamId: string, m: TeamMember, nest?: Nest): Omit<NodeToStart, "stage"> {
   const brief = [
     `Merging team member "${m.key}" (${m.title}) into this worktree left conflicts in the files listed in <input name="conflicts">.`,
     "Edit each of them so that no conflict markers remain (lines starting with <<<<<<<, ======= or >>>>>>>), keeping what both sides meant to do.",
@@ -291,7 +348,7 @@ function resolveNode(teamId: string, m: TeamMember): Omit<NodeToStart, "stage"> 
     iteration: 1,
     inputs: { brief, conflicts: m.conflicts ?? [], ...(m.summary ? { member_summary: cap(m.summary) } : {}) },
     show: [],
-    team: { node_id: teamId, role: "integrate", key: m.key },
+    team: { node_id: nest?.root ?? teamId, role: "integrate", key: m.key, ...(nest ? { sub: nest.key } : {}) },
   };
 }
 

@@ -97,6 +97,11 @@ export const defaultRules: PolicyRule[] = [
     reason: "running verification commands requires approval below autonomy level 2",
   },
   {
+    match: (r) => r.action === "team.subteam",
+    effect: "allow",
+    reason: "closing a sub-lead's team only records that its work ended (ADR 0058)",
+  },
+  {
     match: (r) => r.action === "team.integrate" && r.context.autonomyLevel >= 2,
     effect: "allow",
     reason: "autonomy level 2+ merges a team member's branch into the run's worktree (ADR 0029)",

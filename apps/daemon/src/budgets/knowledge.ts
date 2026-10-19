@@ -12,7 +12,7 @@ export const MIN_ATTEMPTS = 3;
 /** Ends that say nothing about the model, as in the observed metrics. */
 const NEUTRAL_ERRORS = new Set(["rate_limited", "cancelled"]);
 /** Profiles the context is given to (`CONTEXT_PROFILES` in the Scheduler): the others cannot be compared. */
-const COMPARABLE = new Set(["triager", "planner", ...IMPLEMENTING_PROFILES, "researcher", "lead"]);
+const COMPARABLE = new Set(["triager", "planner", ...IMPLEMENTING_PROFILES, "researcher", "lead", "sublead"]);
 
 const input = (a: AttemptRecord) => a.tokens_in + a.cached_tokens;
 

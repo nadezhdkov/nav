@@ -7,7 +7,7 @@ function agent(over: Partial<FleetAgent> = {}): FleetAgent {
     id: "task_impl", run_id: "run_1", node_id: "implement", type: "agent", status: "running", attempt: 1, max_attempts: 3,
     profile: "implementer", adapter: "claude-code", model: null, sandbox_path: null, branch: null, cost: 0, plan_cost: 0, summary: null, error: null,
     not_before: null, updated_at: "2026-10-15T01:00:00Z", iteration: 1, last_activity: null, waiting: null, resumable: true,
-    pending_messages: 0, team_role: null, team_key: null, ...over,
+    pending_messages: 0, team_role: null, team_key: null, team_sub: null, ...over,
   };
 }
 
@@ -59,9 +59,9 @@ describe("Fleet tree (slice 10)", () => {
     const team: TeamView = {
       node_id: "team", turn: 2, max_turns: 8, lead_task_id: "task_lead", question: null, summary: "split", plan_errors: [],
       members: [
-        { key: "api", title: "API", profile: "implementer", prefer: "codex", depends_on: [], group: null, turn: 1, task_id: "task_api", status: "succeeded", summary: "done", merge: null, branch: null },
-        { key: "ui", title: "UI", profile: "implementer", prefer: null, depends_on: ["api"], group: null, turn: 2, task_id: "task_ui", status: "running", summary: null, merge: null, branch: null },
-        { key: "docs", title: "Docs", profile: "planner", prefer: null, depends_on: ["ui"], group: null, turn: 2, task_id: null, status: "planned", summary: null, merge: null, branch: null },
+        { key: "api", title: "API", profile: "implementer", prefer: "codex", depends_on: [], group: null, turn: 1, task_id: "task_api", status: "succeeded", summary: "done", merge: null, branch: null, sub: null },
+        { key: "ui", title: "UI", profile: "implementer", prefer: null, depends_on: ["api"], group: null, turn: 2, task_id: "task_ui", status: "running", summary: null, merge: null, branch: null, sub: null },
+        { key: "docs", title: "Docs", profile: "planner", prefer: null, depends_on: ["ui"], group: null, turn: 2, task_id: null, status: "planned", summary: null, merge: null, branch: null, sub: null },
       ],
       subagents: [{ task_id: "task_lead", tool_use_id: "tu_1", description: "search", status: "finished" }],
     };
@@ -90,7 +90,7 @@ describe("Fleet tree (slice 10)", () => {
 
   it("hangs members the lead grouped under one heading that hangs under the lead (ADR 0051)", () => {
     const m = (key: string, profile: string, group: string | null, status: string, depends_on: string[] = []) =>
-      ({ key, title: key, profile, prefer: null, depends_on, group, turn: 1, task_id: `task_${key}`, status, summary: null, merge: null, branch: null });
+      ({ key, title: key, profile, prefer: null, depends_on, group, turn: 1, task_id: `task_${key}`, status, summary: null, merge: null, branch: null, sub: null });
     const team: TeamView = {
       node_id: "team", turn: 1, max_turns: 8, lead_task_id: "task_lead", question: null, summary: null, plan_errors: [], subagents: [],
       members: [m("db", "backend", "backend", "succeeded"), m("users", "backend", "backend", "running", ["db"]), m("shell", "frontend", "ui", "planned"), m("docs", "planner", null, "planned")],
@@ -119,10 +119,40 @@ describe("Fleet tree (slice 10)", () => {
     expect(byId.get(agentNodeId("run_1", "team.db"))!.position.y).toBeGreaterThan(byId.get(backend)!.position.y);
   });
 
+  it("hangs a sub-lead's members under the sub-lead, which hangs under the lead (ADR 0058)", () => {
+    const base = { prefer: null, group: null, merge: null, branch: null };
+    const x = { ...base, key: "x", title: "X", profile: "implementer", depends_on: [], turn: 1, task_id: "task_x", status: "running", summary: null };
+    const y = { ...base, key: "y", title: "Y", profile: "qa", depends_on: ["x"], turn: 1, task_id: null, status: "planned", summary: null };
+    const team: TeamView = {
+      node_id: "team", turn: 1, max_turns: 8, lead_task_id: "task_lead", question: null, summary: null, plan_errors: [], subagents: [],
+      members: [{ ...base, key: "svc", title: "Service", profile: "sublead", depends_on: [], turn: 1, task_id: null, status: "running", summary: null, sub: { turn: 1, lead_task_id: "task_sub", summary: null, members: [x, y] } }],
+    };
+    const r = run({
+      flow: "team",
+      team,
+      agents: [
+        agent({ id: "task_lead", node_id: "team.lead", profile: "lead", team_role: "lead", status: "succeeded" }),
+        agent({ id: "task_sub", node_id: "team.svc.lead", profile: "sublead", team_role: "lead", team_sub: "svc", status: "succeeded" }),
+        agent({ id: "task_x", node_id: "team.svc.x", team_role: "member", team_key: "x", team_sub: "svc", status: "running" }),
+      ],
+    });
+    const tree = buildFleetTree(view([r]), []);
+    const byId = new Map(tree.nodes.map((n) => [n.id, n]));
+    const lead = agentNodeId("run_1", "team.lead");
+    const sub = agentNodeId("run_1", "team.svc");
+    // The sub-lead's own lead task is not the team's lead; it is the member `svc`.
+    expect(byId.get(lead)!.children).toEqual([sub]);
+    expect(byId.get(sub)).toMatchObject({ kind: "agent", role: "member", parent: lead });
+    expect(byId.get(sub)!.children).toEqual([agentNodeId("run_1", "team.svc.x"), agentNodeId("run_1", "team.svc.y")]);
+    expect(byId.get(agentNodeId("run_1", "team.svc.x"))!.position.y).toBeGreaterThan(byId.get(sub)!.position.y);
+    const kinds = tree.edges.map((e) => `${e.kind}:${e.source.split(":").pop()}->${e.target.split(":").pop()}`);
+    expect(kinds).toEqual(expect.arrayContaining(["delegates:team.lead->team.svc", "delegates:team.svc->team.svc.x", "after:team.svc.x->team.svc.y"]));
+  });
+
   it("hangs a parallel member's conflict resolver under that member (ADR 0029)", () => {
     const team: TeamView = {
       node_id: "team", turn: 1, max_turns: 8, lead_task_id: "task_lead", question: null, summary: null, plan_errors: [], subagents: [],
-      members: [{ key: "b", title: "B", profile: "implementer", prefer: null, depends_on: [], group: null, turn: 1, task_id: "task_b", status: "succeeded", summary: "ok", merge: "resolving", branch: "navarch/run_1/team-b" }],
+      members: [{ key: "b", title: "B", profile: "implementer", prefer: null, depends_on: [], group: null, turn: 1, task_id: "task_b", status: "succeeded", summary: "ok", merge: "resolving", branch: "navarch/run_1/team-b", sub: null }],
     };
     const r = run({
       flow: "team",
