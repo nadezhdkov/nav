@@ -30,6 +30,31 @@ describe("taskTerms", () => {
   });
 });
 
+describe("compileContext, lean mode (ADR 0070)", () => {
+  it("lists only the files to open first, with the names matched, and no excerpts, map or mentions", async () => {
+    const ctx = await compileContext({ root, task: "parseTeamPlan drops the last member", mode: "lean" });
+    expect(ctx?.text).toContain("src/team.ts (parseTeamPlan:1)");
+    expect(ctx?.text).not.toMatch(/## Map|## Mentions|^1: export function/m);
+    expect(ctx?.sources).toEqual(["src/team.ts"]);
+    expect(ctx!.est_tokens).toBeLessThan(150);
+  });
+
+  it("names the test file beside a source file, and never lists a test as the file to change", async () => {
+    put("src/lean.ts", "export function leanThing() {}\n");
+    put("src/lean.test.ts", 'import { leanThing } from "./lean.ts";\nleanThing();\n');
+    execFileSync("git", ["add", "."], { cwd: root });
+    const ctx = await compileContext({ root, task: "fix `leanThing`", mode: "lean" });
+    expect(ctx?.text).toContain("- src/lean.ts (leanThing:1); test: src/lean.test.ts");
+    expect(ctx?.text).not.toMatch(/^- src\/lean\.test\.ts/m);
+  });
+
+  it("gives nothing when no word of the task names anything, and keeps to its budget", async () => {
+    expect(await compileContext({ root, task: "zzqx wwvv", mode: "lean" })).toBeUndefined();
+    const ctx = await compileContext({ root, task: "`parseTeamPlan` `TeamRunner` `leanThing`", mode: "lean", maxTokens: 20 });
+    expect(ctx === undefined || ctx.chars <= 80).toBe(true);
+  });
+});
+
 describe("compileContext", () => {
   it("lists the matching definition with file and line, and an excerpt with it", async () => {
     const ctx = await compileContext({ root, task: "parseTeamPlan drops the last member" });
