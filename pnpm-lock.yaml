@@ -271,6 +271,9 @@ importers:
 
   apps/relay:
     dependencies:
+      '@fastify/rate-limit':
+        specifier: 11.2.1
+        version: 11.2.1
       '@fastify/websocket':
         specifier: ^11.3.4
         version: 11.3.4

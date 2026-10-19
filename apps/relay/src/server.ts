@@ -1,6 +1,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 
@@ -27,6 +28,8 @@ export type RelayOptions = {
   maxChannels?: number;
   /** New phone connections per address per minute. */
   phonePerMinute?: number;
+  /** Requests per address per minute for the loader's files (a phone loads four per visit). */
+  fileRequestsPerMinute?: number;
   /** Where the built loader page and service worker are (`make relay-build`); defaults to `apps/relay/dist`. */
   phoneDir?: string;
   log?: (line: string) => void;
@@ -71,6 +74,9 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
 
   const app: FastifyInstance = Fastify({ logger: false });
   await app.register(websocket, { options: { maxPayload: MAX_PAYLOAD } });
+  // Off everywhere but the routes that read files: they opt in with `config.rateLimit`.
+  await app.register(rateLimit, { global: false });
+  const files = { config: { rateLimit: { max: opts.fileRequestsPerMinute ?? 120, timeWindow: "1 minute" } } };
 
   const allowed = (ip: string): boolean => {
     const now = Date.now();
@@ -103,15 +109,15 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayServer> 
   };
   app.get("/favicon.ico", async (_req, reply) => reply.code(204).send());
   app.get("/r/:id", async (req, reply) => reply.redirect(`/r/${(req.params as { id: string }).id}/`));
-  app.get("/r/:id/", serve("index.html", "text/html; charset=utf-8"));
-  app.get("/r/:id/loader.js", serve("loader.js", "text/javascript; charset=utf-8"));
-  app.get("/r/:id/loader.css", serve("loader.css", "text/css; charset=utf-8"));
-  app.get("/r/:id/sw.js", async (req, reply) => {
+  app.get("/r/:id/", files, serve("index.html", "text/html; charset=utf-8"));
+  app.get("/r/:id/loader.js", files, serve("loader.js", "text/javascript; charset=utf-8"));
+  app.get("/r/:id/loader.css", files, serve("loader.css", "text/css; charset=utf-8"));
+  app.get("/r/:id/sw.js", files, async (req, reply) => {
     const id = (req.params as { id: string }).id;
     return serve("sw.js", "text/javascript; charset=utf-8", { "service-worker-allowed": `/r/${id}/` })(req, reply);
   });
   // Any other address under the relay id, before the service worker is there to answer it: the loader page.
-  app.get("/r/:id/*", serve("index.html", "text/html; charset=utf-8"));
+  app.get("/r/:id/*", files, serve("index.html", "text/html; charset=utf-8"));
 
   // The daemon: authenticates in its first message, then carries frames for every phone.
   app.get("/d", { websocket: true }, (socket) => {

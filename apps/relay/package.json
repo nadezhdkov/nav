@@ -10,9 +10,10 @@
     "navarch-relay": "./src/main.ts"
   },
   "dependencies": {
+    "@fastify/rate-limit": "11.2.1",
     "@fastify/websocket": "^11.3.4",
-    "fastify": "^5.12.7",
-    "@navarch/relay-protocol": "workspace:*"
+    "@navarch/relay-protocol": "workspace:*",
+    "fastify": "^5.12.7"
   },
   "scripts": {
     "build:phone": "node phone/build.ts",
