@@ -11,6 +11,7 @@ export const routes = [
   { path: "/flows", name: "flows", component: () => import("./views/FlowsView.vue") },
   { path: "/flows/:name", name: "flow", component: () => import("./views/FlowStudioView.vue"), props: true },
   { path: "/away", name: "away", component: () => import("./views/AwayView.vue") },
+  { path: "/rules", name: "rules", component: () => import("./views/RulesView.vue") },
   { path: "/specs", name: "specs", component: () => import("./views/SpecsView.vue") },
   { path: "/usage", name: "usage", component: () => import("./views/UsageView.vue") },
   { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
