@@ -14,9 +14,9 @@ Until now, New run offered only registered projects and repositories of earlier 
   - The clone uses the token for that one `git clone` (`GIT_CONFIG_*` with `http.<github>/.extraheader`, as for pushes), with no template hooks, and its `origin` is left as the plain `https://github.com/<owner>/<name>.git`. No credential is written to disk.
   - A repository that is already a project returns that project (200) instead of cloning again. A clone left in place by an earlier attempt is reused when its origin matches.
 - **Surfaces.**
-  - API: `GET /api/v1/github/repos[?refresh=1]` → `GitHubRepoView[]`, `POST /api/v1/github/repos/clone {repo}` → `ProjectView` (201 cloned, 200 existing). GitHub or token errors answer 502 with GitHub's message. Neither route is open to paired devices.
+  - API: `GET /api/v1/github/repos[?refresh=1]` → `GitHubRepoView[]`, `POST /api/v1/github/repos/clone {repo}` → `ProjectView` (201 cloned, 200 existing). GitHub or token errors answer 502 with GitHub's message. A paired phone may call them since ADR 0072 (slice 4 of Phase 5).
   - CLI: `navarch repos [--refresh]`, `navarch project clone <owner/name>`.
-  - Web, New run (desktop): a search field once there are more than 8 repositories, and a picker grouped as "On this computer" and "GitHub · <owner>" with "(private)" marked. Picking a GitHub repository shows that Navarch will clone it. When the token cannot push, a warning says the run can work but cannot open a PR. While the clone runs, the start button says "Cloning <repo>…". Without a token, the GitHub groups are left out with a short note. Phones keep the earlier list (ADR 0020).
+  - Web, New run (desktop): a search field once there are more than 8 repositories, and a picker grouped as "On this computer" and "GitHub · <owner>" with "(private)" marked. Picking a GitHub repository shows that Navarch will clone it. When the token cannot push, a warning says the run can work but cannot open a PR. While the clone runs, the start button says "Cloning <repo>…". Without a token, the GitHub groups are left out with a short note. Phones show the same list since ADR 0072.
 
 ## Out of scope
 

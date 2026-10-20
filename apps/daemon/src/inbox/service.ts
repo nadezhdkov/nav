@@ -7,6 +7,7 @@ import {
   workItemId,
   type Actor,
   type CloneRepoRequest,
+  CreateRepoRequest,
   type CreateProjectRequest,
   type GitHubRepoView,
   type InboxItemDetail,
@@ -181,6 +182,24 @@ export class InboxService {
       }
     }
     return { project: await this.addProject({ path: dest, github: listed.repo }, actor), created: true };
+  }
+
+  /**
+   * A new repository on the token's account, cloned and registered like a picked one (ADR 0072). The
+   * repository exists on GitHub once the first step succeeds, even when the clone fails; picking it
+   * afterwards clones it.
+   */
+  async createProject(req: CreateRepoRequest, actor: Actor): Promise<AddProjectResult> {
+    const parsed = CreateRepoRequest.parse(req);
+    let created: GitHubRepo;
+    try {
+      created = await this.deps.github.createRepo({ name: parsed.name, private: parsed.private, ...(parsed.description ? { description: parsed.description } : {}) }, actor);
+    } catch (err) {
+      if (err instanceof GitHubIntegrationError && err.code === "policy_denied") throw new InboxError("forbidden", err.message);
+      throw new InboxError("github_error", `creating the repository failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    this.deps.store.append([{ type: "github.repo.created", run_id: null, task_id: null, actor, payload: { repo: created.repo, private: created.private } }]);
+    return (await this.cloneProject({ repo: created.repo }, actor)).project;
   }
 
   removeProject(id: string, actor: Actor): void {

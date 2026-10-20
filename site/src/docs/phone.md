@@ -46,7 +46,7 @@ A paired phone gets its own session: a 15-minute access token and a 30-day refre
 - **Chat** with the concierge: type, dictate with your browser's speech recognition, or attach text files such as a Markdown note. Changes are proposed first and run only when you confirm them on the phone.
 - Get **push notifications**: an approval waiting, a failed or finished run, a budget stop, a quota pause, a new pull request, an agent with a question. Notifications only link to the screen where you decide.
 
-A phone never sees secrets, other devices or pairing. In chat it can start only prompt runs in registered projects or repositories of earlier runs, with the daemon's defaults (no Flow, budget, adapter or attachments), and it reaches only the conversations it opened itself. Revoke it from **Settings → Devices** or with:
+On **New run** the phone picks any repository of your GitHub account (it is cloned on your PC first) or creates a new one, private by default, with a first commit; Navarch then registers it as a project. A phone never sees secrets, other devices or pairing. In chat it can start only prompt runs in registered projects or repositories of earlier runs, with the daemon's defaults (no Flow, budget, adapter or attachments), and it reaches only the conversations it opened itself. Revoke it from **Settings → Devices** or with:
 
 ```sh
 navarch devices

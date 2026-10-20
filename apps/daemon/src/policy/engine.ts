@@ -173,6 +173,12 @@ export const defaultRules: PolicyRule[] = [
   },
   { match: (r) => r.action === "repo.clone", effect: "deny", reason: "only the user has repositories cloned" },
   {
+    match: (r) => r.action === "repo.create" && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user starts a new repository on their own GitHub account (ADR 0072)",
+  },
+  { match: (r) => r.action === "repo.create", effect: "deny", reason: "only the user has repositories created" },
+  {
     match: (r) => (r.action === "flow.save" || r.action === "flow.publish") && r.actor.kind === "user" && r.actor.via !== "mobile",
     effect: "allow",
     reason: "the user edits and publishes Flows in Flow Studio (ADR 0033)",

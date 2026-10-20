@@ -168,3 +168,11 @@ export const CloneRepoRequest = z.object({
   repo: z.string().regex(new RegExp(`^${REPO_PATTERN}$`), "expected owner/name"),
 });
 export type CloneRepoRequest = z.infer<typeof CloneRepoRequest>;
+
+/** A new repository under the token's own account (ADR 0072): private unless the user says otherwise. */
+export const CreateRepoRequest = z.strictObject({
+  name: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, "letters, digits, dots, dashes and underscores, up to 100").refine((n) => !/^\.+$/.test(n) && !n.endsWith(".git"), "not a valid repository name"),
+  description: z.string().max(350).optional(),
+  private: z.boolean().default(true),
+});
+export type CreateRepoRequest = z.input<typeof CreateRepoRequest>;

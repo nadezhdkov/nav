@@ -329,6 +329,8 @@ export const EventPayloads = {
   "verification.completed": VerificationReport.extend({ artifact_id: z.string() }),
   /** The GitHub Integration pushed a run branch. Only `navarch/*` branches, never forced. */
   "github.push": z.object({ repo: z.string(), branch: z.string(), commit: z.string() }),
+  /** The user had a repository created on their GitHub account from New run (ADR 0072). */
+  "github.repo.created": z.object({ repo: z.string(), private: z.boolean() }),
   "github.pr.opened": z.object({
     repo: z.string(),
     number: z.number().int().positive(),

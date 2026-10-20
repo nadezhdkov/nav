@@ -11,9 +11,9 @@ import { readDraft, type DraftParam } from "../lib/flowDoc.ts";
 import { repoOptions, type RepoOption } from "../lib/repos.ts";
 
 /**
- * A prompt run in a registered project, a repository of earlier runs or, on the desktop, any GitHub
- * repository the token reaches, cloned on start (spec §6.12.4 "new work", ADR 0020, 0021, 0026),
- * with documents (a spec, notes) every agent reads after its task.
+ * A prompt run in a registered project, a repository of earlier runs or any GitHub repository the
+ * token reaches, cloned on start, or a new repository made here (spec §6.12.4 "new work", ADR 0020,
+ * 0021, 0026, 0071; phones too), with documents (a spec, notes) every agent reads after its task.
  */
 const { t, n } = useI18n();
 const router = useRouter();
@@ -130,12 +130,13 @@ onMounted(async () => {
   options.value = repoOptions(projects, earlier, []);
   repo.value = options.value[0]?.value ?? "";
   loaded.value = true;
-  // Phones keep to registered projects (ADR 0020); a missing token only hides the GitHub list.
-  if (isDevice.value) return;
-  api.flows().then(
-    (all) => (studioFlows.value = all.filter((f) => f.source === "studio" && f.published_version && !f.shadowed)),
-    () => {},
-  );
+  // Flows are the desktop's (ADR 0020); a missing token only hides the GitHub list.
+  if (!isDevice.value) {
+    api.flows().then(
+      (all) => (studioFlows.value = all.filter((f) => f.source === "studio" && f.published_version && !f.shadowed)),
+      () => {},
+    );
+  }
   try {
     remote.value = (await api.githubRepos()).filter((r) => !r.path);
     options.value = repoOptions(projects, earlier, remote.value);
@@ -144,6 +145,27 @@ onMounted(async () => {
     githubError.value = (err as Error).message;
   }
 });
+
+/** A new repository on the user's GitHub account (ADR 0072): cloned, registered and picked. */
+const creating = ref(false);
+const newRepo = ref({ open: false, name: "", private: true });
+async function createRepo() {
+  const name = newRepo.value.name.trim();
+  if (!name || creating.value) return;
+  creating.value = true;
+  error.value = null;
+  try {
+    const project = await api.createRepo({ name, private: newRepo.value.private });
+    const known = options.value.filter((o) => o.value !== `local:${project.path}`);
+    options.value = [{ value: `local:${project.path}`, group: "projects", title: project.name, subtitle: project.repo || project.path }, ...known];
+    repo.value = `local:${project.path}`;
+    newRepo.value = { open: false, name: "", private: true };
+  } catch (err) {
+    error.value = (err as Error).message;
+  } finally {
+    creating.value = false;
+  }
+}
 
 async function start() {
   if (!repo.value || !prompt.value.trim() || !competeReady.value) return;
@@ -187,6 +209,17 @@ async function start() {
         <p v-if="picked" class="mt-1 text-xs text-muted">{{ t("newRun.willClone", { repo: picked.repo }) }}</p>
         <p v-if="picked && !picked.can_push" class="tone-warning mt-1 text-xs" style="color: var(--tone)">{{ t("newRun.noPush", { repo: picked.repo }) }}</p>
         <p v-if="githubError" class="mt-1 text-xs text-muted">{{ t("newRun.githubUnavailable", { error: githubError }) }}</p>
+        <button v-if="!newRepo.open" type="button" class="mt-2 min-h-11 text-sm text-accent" @click="newRepo.open = true">{{ t("newRun.newRepo") }}</button>
+        <div v-else class="mt-2 space-y-2 rounded-lg border border-line p-3">
+          <label for="new-repo-name" class="block text-sm text-muted">{{ t("newRun.newRepoName") }}</label>
+          <input id="new-repo-name" v-model="newRepo.name" type="text" autocapitalize="none" autocomplete="off" spellcheck="false" maxlength="100" class="w-full rounded-lg border border-line bg-surface px-3 py-2 text-base focus:border-accent focus:outline-none" @keydown.enter.prevent="createRepo" />
+          <label class="flex min-h-11 items-center gap-2 text-sm"><input v-model="newRepo.private" type="checkbox" class="size-4" />{{ t("newRun.newRepoPrivate") }}</label>
+          <p class="text-xs text-muted">{{ t("newRun.newRepoHint") }}</p>
+          <div class="flex gap-2">
+            <button type="button" class="min-h-11 rounded-lg bg-accent px-4 text-sm font-medium text-white disabled:opacity-50" :disabled="!newRepo.name.trim() || creating" @click="createRepo">{{ creating ? t("newRun.newRepoCreating") : t("newRun.newRepoCreate") }}</button>
+            <button type="button" class="min-h-11 rounded-lg px-3 text-sm text-muted" @click="newRepo.open = false">{{ t("newRun.newRepoCancel") }}</button>
+          </div>
+        </div>
       </div>
       <div>
         <label for="prompt" class="mb-1 block text-sm text-muted">{{ t("newRun.prompt") }}</label>

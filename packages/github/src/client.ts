@@ -124,6 +124,25 @@ export class GitHubClient {
     return repos;
   }
 
+  /** Creates a repository under the token's own account, with a first commit so it can be cloned (ADR 0072). */
+  async createRepo(repo: { name: string; description?: string; private: boolean }): Promise<GitHubRepo> {
+    const r = await this.request<RawRepo>(
+      "POST",
+      "/user/repos",
+      { name: repo.name, private: repo.private, auto_init: true, ...(repo.description ? { description: repo.description } : {}) },
+      `repository ${repo.name}`,
+    );
+    return {
+      repo: r.full_name,
+      owner: r.owner?.login ?? r.full_name.split("/")[0]!,
+      private: r.private,
+      description: r.description ?? null,
+      default_branch: r.default_branch,
+      pushed_at: r.pushed_at ?? null,
+      can_push: r.permissions?.push ?? true,
+    };
+  }
+
   async defaultBranch(repo: string): Promise<string> {
     return (await this.request<{ default_branch: string }>("GET", `/repos/${repo}`, undefined, repo)).default_branch;
   }
