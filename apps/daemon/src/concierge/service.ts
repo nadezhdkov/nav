@@ -6,7 +6,7 @@ import type { Config } from "../config.ts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 import { nativeModels } from "../routing/native-models.ts";
-import { conciergeTools } from "./tools.ts";
+import { conciergeTools, type ToolDeps } from "./tools.ts";
 
 /**
  * Concierge conversations (ADR 0016). Each message picks a model through the Agent Runtime
@@ -34,6 +34,7 @@ export type ConciergeDeps = {
   listInbox?: () => InboxView;
   /** Repositories a paired device may start runs in. */
   knownRepos?: () => string[];
+  ci?: ToolDeps["ci"];
   usage?: () => UsageView;
   metrics?: () => MetricsView;
 };
@@ -70,6 +71,7 @@ export class ConciergeService {
         requestCancel: this.deps.requestCancel,
         sendMessage: this.deps.sendMessage,
         ...(this.deps.listInbox ? { listInbox: this.deps.listInbox } : {}),
+        ...(this.deps.ci ? { ci: this.deps.ci } : {}),
         ...(this.deps.usage ? { usage: this.deps.usage } : {}),
         ...(this.deps.metrics ? { metrics: this.deps.metrics } : {}),
         actor: () => userActor(entry.origin),

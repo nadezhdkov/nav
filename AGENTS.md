@@ -169,9 +169,11 @@ Slice 9, [GitHub webhooks](docs/specs/phase-4-09-webhooks.md) (ADR 0068): the re
 
 Slice 2, [lean context](docs/specs/phase-5-02-lean-context.md) (ADR 0070): `knowledge.context.mode: lean` swaps the full block for at most 6 files the task's words reach through symbol names, each with the names matched and the test beside it, in `lean_max_tokens` (600); `profiles` and `min_complexity` limit where it appears. Defaults unchanged (`enabled: false`, `mode: full`); measured on 2026-10-19 on the Navarch repository and not met (+1 % to +13 % input tokens), so `enabled` stays `false` ([report](docs/reports/2026-10-19-lean-context-campaign.md)).
 
+Slice 3, [concierge tools for CI failures](docs/specs/phase-5-03-concierge-ci.md) (ADR 0071): the concierge reads the CI watcher's failures with `list_ci_failures` (open by default, or `started|dismissed|resolved`; titles and check names are untrusted) and proposes `fix_ci` (starts `ci-fix` on an open failure, optional budget) and `dismiss_ci`, which run as the operator through `CiWatcher.fix|dismiss` after an explicit yes. A paired phone's conversation gets the list only, since the REST routes refuse it the rest.
+
 Not yet: sub-leads of sub-leads, user-defined profiles, the Archaeologist/Detective/Reviewer roles of reverse-spec, call and module graphs, semantic search, specs and ADRs as sources, balancing the campaign's tasks, acting MCP tools, REA.
 
-Not yet: editing parallel branches, hardened agents beyond `claude-code` and `codex`, label triggers, a concierge tool for CI failures, starting PR runs from the Web UI, relay.
+Not yet: editing parallel branches, hardened agents beyond `claude-code` and `codex`, label triggers, starting PR runs from the Web UI, relay.
 
 Commands (all through the root `Makefile`; run long ones with `ctk runq -- make <target>`):
 
