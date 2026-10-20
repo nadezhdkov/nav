@@ -174,6 +174,17 @@ export class GitHubIntegration {
     return list;
   }
 
+  /** Creates a repository on the token's account after the Policy Engine allowed `repo.create` (ADR 0072). */
+  async createRepo(req: { name: string; description?: string; private: boolean }, actor: Actor): Promise<GitHubRepo> {
+    const decision = this.policy.decide(actor, "repo.create", req.name, { autonomyLevel: this.config.autonomy_level });
+    if (decision.effect !== "allow") throw new GitHubIntegrationError("policy_denied", `creating ${req.name} denied: ${decision.reason}`);
+    const known = await this.listRepos().catch(() => [] as GitHubRepo[]);
+    const created = await this.client.createRepo(req);
+    // GitHub's listing may lag a moment behind a new repository, and the clone needs it listed.
+    this.repos = { at: Date.now(), list: [created, ...known.filter((r) => r.repo.toLowerCase() !== created.repo.toLowerCase())] };
+    return created;
+  }
+
   /** Clones `repo` into `dest` after the Policy Engine allowed `repo.clone` for the actor (ADR 0026). */
   async clone(repo: string, dest: string, actor: Actor): Promise<void> {
     const decision = this.policy.decide(actor, "repo.clone", repo, { autonomyLevel: this.config.autonomy_level });

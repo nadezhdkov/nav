@@ -46,6 +46,10 @@ export type FakeGitHub = {
   token: string;
   /** What `GET /user/repos` lists, in this order. */
   userRepos: FakeUserRepo[];
+  /** The account `POST /user/repos` creates repositories under. */
+  account: string;
+  /** Called after `POST /user/repos` made a repository, so a test can give it a git remote. */
+  onCreateRepo?: (fullName: string) => void;
   repos: Map<string, { default_branch: string; issues: Map<number, FakeIssue> }>;
   pulls: { repo: string; number: number; head: string; base: string; title: string; body: string; draft: boolean }[];
   /** Pull requests to read, by `owner/name#N`. */
@@ -63,7 +67,7 @@ export type FakeGitHub = {
 };
 
 export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<FakeGitHub> {
-  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, userRepos: [], repos: new Map(), pulls: [], pullRequests: new Map(), compares: new Map(), checks: new Map(), reviews: [], comments: [], requests: [] };
+  const fake: Omit<FakeGitHub, "apiUrl" | "close"> = { token, account: "nadezhdkov", userRepos: [], repos: new Map(), pulls: [], pullRequests: new Map(), compares: new Map(), checks: new Map(), reviews: [], comments: [], requests: [] };
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (d) => (raw += d));
@@ -79,6 +83,15 @@ export async function fakeGitHub(token = "github_pat_fake0123456789"): Promise<F
       if (req.headers.authorization !== `Bearer ${fake.token}`) return send(401, { message: "Bad credentials" });
       if (fake.rateLimitedUntil) {
         return send(403, { message: "API rate limit exceeded" }, { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(fake.rateLimitedUntil) });
+      }
+
+      if (req.method === "POST" && path === "/user/repos") {
+        const body = JSON.parse(raw) as { name: string; private?: boolean; description?: string };
+        const full_name = `${fake.account}/${body.name}`;
+        if (fake.userRepos.some((r) => r.full_name === full_name)) return send(422, { message: "Repository creation failed.", errors: [{ message: "name already exists on this account" }] });
+        fake.userRepos.unshift({ full_name, private: body.private ?? false, description: body.description ?? null });
+        fake.onCreateRepo?.(full_name);
+        return send(201, { full_name, owner: { login: fake.account }, private: body.private ?? false, description: body.description ?? null, default_branch: "main", pushed_at: "2026-01-01T00:00:00Z", permissions: { push: true } });
       }
 
       if (req.method === "GET" && path === "/user/repos") {

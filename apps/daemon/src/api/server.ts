@@ -34,6 +34,7 @@ import {
   FleetWindow,
   SendRunMessage,
   CloneRepoRequest,
+  CreateRepoRequest,
   CreateProjectRequest,
   DismissItemRequest,
   FixCiFailureRequest,
@@ -324,7 +325,7 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     return reply.code(204).send();
   });
 
-  // GitHub repositories for New run (ADR 0026): desktop only, never paired devices.
+  // GitHub repositories for New run (ADR 0026). A paired phone may list, clone and create them too (ADR 0072).
   app.get("/api/v1/github/repos", async (req) => daemon.inbox.listGitHubRepos(Boolean((req.query as { refresh?: string }).refresh)));
 
   app.post("/api/v1/github/repos/clone", async (req, reply) => {
@@ -332,6 +333,12 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
     const { project, created } = await daemon.inbox.cloneProject(parsed.data, actorOf(req));
     return reply.code(created ? 201 : 200).send(project);
+  });
+
+  app.post("/api/v1/github/repos/create", async (req, reply) => {
+    const parsed = CreateRepoRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(await daemon.inbox.createProject(parsed.data, actorOf(req)));
   });
 
   app.delete("/api/v1/projects/:id", async (req, reply) => {
@@ -881,6 +888,9 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/concierge/conversations/:id/messages",
   "POST /api/v1/concierge/conversations/:id/proposals/:pid",
   "GET /api/v1/repos",
+  "GET /api/v1/github/repos",
+  "POST /api/v1/github/repos/clone",
+  "POST /api/v1/github/repos/create",
   "GET /api/v1/projects",
   "GET /api/v1/projects/:id/map",
   "GET /api/v1/projects/:id/symbols",
