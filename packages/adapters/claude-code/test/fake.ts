@@ -25,3 +25,21 @@ export function fakeClaude(scenario: FakeScenario): { options: ClaudeCodeOptions
 }
 
 export type FakeCall = { args: string[]; cwd: string; prompt: string };
+
+export const fakeClaudeSessionPath = fileURLToPath(new URL("./fixtures/fake-claude-session.mjs", import.meta.url));
+
+/** Adapter options that run the fake interactive CLI of sessions (ADR 0074); `stateDir/session.jsonl` records what it saw. */
+export function fakeClaudeSession(): { options: ClaudeCodeOptions; stateDir: string; seen: () => Record<string, unknown>[] } {
+  const stateDir = mkdtempSync(join(tmpdir(), "navarch-fake-session-"));
+  return {
+    stateDir,
+    options: { command: process.execPath, commandArgs: [fakeClaudeSessionPath, stateDir], killGraceMs: 500 },
+    seen: () => {
+      try {
+        return readFileSync(join(stateDir, "session.jsonl"), "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
+      } catch {
+        return [];
+      }
+    },
+  };
+}

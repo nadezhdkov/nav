@@ -44,6 +44,12 @@ daemon:
 
 autonomy_level: 2           # used when a repository sets none
 
+sessions:
+  enabled: false            # true lets you talk to Claude Code from the app (Chat → Claude Code)
+  permission_mode: default  # default asks for edits and commands; acceptEdits asks only for commands
+  max_open: 2
+  idle_minutes: 30
+
 workspace:
   root: ~/Documents/projects   # where cloned and new repositories go (<root>/<name>); unset: the Navarch home
 

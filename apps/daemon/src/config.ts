@@ -299,6 +299,25 @@ export const Config = z.object({
   workspace: z
     .object({ root: z.string().regex(/^(~\/|\/)/, "an absolute path, or one starting with ~/").optional() })
     .prefault({}),
+  /**
+   * Live Claude Code sessions from the Web UI or a paired phone (ADR 0074). Off until the user turns it on
+   * here, on the PC: a phone cannot enable what lets it run commands on the PC.
+   */
+  sessions: z
+    .object({
+      enabled: z.boolean().default(false),
+      /** Sessions open at once. */
+      max_open: z.number().int().positive().default(2),
+      /** A session with no message or answer for this long is closed. */
+      idle_minutes: z.number().int().positive().default(30),
+      /** `--max-budget-usd` for each session's Claude Code, a ceiling when the login turns out to be an API key. */
+      max_cost_usd: z.number().positive().default(5),
+      /** What the agent may do without asking: `default` asks for edits and commands, `acceptEdits` only for commands. */
+      permission_mode: z.enum(["default", "acceptEdits"]).default("default"),
+      /** Claude Code settings to load. A session is the operator's own, so `user` (their `~/.claude`) is included. */
+      setting_sources: z.string().default("user,project,local"),
+    })
+    .prefault({}),
   /** GitHub Integration (spec §6.7). The token is `secret://github/token` in the Vault (ADR 0007), never here. */
   github: z
     .object({

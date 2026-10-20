@@ -42,6 +42,7 @@ import { tailscaleStatus } from "./remote/tailscale.ts";
 import { FlowLibrary } from "./flows/library.ts";
 import { Orchestrator } from "./orchestrator/orchestrator.ts";
 import { PolicyEngine } from "./policy/engine.ts";
+import { SessionService } from "./sessions/service.ts";
 import { Scheduler } from "./scheduler/scheduler.ts";
 import { Vault } from "./vault/vault.ts";
 
@@ -78,6 +79,7 @@ export class Daemon {
   readonly vault: Vault;
   readonly concierge: ConciergeService;
   readonly policy: PolicyEngine;
+  readonly sessions: SessionService;
   readonly devices: DeviceService;
   readonly notifier: Notifier;
   readonly inbox: InboxService;
@@ -120,6 +122,13 @@ export class Daemon {
     });
     const policy = new PolicyEngine();
     this.policy = policy;
+    const claudeOverride = options.adapters?.["claude-code"];
+    this.sessions = new SessionService({
+      config: this.config,
+      store: this.store,
+      policy,
+      command: { command: claudeOverride?.command ?? this.config.adapters["claude-code"].command, args: claudeOverride?.commandArgs ?? [] },
+    });
     const github = new GitHubIntegration(this.config, this.vault, policy);
     this.budgets = new Budgets({ store: this.store, config: this.config });
     // Billed use may cross a budget threshold: record it once per scope and period (ADR 0023).
@@ -367,6 +376,7 @@ export class Daemon {
    * `running` in the log and are requeued as `interrupted` on the next start.
    */
   async stop(): Promise<void> {
+    await this.sessions.stop();
     await this.server?.close();
     await this.notifier.stop();
     await this.inbox.stop();

@@ -205,7 +205,8 @@ onBeforeUnmount(() => recognition?.stop());
   <section class="mx-auto flex h-full min-h-0 max-w-2xl flex-col p-6 max-md:p-4">
     <header class="flex items-center gap-3">
       <h1 class="text-xl font-semibold">{{ t("chat.title") }}</h1>
-      <button type="button" class="ml-auto inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm hover:bg-surface-2" @click="newChat">
+      <RouterLink to="/session" class="ml-auto inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm hover:bg-surface-2">{{ t("chat.sessionLink") }}</RouterLink>
+      <button type="button" class="inline-flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-sm hover:bg-surface-2" @click="newChat">
         <Plus :size="16" aria-hidden="true" />{{ t("chat.newChat") }}
       </button>
     </header>

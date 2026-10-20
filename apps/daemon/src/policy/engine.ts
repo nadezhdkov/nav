@@ -171,6 +171,12 @@ export const defaultRules: PolicyRule[] = [
     effect: "allow",
     reason: "the user picks a GitHub repository to work on, and Navarch clones it (ADR 0026)",
   },
+  {
+    match: (r) => r.action === "session.open" && r.actor.kind === "user",
+    effect: "allow",
+    reason: "the user talks to Claude Code in one of their projects (ADR 0074)",
+  },
+  { match: (r) => r.action === "session.open", effect: "deny", reason: "only the user opens a Claude Code session" },
   { match: (r) => r.action === "repo.clone", effect: "deny", reason: "only the user has repositories cloned" },
   {
     match: (r) => r.action === "repo.create" && r.actor.kind === "user",

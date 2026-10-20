@@ -482,6 +482,15 @@ export const EventPayloads = {
     status: z.number().int().nullable(),
     message: z.string(),
   }),
+  /** The user opened a live Claude Code session in a registered project (ADR 0074). */
+  "session.opened": z.object({ session_id: z.string(), project_id: z.string(), path: z.string(), permission_mode: z.enum(["default", "acceptEdits"]), claude_session_id: z.string(), resumed_from: z.string().nullable() }),
+  /** The user sent a message in a session. Secrets are redacted; images are not stored, only counted. */
+  "session.message": z.object({ session_id: z.string(), text: z.string(), images: z.number().int().nonnegative() }),
+  /** Claude Code finished a turn of a session; `cost_usd` is the session's total so far, API-equivalent. */
+  "session.reply": z.object({ session_id: z.string(), text: z.string(), cost_usd: z.number() }),
+  /** The agent asked to use a tool and the user answered, or the question lapsed (`expired`). */
+  "session.permission": z.object({ session_id: z.string(), request_id: z.string(), tool: z.string(), decision: z.enum(["allow", "deny", "expired"]), summary: z.string() }),
+  "session.closed": z.object({ session_id: z.string(), reason: z.string() }),
   /** A message in a concierge conversation (ADR 0016); the assistant's carries its model and usage. */
   "concierge.message": z.object({
     conversation_id: z.string(),

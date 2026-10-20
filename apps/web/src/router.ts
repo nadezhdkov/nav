@@ -18,6 +18,7 @@ export const routes = [
   { path: "/usage", name: "usage", component: () => import("./views/UsageView.vue") },
   { path: "/approvals", name: "approvals", component: () => import("./views/ApprovalsView.vue") },
   { path: "/chat", name: "chat", component: () => import("./views/ChatView.vue") },
+  { path: "/session", name: "session", component: () => import("./views/SessionView.vue") },
   { path: "/device", name: "device", component: () => import("./views/DeviceView.vue") },
   { path: "/settings/security", name: "security", component: () => import("./views/SecurityView.vue") },
   { path: "/settings/devices", name: "devices", component: () => import("./views/DevicesView.vue") },

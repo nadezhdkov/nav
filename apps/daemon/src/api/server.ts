@@ -35,6 +35,10 @@ import {
   SendRunMessage,
   CloneRepoRequest,
   CreateRepoRequest,
+  OpenSessionRequest,
+  SessionMessageRequest,
+  SessionPermissionRequest,
+  type SessionsListing,
   type ProjectFileView,
   type ProjectFilesView,
   CreateProjectRequest,
@@ -77,6 +81,7 @@ import { BudgetError } from "../budgets/budgets.ts";
 import { WebAuthnServiceError } from "../webauthn/service.ts";
 import { AutoMergeError } from "../github/automerge.ts";
 import { CiError } from "../github/ci.ts";
+import { SessionError } from "../sessions/service.ts";
 
 /** Core API, spec §9.1. Every request needs the local bearer token from `~/.navarch/token`. */
 export async function buildServer(daemon: Daemon, token: string): Promise<FastifyInstance> {
@@ -133,6 +138,10 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     if (err instanceof FlowStudioError) {
       const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" ? 403 : 400;
       return reply.code(status).send({ error: err.code, message: err.message, ...(err.problems.length ? { problems: err.problems } : {}) });
+    }
+    if (err instanceof SessionError) {
+      const status = err.code === "not_found" ? 404 : err.code === "conflict" ? 409 : err.code === "forbidden" || err.code === "disabled" ? 403 : 400;
+      return reply.code(status).send({ error: err.code, message: err.message });
     }
     if (err instanceof CiError) return reply.code(err.code === "not_found" ? 404 : 409).send({ error: err.code, message: err.message });
     if (err instanceof BudgetError) return reply.code(404).send({ error: err.code, message: err.message });
@@ -534,6 +543,27 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
 
   app.post("/api/v1/ci/failures/:id/dismiss", async (req) => daemon.ci.dismiss((req.params as { id: string }).id, actorOf(req)));
 
+  // Live Claude Code sessions (ADR 0074): a paired phone may use them; whether they exist at all is the PC's config.
+  app.get("/api/v1/sessions", async () => ({ enabled: daemon.sessions.enabled(), sessions: daemon.sessions.list() }) satisfies SessionsListing);
+  app.post("/api/v1/sessions", async (req, reply) => {
+    const parsed = OpenSessionRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return reply.code(201).send(daemon.sessions.open(parsed.data, actorOf(req)));
+  });
+  app.get("/api/v1/sessions/:id", async (req) => daemon.sessions.get((req.params as { id: string }).id, Number((req.query as { after?: string }).after) || 0));
+  app.post("/api/v1/sessions/:id/messages", { bodyLimit: 10 * 1024 * 1024 }, async (req, reply) => {
+    const parsed = SessionMessageRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    return daemon.sessions.send((req.params as { id: string }).id, parsed.data, actorOf(req));
+  });
+  app.post("/api/v1/sessions/:id/permissions/:request", async (req, reply) => {
+    const parsed = SessionPermissionRequest.safeParse(req.body);
+    if (!parsed.success) return badRequest(reply, z.prettifyError(parsed.error));
+    const params = req.params as { id: string; request: string };
+    return daemon.sessions.decide(params.id, params.request, parsed.data, actorOf(req));
+  });
+  app.delete("/api/v1/sessions/:id", async (req) => daemon.sessions.close((req.params as { id: string }).id, actorOf(req)));
+
   app.get("/api/v1/quotas", async () => daemon.store.quotas());
 
   // Budgets and observed metrics (ADR 0023). Devices may read them; only the user sets budgets.
@@ -921,6 +951,12 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/concierge/conversations/:id/messages",
   "POST /api/v1/concierge/conversations/:id/proposals/:pid",
   "GET /api/v1/repos",
+  "GET /api/v1/sessions",
+  "POST /api/v1/sessions",
+  "GET /api/v1/sessions/:id",
+  "POST /api/v1/sessions/:id/messages",
+  "POST /api/v1/sessions/:id/permissions/:request",
+  "DELETE /api/v1/sessions/:id",
   "GET /api/v1/github/repos",
   "POST /api/v1/github/repos/clone",
   "POST /api/v1/github/repos/create",
