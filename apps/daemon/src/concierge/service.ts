@@ -35,6 +35,7 @@ export type ConciergeDeps = {
   /** Repositories a paired device may start runs in. */
   knownRepos?: () => string[];
   ci?: ToolDeps["ci"];
+  createRepo?: ToolDeps["createRepo"];
   usage?: () => UsageView;
   metrics?: () => MetricsView;
 };
@@ -71,6 +72,7 @@ export class ConciergeService {
         requestCancel: this.deps.requestCancel,
         sendMessage: this.deps.sendMessage,
         ...(this.deps.listInbox ? { listInbox: this.deps.listInbox } : {}),
+        ...(this.deps.createRepo ? { createRepo: this.deps.createRepo } : {}),
         ...(this.deps.ci ? { ci: this.deps.ci } : {}),
         ...(this.deps.usage ? { usage: this.deps.usage } : {}),
         ...(this.deps.metrics ? { metrics: this.deps.metrics } : {}),

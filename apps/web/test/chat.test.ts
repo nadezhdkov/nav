@@ -20,3 +20,17 @@ describe("chat messages", () => {
     expect(isText("bad � bytes")).toBe(false);
   });
 });
+
+describe("@mentions", () => {
+  it("finds the mention being typed at the end of the draft only", async () => {
+    const { mentionAt, splitMention, folderListing } = await import("../src/lib/chat.ts");
+    expect(mentionAt("look at @nav/docs/sp")).toEqual({ start: 8, token: "nav/docs/sp" });
+    expect(mentionAt("@")).toEqual({ start: 0, token: "" });
+    expect(mentionAt("mail me@example.com")).toBeUndefined();
+    expect(mentionAt("@nav/docs done")).toBeUndefined();
+    expect(splitMention("na")).toEqual({ projectQuery: "na" });
+    expect(splitMention("nav/")).toEqual({ project: "nav", dir: "", query: "" });
+    expect(splitMention("nav/docs/sp")).toEqual({ project: "nav", dir: "docs/", query: "sp" });
+    expect(folderListing(["a.md", "b.md"], true)).toBe("a.md\nb.md\n…");
+  });
+});

@@ -1,7 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readdir, readFile, realpath } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import fastifyStatic from "@fastify/static";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
@@ -35,6 +35,8 @@ import {
   SendRunMessage,
   CloneRepoRequest,
   CreateRepoRequest,
+  type ProjectFileView,
+  type ProjectFilesView,
   CreateProjectRequest,
   DismissItemRequest,
   FixCiFailureRequest,
@@ -55,7 +57,7 @@ import {
   type SpecRunView,
   type SyncInboxResult,
 } from "@navarch/contracts";
-import { findSymbols, indexSymbols, repoMap, searchText } from "@navarch/explorer";
+import { findSymbols, indexSymbols, listFiles, readText, repoMap, searchText } from "@navarch/explorer";
 import { compileContext, searchSpecs, traceability } from "@navarch/knowledge";
 import { worktreeFileDiff, worktreeStatus } from "@navarch/runner";
 import { FlowStudioError } from "../flows/library.ts";
@@ -269,6 +271,37 @@ export async function buildServer(daemon: Daemon, token: string): Promise<Fastif
     const project = daemon.store.getProject((req.params as { id: string }).id);
     return project ? fn(project.path) : notFound(reply, "project");
   };
+  // Files of a project, for `@` mentions in the chat (ADR 0073). Only what git knows (so `.gitignore`d
+  // secrets and `.git` are never listed or read), as text, inside the project's clone.
+  app.get("/api/v1/projects/:id/files", (req, reply) => {
+    const q = req.query as { q?: string; prefix?: string; kind?: string; limit?: string };
+    const limit = Math.min(Math.max(1, Number(q.limit) || 40), 500);
+    return explore(req, reply, async (root) => {
+      const files = await listFiles(root);
+      const dirs = new Set<string>();
+      for (const f of files) for (let i = f.indexOf("/"); i !== -1; i = f.indexOf("/", i + 1)) dirs.add(f.slice(0, i + 1));
+      const words = (q.q ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+      const prefix = q.prefix ?? "";
+      const pick = (kind: "file" | "dir", paths: Iterable<string>) =>
+        q.kind && q.kind !== kind ? [] : [...paths].filter((p) => p.startsWith(prefix) && words.every((w) => p.toLowerCase().includes(w))).map((path) => ({ path, kind }));
+      // Folders first, then shorter paths: what someone typing `@do` most likely means.
+      const all = [...pick("dir", dirs), ...pick("file", files)].sort((a, b) => (a.kind === b.kind ? a.path.length - b.path.length || a.path.localeCompare(b.path) : a.kind === "dir" ? -1 : 1));
+      return { entries: all.slice(0, limit), truncated: all.length > limit } satisfies ProjectFilesView;
+    });
+  });
+  app.get("/api/v1/projects/:id/file", (req, reply) => {
+    const path = (req.query as { path?: string }).path;
+    if (!path) return badRequest(reply, "path is required");
+    return explore(req, reply, async (root) => {
+      if (!(await listFiles(root)).includes(path)) return notFound(reply, "file");
+      // A tracked symlink must not lead outside the clone (a repository could point one at ~/.ssh).
+      const real = await realpath(join(root, path)).catch(() => undefined);
+      const base = await realpath(root).catch(() => undefined);
+      if (!real || !base || !real.startsWith(base + sep)) return notFound(reply, "file");
+      const content = await readText(root, path);
+      return content === undefined ? notFound(reply, "text file") : ({ path, content } satisfies ProjectFileView);
+    });
+  });
   app.get("/api/v1/projects/:id/map", (req, reply) => explore(req, reply, (root) => repoMap(root)));
   app.get("/api/v1/projects/:id/symbols", (req, reply) => {
     const q = req.query as { q?: string; kind?: string };
@@ -892,6 +925,8 @@ const DEVICE_ROUTES = new Set([
   "POST /api/v1/github/repos/clone",
   "POST /api/v1/github/repos/create",
   "GET /api/v1/projects",
+  "GET /api/v1/projects/:id/files",
+  "GET /api/v1/projects/:id/file",
   "GET /api/v1/projects/:id/map",
   "GET /api/v1/projects/:id/symbols",
   "GET /api/v1/projects/:id/search",

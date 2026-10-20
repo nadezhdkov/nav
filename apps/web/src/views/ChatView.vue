@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import type { ProposalView } from "@navarch/contracts";
-import { Mic, MicOff, Paperclip, Plus, SendHorizontal, X } from "@lucide/vue";
-import { nextTick, onBeforeUnmount, ref } from "vue";
+import type { ProjectFileEntry, ProjectView, ProposalView } from "@navarch/contracts";
+import { FileText, Folder, FolderGit2, Mic, MicOff, Paperclip, Plus, SendHorizontal, X } from "@lucide/vue";
+import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { ApiError, api } from "../api/client.ts";
-import { composeMessage, fits, isText, MESSAGE_MAX, type ChatFile } from "../lib/chat.ts";
+import { composeMessage, fits, folderListing, isText, mentionAt, MESSAGE_MAX, splitMention, type ChatFile } from "../lib/chat.ts";
 
 /**
  * Chat with the concierge from the phone (ADR 0063). Text, dictation by the browser and text files,
@@ -97,6 +97,74 @@ async function pick(event: Event) {
   input.value = "";
 }
 
+// `@` mentions (ADR 0073): files and folders of the registered projects, read by the daemon from git's own
+// file list, so ignored files and secrets never show up. A picked file joins the message like an attachment.
+type Suggestion = { key: string; kind: "project" | "dir" | "file" | "folder"; label: string; hint?: string; project?: ProjectView; path?: string };
+const suggestions = ref<Suggestion[]>([]);
+let projects: ProjectView[] | undefined;
+let lookup = 0;
+watch(draft, async (text) => {
+  const mention = mentionAt(text);
+  const mine = ++lookup;
+  if (!mention) {
+    suggestions.value = [];
+    return;
+  }
+  try {
+    projects ??= await api.projects();
+    const parts = splitMention(mention.token);
+    let next: Suggestion[];
+    if ("projectQuery" in parts) {
+      const q = parts.projectQuery.toLowerCase();
+      next = projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8).map((p) => ({ key: p.id, kind: "project" as const, label: p.name, hint: p.repo, project: p }));
+    } else {
+      const project = projects.find((p) => p.name === parts.project);
+      if (!project) return void (suggestions.value = []);
+      const { entries } = await api.projectFiles(project.id, { prefix: parts.dir, q: parts.query, limit: 12 });
+      next = entries.map((e: ProjectFileEntry) => ({ key: e.path, kind: e.kind, label: e.path.slice(parts.dir.length), project, path: e.path }));
+      if (parts.dir && !parts.query) next.unshift({ key: `folder:${parts.dir}`, kind: "folder", label: t("chat.mentionFolder", { dir: parts.dir }), project, path: parts.dir });
+    }
+    if (mine === lookup) suggestions.value = next;
+  } catch {
+    if (mine === lookup) suggestions.value = [];
+  }
+});
+
+async function choose(s: Suggestion) {
+  const mention = mentionAt(draft.value);
+  if (!mention) return;
+  const head = draft.value.slice(0, mention.start);
+  if (s.kind === "project") {
+    draft.value = `${head}@${s.project!.name}/`;
+    return;
+  }
+  if (s.kind === "dir") {
+    draft.value = `${head}@${s.project!.name}/${s.path}`;
+    return;
+  }
+  draft.value = head;
+  suggestions.value = [];
+  try {
+    const name = `${s.project!.name}/${s.path}`;
+    let content: string;
+    if (s.kind === "folder") {
+      const { entries, truncated } = await api.projectFiles(s.project!.id, { prefix: s.path!, kind: "file", limit: 200 });
+      content = folderListing(entries.map((e) => e.path), truncated);
+    } else {
+      content = (await api.projectFile(s.project!.id, s.path!)).content;
+    }
+    const next = [...files.value.filter((f) => f.name !== name), { name: s.kind === "folder" ? `${name} (files)` : name, content }];
+    if (!fits(draft.value, next)) {
+      notes.value = [t("chat.attachTooBig", { name, max: MESSAGE_MAX })];
+      return;
+    }
+    notes.value = [];
+    files.value = next;
+  } catch (err) {
+    notes.value = [(err as Error).message];
+  }
+}
+
 function newChat() {
   conversation = undefined;
   lines.value = [];
@@ -177,6 +245,16 @@ onBeforeUnmount(() => recognition?.stop());
       </li>
     </ul>
 
+    <ul v-if="suggestions.length" class="mt-2 max-h-56 overflow-auto rounded-lg border border-line bg-surface" role="listbox" :aria-label="t('chat.mentionList')">
+      <li v-for="s in suggestions" :key="s.key" role="option">
+        <button type="button" class="flex min-h-11 w-full items-center gap-2 px-3 text-left text-sm hover:bg-surface-2" @click="choose(s)">
+          <component :is="s.kind === 'project' ? FolderGit2 : s.kind === 'file' ? FileText : Folder" :size="16" class="shrink-0 text-muted" aria-hidden="true" />
+          <span class="min-w-0 flex-1 truncate">{{ s.label }}</span>
+          <span v-if="s.hint" class="truncate text-xs text-muted">{{ s.hint }}</span>
+        </button>
+      </li>
+    </ul>
+
     <form class="mt-3 flex items-end gap-2" @submit.prevent="send">
       <label class="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md border border-line hover:bg-surface-2 focus-within:outline-2 focus-within:outline-accent" :title="t('chat.attach')">
         <Paperclip :size="18" aria-hidden="true" />
@@ -199,5 +277,6 @@ onBeforeUnmount(() => recognition?.stop());
         <SendHorizontal :size="18" aria-hidden="true" />
       </button>
     </form>
+    <p class="mt-1 text-xs text-muted">{{ t("chat.mentionHint", { at: "@" }) }}</p>
   </section>
 </template>

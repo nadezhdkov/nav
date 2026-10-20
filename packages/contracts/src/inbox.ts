@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { REPO_PATTERN } from "./work.ts";
 
+/** One entry of a project's file picker (ADR 0073): a file git knows, or a folder holding some. */
+export const ProjectFileEntry = z.object({ path: z.string(), kind: z.enum(["file", "dir"]) });
+export type ProjectFileEntry = z.infer<typeof ProjectFileEntry>;
+export const ProjectFilesView = z.object({ entries: z.array(ProjectFileEntry), truncated: z.boolean() });
+export type ProjectFilesView = z.infer<typeof ProjectFilesView>;
+export const ProjectFileView = z.object({ path: z.string(), content: z.string() });
+export type ProjectFileView = z.infer<typeof ProjectFileView>;
+
 /** Projects, the Inbox and quota windows (ADR 0021, spec §8.2, §15.3). */
 
 /** In Phase 1 a project is one local clone of one GitHub repository. */

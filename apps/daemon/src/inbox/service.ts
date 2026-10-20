@@ -26,6 +26,7 @@ import { GitHubError, type GitHubRepo } from "@navarch/github";
 import { resolveRepoRoot } from "@navarch/runner";
 import type { Config } from "../config.ts";
 import type { EventStore, ProjectRecord, WorkItemRecord } from "../events/store.ts";
+import { workspaceRoot } from "./workspace.ts";
 import { GitHubIntegrationError, type GitHubIntegration } from "../github/integration.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 import type { PolicyEngine } from "../policy/engine.ts";
@@ -171,7 +172,9 @@ export class InboxService {
     const listed = (await this.listGitHubRepos()).find((r) => r.repo.toLowerCase() === req.repo.toLowerCase());
     if (!listed) throw new InboxError("not_found", `${req.repo} is not among the repositories the GitHub token reaches`);
     const [owner, name] = listed.repo.split("/") as [string, string];
-    const dest = join(this.deps.home, "repos", owner, name);
+    const root = workspaceRoot(this.deps.config.workspace.root);
+    // Under the workspace root a clone is `<root>/<name>`, where the user keeps their projects (ADR 0073).
+    const dest = root ? join(root, name) : join(this.deps.home, "repos", owner, name);
     // A clone left by an earlier attempt is reused when its origin is this repository; addProject checks that.
     if (!existsSync(dest)) {
       try {

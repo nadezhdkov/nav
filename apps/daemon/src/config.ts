@@ -292,6 +292,13 @@ export const Config = z.object({
       egress_allow: z.array(z.string().regex(/^(\*\.)?[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/i)).default([]),
     })
     .prefault({}),
+  /**
+   * Where projects live (ADR 0073), e.g. `~/Documents/projects`. New and cloned repositories go to
+   * `<root>/<name>`; unset, they stay in the Navarch home. Not read from a repository.
+   */
+  workspace: z
+    .object({ root: z.string().regex(/^(~\/|\/)/, "an absolute path, or one starting with ~/").optional() })
+    .prefault({}),
   /** GitHub Integration (spec §6.7). The token is `secret://github/token` in the Vault (ADR 0007), never here. */
   github: z
     .object({
