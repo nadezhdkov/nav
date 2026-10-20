@@ -44,6 +44,9 @@ daemon:
 
 autonomy_level: 2           # used when a repository sets none
 
+workspace:
+  root: ~/Documents/projects   # where cloned and new repositories go (<root>/<name>); unset: the Navarch home
+
 scheduler:
   concurrency: 2            # agent tasks at once
   max_attempts: 3

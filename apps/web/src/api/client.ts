@@ -41,6 +41,8 @@ import type {
   InboxView,
   AddProjectResult,
   CreateRepoRequest,
+  ProjectFilesView,
+  ProjectFileView,
   ProjectView,
   QuotaView,
   BudgetView,
@@ -224,6 +226,9 @@ export const api = {
   unsubscribePush: () => request<void>("DELETE", "/api/v1/push/subscription"),
   projects: () => request<ProjectView[]>("GET", "/api/v1/projects"),
   githubRepos: () => request<GitHubRepoView[]>("GET", "/api/v1/github/repos"),
+  projectFiles: (id: string, params: { q?: string; prefix?: string; kind?: "file" | "dir"; limit?: number }) =>
+    request<ProjectFilesView>("GET", `/api/v1/projects/${encodeURIComponent(id)}/files?${new URLSearchParams(Object.entries(params).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, String(v)]))}`),
+  projectFile: (id: string, path: string) => request<ProjectFileView>("GET", `/api/v1/projects/${encodeURIComponent(id)}/file?${new URLSearchParams({ path })}`),
   createRepo: (req: CreateRepoRequest) => request<AddProjectResult>("POST", "/api/v1/github/repos/create", req),
   cloneRepo: (repo: string) => request<AddProjectResult>("POST", "/api/v1/github/repos/clone", { repo }),
   securityKeys: () => request<SecurityKeysView>("GET", "/api/v1/security-keys"),

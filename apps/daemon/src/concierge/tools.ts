@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, openSync, readFileSync, realpathSync } from "node:fs";
 import { basename, isAbsolute, relative, resolve } from "node:path";
 import type { ConciergeTool } from "@navarch/concierge";
-import { ATTACHMENT_LIMITS, CreateRunRequest, FixCiFailureRequest, SendRunMessage, type Actor, type CiFailureView, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView, type MetricsView } from "@navarch/contracts";
+import { ATTACHMENT_LIMITS, CreateRepoRequest, CreateRunRequest, FixCiFailureRequest, SendRunMessage, type Actor, type AddProjectResult, type CiFailureView, type InboxView, type NavarchEvent, type RunDetail, type RunMessage, type RunView, type UsageView, type MetricsView } from "@navarch/contracts";
 import type { EventStore } from "../events/store.ts";
 import type { Orchestrator } from "../orchestrator/orchestrator.ts";
 
@@ -23,6 +23,8 @@ export type ToolDeps = {
   usage?: () => UsageView;
   /** The cost and quality panels (ADR 0037): `show_usage` adds the PR rates. */
   metrics?: () => MetricsView;
+  /** Creates a repository on the token's account and registers its clone (ADR 0073); absent in tests without a daemon. */
+  createRepo?: (req: CreateRepoRequest, actor: Actor) => Promise<AddProjectResult>;
   /** The CI failures noticed on open pull requests (ADR 0041); absent when the daemon has no CI watcher. */
   ci?: {
     list: (status?: CiFailureView["status"]) => CiFailureView[];
@@ -380,6 +382,24 @@ export function conciergeTools(deps: ToolDeps): ConciergeTool[] {
             summarize: (args: Record<string, unknown>) => `dismiss CI failure ${String(args.failure_id)}`,
             run: async (args: Record<string, unknown>) => deps.ci!.dismiss(text(args, "failure_id"), deps.actor()),
             describe: (result: unknown) => `${(result as CiFailureView).id} ${(result as CiFailureView).status}`,
+          },
+        ]
+      : []),
+    ...(deps.createRepo
+      ? [
+          {
+            name: "create_repo",
+            description:
+              "Propose creating a new GitHub repository on the operator's own account (private unless they say public), with a first commit, cloned into their projects folder and added as a project. Then runs can start in it.",
+            parameters: obj({ name: str("Repository name: letters, digits, dots, dashes, underscores."), description: str("One line about it."), public: { type: "boolean", description: "True only when the operator asked for a public repository." } }, ["name"]),
+            kind: "act" as const,
+            summarize: (args: Record<string, unknown>) => `create the ${args.public === true ? "public" : "private"} GitHub repository ${String(args.name)}${optionalText(args, "description") ? ` ("${optionalText(args, "description")}")` : ""}, clone it and add it as a project`,
+            run: async (args: Record<string, unknown>) => {
+              const parsed = CreateRepoRequest.safeParse({ name: text(args, "name"), private: args.public !== true, ...(optionalText(args, "description") ? { description: optionalText(args, "description") } : {}) });
+              if (!parsed.success) throw new Error(parsed.error.issues.map((i) => `${i.path.join(".") || "request"}: ${i.message}`).join("; "));
+              return deps.createRepo!(parsed.data, deps.actor());
+            },
+            describe: (result: unknown) => `repository ${(result as AddProjectResult).repo} created and added as a project (${(result as AddProjectResult).path})`,
           },
         ]
       : []),
