@@ -46,5 +46,5 @@ Navarch notices failing checks on open pull requests by polling, tells the user,
 
 ## Not in this slice
 
-- The concierge's `list_ci_failures` / `fix_ci`.
+- The concierge's `list_ci_failures` / `fix_ci`: done in [Phase 5, slice 3](phase-5-03-concierge-ci.md).
 - Webhooks (they need the relay).

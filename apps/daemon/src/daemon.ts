@@ -160,6 +160,11 @@ export class Daemon {
       sendMessage: (runId, req, actor) => this.sendRunMessage(runId, req, actor),
       listInbox: () => this.inbox.list({ status: ["new", "triaged"] }),
       knownRepos: () => [...this.store.listRepos().map((r) => r.path), ...this.store.listProjects().map((p) => p.path)],
+      ci: {
+        list: (status) => this.ci.list(status),
+        fix: (id, req, actor) => this.ci.fix(id, req, actor),
+        dismiss: (id, actor) => this.ci.dismiss(id, actor),
+      },
       usage: () => this.usage({ days: 30 }),
       metrics: () => this.metrics({ days: 30 }),
     });
