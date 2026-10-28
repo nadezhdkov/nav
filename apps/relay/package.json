@@ -20,6 +20,6 @@
     "typecheck:phone": "tsc -p phone/tsconfig.json && tsc -p phone/tsconfig.sw.json"
   },
   "devDependencies": {
-    "vite": "8.3.4"
+    "vite": "8.3.5"
   }
 }
